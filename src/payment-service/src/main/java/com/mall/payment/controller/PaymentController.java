@@ -2,8 +2,11 @@ package com.mall.payment.controller;
 
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.CreatePaymentRequest;
+import com.mall.payment.dto.request.PaymentCallbackRequest;
 import com.mall.payment.dto.response.CreatePaymentResponse;
 import com.mall.payment.dto.response.PaymentDetailResponse;
+import com.mall.payment.service.CallbackResult;
+import com.mall.payment.service.PaymentCallbackService;
 import com.mall.payment.service.PaymentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final PaymentCallbackService paymentCallbackService;
 
     @PostMapping
     public Result<CreatePaymentResponse> create(
@@ -45,5 +49,16 @@ public class PaymentController {
             @RequestHeader("X-User-Id") String buyerId,
             @PathVariable("orderId") String orderId) {
         return Result.success(paymentService.getPaymentByOrderId(buyerId, orderId));
+    }
+
+    /**
+     * 第三方支付回调，不需要登录，由签名保证来源可信。
+     */
+    @PostMapping("/callback")
+    public Result<Void> callback(@Valid @RequestBody PaymentCallbackRequest request) {
+        CallbackResult result = paymentCallbackService.process(request);
+        return result.isSuccess()
+                ? Result.success(null)
+                : Result.fail(result.getCode(), result.getMessage());
     }
 }

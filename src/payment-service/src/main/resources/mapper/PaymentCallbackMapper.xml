@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.PaymentCallbackMapper">
+
+    <sql id="columns">
+        callback_id, trade_no, payment_id, raw_payload, sign_verified, amount,
+        process_status, error_message, received_at
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.PaymentCallback"
+            useGeneratedKeys="true" keyProperty="callbackId">
+        INSERT INTO payment_callback (
+            trade_no, payment_id, raw_payload, sign_verified, amount,
+            process_status, error_message
+        ) VALUES (
+            #{tradeNo}, #{paymentId}, #{rawPayload,jdbcType=LONGVARCHAR},
+            #{signVerified}, #{amount}, #{processStatus},
+            #{errorMessage,jdbcType=VARCHAR}
+        )
+    </insert>
+
+    <update id="updateProcessStatus">
+        UPDATE payment_callback
+        SET process_status = #{processStatus},
+            error_message = #{errorMessage,jdbcType=VARCHAR}
+        WHERE callback_id = #{callbackId}
+    </update>
+
+    <select id="selectByTradeNo" resultType="com.mall.payment.entity.PaymentCallback">
+        SELECT <include refid="columns"/>
+        FROM payment_callback
+        WHERE trade_no = #{tradeNo}
+    </select>
+</mapper>
