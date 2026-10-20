@@ -41,4 +41,9 @@ public interface PaymentMapper {
      * 累计退款额达到实付金额时，把支付单置为已退款。
      */
     int markRefundedIfFullyRefunded(@Param("paymentId") String paymentId);
+
+    /**
+     * 已全额退款的支付单在退款被驳回后，恢复为支付成功状态。
+     */
+    int restoreSuccessIfNotFullyRefunded(@Param("paymentId") String paymentId);
 }

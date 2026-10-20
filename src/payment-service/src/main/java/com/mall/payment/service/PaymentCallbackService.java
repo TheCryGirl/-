@@ -8,6 +8,7 @@ import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.OrderStatus;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.PaymentCallbackRequest;
+import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.entity.Payment;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ public class PaymentCallbackService {
     private final CallbackTxService callbackTxService;
     private final OrderClient orderClient;
     private final ProductClient productClient;
+    private final RefundService refundService;
 
     public CallbackResult process(PaymentCallbackRequest request) {
         if (!signatureService.verify(request)) {
@@ -54,8 +56,18 @@ public class PaymentCallbackService {
             return result;
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
-            log.error("订单已取消但收到支付成功回调，需自动退款, paymentId={}, orderId={}",
+            log.warn("订单已取消但收到支付成功回调，发起自动退款, paymentId={}, orderId={}",
                     payment.getPaymentId(), payment.getOrderId());
+            try {
+                RefundResponse refund = refundService.autoRefund(payment, "订单已取消，支付款自动退回");
+                if (refund != null) {
+                    log.warn("自动退款完成, paymentId={}, refundId={}, amount={}",
+                            payment.getPaymentId(), refund.getRefundId(), refund.getAmount());
+                }
+            } catch (Exception e) {
+                log.error("自动退款失败，需人工处理, paymentId={}, orderId={}",
+                        payment.getPaymentId(), payment.getOrderId(), e);
+            }
             return result;
         }
 

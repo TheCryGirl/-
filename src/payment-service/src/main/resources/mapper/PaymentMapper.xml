@@ -99,4 +99,14 @@
           AND refunded_amount &gt;= amount
           AND is_deleted = 0
     </update>
+
+    <update id="restoreSuccessIfNotFullyRefunded">
+        UPDATE payment
+        SET status = 'SUCCESS',
+            updated_at = NOW()
+        WHERE payment_id = #{paymentId}
+          AND status = 'REFUNDED'
+          AND refunded_amount &lt; amount
+          AND is_deleted = 0
+    </update>
 </mapper>
