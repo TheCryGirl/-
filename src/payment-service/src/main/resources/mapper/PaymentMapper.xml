@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.PaymentMapper">
+
+    <sql id="columns">
+        payment_id, pay_no, order_id, buyer_id, channel, amount, refunded_amount,
+        status, idempotency_key, paid_at, created_at, updated_at, created_by,
+        updated_by, is_deleted
+    </sql>
+
+    <select id="selectById" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE payment_id = #{paymentId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectByPayNo" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE pay_no = #{payNo}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectByIdempotencyKey" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE idempotency_key = #{idempotencyKey}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectLatestByOrderId" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE order_id = #{orderId}
+          AND is_deleted = 0
+        ORDER BY created_at DESC, payment_id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectPendingByOrderId" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE order_id = #{orderId}
+          AND status = 'PENDING'
+          AND is_deleted = 0
+        ORDER BY created_at DESC, payment_id DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.Payment">
+        INSERT INTO payment (
+            payment_id, pay_no, order_id, buyer_id, channel, amount,
+            refunded_amount, status, idempotency_key, paid_at,
+            created_by, updated_by, is_deleted
+        ) VALUES (
+            #{paymentId}, #{payNo}, #{orderId}, #{buyerId}, #{channel}, #{amount},
+            #{refundedAmount}, #{status}, #{idempotencyKey,jdbcType=VARCHAR},
+            #{paidAt,jdbcType=TIMESTAMP}, #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <update id="markSuccess">
+        UPDATE payment
+        SET status = 'SUCCESS',
+            paid_at = #{paidAt},
+            updated_at = NOW()
+        WHERE payment_id = #{paymentId}
+          AND status IN ('PENDING', 'CLOSED', 'FAILED')
+          AND is_deleted = 0
+    </update>
+
+    <update id="reserveRefundAmount">
+        UPDATE payment
+        SET refunded_amount = refunded_amount + #{refundAmount},
+            updated_at = NOW()
+        WHERE payment_id = #{paymentId}
+          AND status = 'SUCCESS'
+          AND refunded_amount + #{refundAmount} &lt;= amount
+          AND is_deleted = 0
+    </update>
+
+    <update id="releaseRefundAmount">
+        UPDATE payment
+        SET refunded_amount = refunded_amount - #{refundAmount},
+            updated_at = NOW()
+        WHERE payment_id = #{paymentId}
+          AND refunded_amount &gt;= #{refundAmount}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markRefundedIfFullyRefunded">
+        UPDATE payment
+        SET status = 'REFUNDED',
+            updated_at = NOW()
+        WHERE payment_id = #{paymentId}
+          AND status = 'SUCCESS'
+          AND refunded_amount &gt;= amount
+          AND is_deleted = 0
+    </update>
+</mapper>
