@@ -1,0 +1,41 @@
+@startuml fig2-5_uc_payment
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam usecase {
+  BackgroundColor #DCE9F5
+  BorderColor #2E5A88
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2E5A88
+}
+left to right direction
+
+actor "买家\n(Buyer)" as B
+actor "第三方支付平台\n(Payment Gateway)" as P
+actor "管理员\n(Admin)" as F
+
+rectangle "支付模块（payment-service）" as M {
+  usecase "发起支付" as UC1
+  usecase "选择支付方式" as UC2
+  usecase "查询支付结果" as UC3
+  usecase "接收支付回调" as UC4
+  usecase "校验回调签名" as UC5
+  usecase "处理重复回调" as UC6
+  usecase "发起退款" as UC7
+  usecase "查看交易流水" as UC9
+}
+
+B --> UC1
+B --> UC2
+B --> UC3
+P --> UC4
+F --> UC9
+
+UC1 ..> UC2 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC4 ..> UC6 : <<extend>>
+UC1 ..> UC7 : <<extend>>
+@enduml

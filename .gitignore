@@ -1,0 +1,37 @@
+# 依赖
+node_modules/
+pnpm-store/
+
+# 构建产物
+dist/
+build/
+target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志与临时文件
+*.log
+*.tmp
+~$*
+
+# 环境配置（含口令，不入库）
+application-local.yaml
+application-local.properties
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+
+# 渲染中间产物
+*.bak
+*.bak2

@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园二手交易平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+
+             .chat-messages {
+                      height: 300px;
+                      overflow-y: auto;
+                  }
+                  .message-bubble {
+                      max-width: 80%;
+                      padding: 8px 12px;
+                      border-radius: 12px;
+                      margin-bottom: 8px;
+                  }
+                  .message-user {
+                      background-color: #3b82f6;
+                      color: white;
+                      align-self: flex-end;
+                      margin-left: auto;
+                  }
+                  .message-ai {
+                      background-color: #f3f4f6;
+                      color: black;
+                      align-self: flex-start;
+                  }
+                  .chat-messages::-webkit-scrollbar {
+                      width: 6px;
+                  }
+                  .chat-messages::-webkit-scrollbar-thumb {
+                      background-color: #cbd5e1;
+                      border-radius: 3px;
+                  }
+          .search-container {
+              display: flex;
+              justify-content: flex-start;
+              align-items: center;
+              width: 70%;
+              padding: 10px 0;
+              flex-grow: 1;
+              margin-left: 20px;
+          }
+
+          .search-input {
+              width: 650px;
+              padding: 12px 15px;
+              border: 1px solid #ccc;
+              border-right: none;
+              border-radius: 20px 0 0 20px;
+              outline: none;
+              font-size: 16px;
+          }
+
+          .search-button {
+              padding: 10px 20px;
+              background-color: #38f;
+              color: white;
+              border: none;
+              border-radius: 0 20px 20px 0;
+              cursor: pointer;
+              font-size: 16px;
+          }
+
+          .search-button:hover {
+              background-color: #152a66;
+          }
+    #message-badge {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background-color: red;
+        color: white;
+        border-radius: 50%;
+        padding: 2px 6px;
+        font-size: 12px;
+        display: none;
+    }
+#avatar-message-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background-color: red;
+    color: white;
+    border-radius: 50%;
+    padding: 2px 6px;
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    line-height: 14px;
+    text-align: center;
+}
+
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- Top Navbar -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-store text-blue-600 text-2xl"></i>
+                    <span class="font-bold text-xl text-gray-800 ml-2">校园易</span>
+                </div>
+                <div class="flex items-center">
+                    <div class="search-container">
+                        <input type="text" id="searchInput" class="search-input" placeholder="请输入搜索内容">
+                        <button id="searchButton" class="search-button">搜索</button>
+                    </div>
+                    <div id="authButtons" class="ml-4 flex items-center">
+                        <button onclick="showLoginModal()" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">登录</button>
+                        <button onclick="showRegisterModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition">注册</button>
+                    </div>
+                    <div id="userInfo" class="hidden ml-4 relative">
+                        <button onclick="toggleProfileMenu()" class="flex items-center space-x-2 relative">
+                            <img class="h-8 w-8 rounded-full" src="photos/male.png" alt="User avatar" id="userAvatarImg">
+                            <span class="text-gray-700" id="userNameDisplay"></span>
+                            <div id="avatar-message-badge" class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center hidden">1</div>
+                        </button>
+                        <div id="profileMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                            <a href="#" onclick="loadMyProducts()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">我发布的</a>
+                            <a href="#" onclick="loadMyOrders('buy')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">我买到的</a>
+                            <a href="#" onclick="loadMyOrders('sell')" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">我卖出的</a>
+                            <a href="#" onclick="loadMyMessagesList()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 relative">
+                                我的消息
+                                <div id="menu-message-badge" class="absolute top-1 right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center hidden">1</div>
+                            </a>
+                            <a href="#" onclick="logout()" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">退出登录</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Banner -->
+    <header class="bg-gradient-to-r from-blue-500 to-teal-400">
+        <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
+            <h1 class="text-4xl font-extrabold text-white">发现校园好物</h1>
+            <p class="mt-2 text-lg text-blue-100">一个专为在校师生打造的二手交易平台</p>
+            <button onclick="showSellModal()" class="mt-6 bg-white text-blue-600 font-bold py-2 px-6 rounded-full hover:bg-blue-50 transition hidden" id="sellBtn">
+                <i class="fas fa-plus mr-2"></i>发布我的闲置
+            </button>
+        </div>
+    </header>
+
+
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col justify-between overflow-y-auto">
+
+            <div class="p-4">
+                <!-- 价格筛选区域 -->
+                <div class="p-4 border-b border-gray-200">
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">价格筛选</h3>
+                    <div class="space-y-3">
+                        <div class="flex space-x-2">
+                            <input type="number" id="minPrice" placeholder="最低价" class="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                            <input type="number" id="maxPrice" placeholder="最高价" class="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <button onclick="applyPriceFilter()" class="w-full bg-blue-500 text-white text-sm font-medium py-2 px-4 rounded-md hover:bg-blue-600 transition">
+                            <i class="fas fa-filter mr-2"></i>应用筛选
+                        </button>
+                        <button onclick="clearPriceFilter()" class="w-full bg-gray-200 text-gray-700 text-sm font-medium py-2 px-4 rounded-md hover:bg-gray-300 transition">
+                            清除筛选
+                        </button>
+                    </div>
+                </div>
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4">商品分类</h3>
+                <nav class="space-y-1">
+                    <a href="#" onclick="loadProducts('all')" class="bg-gray-100 text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-th-large mr-3 text-gray-500"></i> 全部商品
+                    </a>
+                    <a href="#" onclick="loadProducts('electronics')" class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-laptop mr-3 text-gray-400 group-hover:text-gray-500"></i> 数码电子
+                    </a>
+                    <a href="#" onclick="loadProducts('books')" class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-book mr-3 text-gray-400 group-hover:text-gray-500"></i> 书籍资料
+                    </a>
+                    <a href="#" onclick="loadProducts('clothing')" class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-tshirt mr-3 text-gray-400 group-hover:text-gray-500"></i> 服装配饰
+                    </a>
+                    <a href="#" onclick="loadProducts('sports')" class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-basketball-ball mr-3 text-gray-400 group-hover:text-gray-500"></i> 运动器材
+                    </a>
+                    <a href="#" onclick="loadProducts('others')" class="text-gray-600 hover:bg-gray-50 hover:text-gray-900 group flex items-center px-2 py-2 text-sm font-medium rounded-md">
+                        <i class="fas fa-ellipsis-h mr-3 text-gray-400 group-hover:text-gray-500"></i> 其他
+                    </a>
+                </nav>
+            </div>
+
+            <div class="p-4 border-t border-gray-200">
+                <button onclick="toggleChat()" class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white group flex items-center justify-center px-4 py-3 text-sm font-medium rounded-full shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1">
+                    <i class="fas fa-robot mr-2 text-lg"></i> 智能助手
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto p-8" id="mainContent">
+            <!-- Products Grid -->
+            <div id="productsSection">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900" id="pageTitle">全部商品</h2>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-500">排序:</span>
+                        <select id="sortSelect" class="border-gray-300 rounded-md text-sm">
+                            <option value="default">默认</option>
+                            <option value="time">最新</option>
+                            <option value="price">价格</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8" id="productsGrid">
+
+                </div>
+                <!-- Pagination Controls -->
+                <div id="paginationControls" class="flex justify-center items-center space-x-4 mt-8 hidden">
+                    <button onclick="changePage(-1)" id="prevPageBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50">上一页</button>
+                    <span id="pageInfo" class="text-gray-600">第 1 页 / 共 1 页</span>
+                    <button onclick="changePage(1)" id="nextPageBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50">下一页</button>
+                </div>
+            </div>
+
+
+            <div id="myProductsSection" class="hidden">
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">我发布的商品</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8" id="myProductsGrid">
+                </div>
+                <!-- Pagination Controls for My Products -->
+                <div id="myPaginationControls" class="flex justify-center items-center space-x-4 mt-8 hidden">
+                    <button onclick="changeMyPage(-1)" id="prevMyPageBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50">上一页</button>
+                    <span id="myPageInfo" class="text-gray-600">第 1 页 / 共 1 页</span>
+                    <button onclick="changeMyPage(1)" id="nextMyPageBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50">下一页</button>
+                </div>
+            </div>
+
+            <div id="ordersSection" class="hidden">
+                <h2 class="text-2xl font-bold text-gray-900 mb-6" id="orderPageTitle">我的订单</h2>
+                <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">订单号</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">商品名称</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">交易对象</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时间</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200" id="ordersTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- AI Chat Sidebar/Modal -->
+    <div id="chatPanel" class="fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col">
+        <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
+            <h3 class="font-bold flex items-center"><i class="fas fa-robot mr-2"></i> AI 智能助手</h3>
+            <button onclick="toggleChat()" class="text-white hover:text-gray-200"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="flex-1 p-4 overflow-y-auto bg-gray-50" id="chatMessages">
+            <div class="flex flex-col space-y-2">
+                <div class="message-bubble message-ai">
+                    你好！我是校园易的智能助手，有什么可以帮你的吗？我可以帮你找商品，或者解答关于平台的问题。
+                </div>
+            </div>
+        </div>
+        <div class="p-4 border-t border-gray-200 bg-white">
+            <div class="flex space-x-2 items-center">
+                <label for="chatImageInput" class="cursor-pointer text-gray-500 hover:text-indigo-600 p-2">
+                    <i class="fas fa-image text-xl"></i>
+                </label>
+                <input type="file" id="chatImageInput" accept=".jpg, .jpeg, .png" class="hidden" onchange="previewChatImage(this)">
+                <div class="flex-1 flex flex-col relative">
+                    <div id="imagePreviewContainer" class="hidden absolute bottom-full left-0 mb-2 p-2 bg-white rounded shadow-lg border border-gray-200">
+                        <img id="imagePreview" src="" class="max-h-32 rounded">
+                        <button onclick="clearChatImage()" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">×</button>
+                    </div>
+                    <input type="text" id="chatInput" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                </div>
+                <button onclick="sendMessage()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Chat Panel -->
+    <div id="userChatPanel" class="fixed inset-y-0 right-0 w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col">
+        <div class="p-4 bg-blue-600 text-white flex justify-between items-center shadow-md">
+            <h3 class="font-bold flex items-center"><i class="fas fa-comments mr-2"></i> <span id="chatTargetName">聊天</span></h3>
+            <button onclick="toggleUserChat()" class="text-white hover:text-gray-200"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="flex-1 p-4 overflow-y-auto bg-gray-50" id="userChatMessages">
+        </div>
+        <div class="p-4 border-t border-gray-200 bg-white">
+            <div class="flex space-x-2">
+                <input type="text" id="userChatInput" class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入消息..." onkeypress="if(event.key === 'Enter') sendUserMessage()">
+                <button onclick="sendUserMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Messages Modal -->
+    <div id="messagesModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">我的消息</h3>
+                    <button onclick="closeModal('messagesModal')" class="text-gray-400 hover:text-gray-500"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="messagesList" class="space-y-2 max-h-96 overflow-y-auto">
+                    <!-- Contacts list -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">登录</h3>
+                <div class="mt-2 px-7 py-3">
+                    <input id="loginId" type="text" class="mb-3 px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="用户ID">
+                    <input id="loginPass" type="password" class="mb-3 px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="密码">
+                    <button onclick="performLogin()" class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">
+                        登录
+                    </button>
+                    <button onclick="closeModal('loginModal')" class="mt-3 px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200 focus:outline-none">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Modal -->
+    <div id="registerModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">注册新用户</h3>
+                <div class="mt-2 px-7 py-3 space-y-3">
+                    <input id="regId" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="用户ID (必填)">
+                    <input id="regName" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="昵称">
+                    <input id="regPass" type="password" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="密码">
+                    <input id="regAge" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="年龄">
+                    <select id="regSex" class="px-3 py-2 border border-gray-300 rounded-md w-full">
+                        <option value="">性别</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                    </select>
+                    <input id="regPhone" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="电话">
+                    <input id="regAddress" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="地址">
+                    <button onclick="performRegister()" class="px-4 py-2 bg-green-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-green-600">
+                        注册
+                    </button>
+                    <button onclick="closeModal('registerModal')" class="px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sell Product Modal -->
+    <div id="sellModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">发布商品</h3>
+                <div class="mt-2 px-7 py-3 space-y-3">
+                    <input id="prodName" type="text" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="商品名称">
+                    <input id="prodPrice" type="number" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="价格">
+                    <select id="prodClass" class="px-3 py-2 border border-gray-300 rounded-md w-full">
+                        <option value="electronics">数码电子</option>
+                        <option value="books">书籍资料</option>
+                        <option value="clothing">服装配饰</option>
+                        <option value="sports">运动器材</option>
+                        <option value="others">其他</option>
+                    </select>
+                    <textarea id="prodDesc" class="px-3 py-2 border border-gray-300 rounded-md w-full" placeholder="商品描述"></textarea>
+                    <input id="prodImage" type="file" accept=".jpg, .jpeg, .png" class="px-3 py-2 border border-gray-300 rounded-md w-full bg-white" onchange="updatePlaceholder(this)">
+                    <label for="prodImage" class="block mt-1 text-sm text-gray-500">请添加图片信息（支持JPG/PNG）</label>
+                    <button onclick="performSell()" class="px-4 py-2 bg-green-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-green-600">
+                        发布
+                    </button>
+                    <button onclick="closeModal('sellModal')" class="px-4 py-2 bg-gray-100 text-gray-700 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-200">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局 Fetch 封装，自动添加 Token 并处理 401
+        function fetchWithAuth(url, options = {}) {
+            const token = localStorage.getItem('token');
+            if (!options.headers) {
+                options.headers = {};
+            }
+            // 如果是 Headers 对象（虽然这里大部分是用普通对象），需要做兼容，这里假设都是普通对象
+            if (token) {
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            return fetch(url, options).then(response => {
+                if (response.status === 401) {
+                    console.warn('Unauthorized access, logging out...');
+                    // 不刷新页面，仅清理状态并弹窗
+                    logout(false);
+                    alert('登录已过期，请重新登录');
+                    showLoginModal();
+                    // 抛出错误中断后续处理
+                    throw new Error('未授权，请重新登录');
+                }
+                return response;
+            });
+        }
+
+        let currentUser = null;
+        let conversationId = null;
+        let currentPriceMin = null;
+        let currentPriceMax = null;
+        let allProductsCache = [];
+        let currentSortOption = 'default';
+        let currentSearchKeyword = null;
+        let pendingReadMessages = [];
+        let unreadCheckTimeout;
+        let hasUnreadMessages = false;
+        let isLoadingChatHistory = false;
+        let eventSource = null;
+        let currentProductList = [];
+        let currentPage = 1;
+        const itemsPerPage = 4;
+
+        window.onload = function() {
+            const storedUser = localStorage.getItem('currentUser');
+            const token = localStorage.getItem('token');
+            
+            if (storedUser && token) {
+                currentUser = JSON.parse(storedUser);
+                updateUIForLogin();
+            } else {
+                // 如果有用户数据但没有Token（或反之），清理掉
+                if (storedUser || token) {
+                    logout(false);
+                }
+            }
+            loadProducts('all');
+
+            if (currentUser) {
+                checkUnreadMessages('', currentUser.userId);
+            }
+
+            if (currentUser) {
+                connectSSE(currentUser.userId);
+            }
+        };
+
+document.addEventListener('DOMContentLoaded', function() {
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function() {
+            currentSortOption = this.value;
+            if (currentSearchKeyword) {
+                searchProducts(currentSearchKeyword);
+            } else if (window.currentCategory) {
+                loadProducts(window.currentCategory);
+            }
+        });
+    } else {
+        console.error('Sort select element not found.');
+    }
+
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                const searchTerm = searchInput.value.trim();
+                if (searchTerm) {
+                    searchProducts(searchTerm);
+                } else {
+                    clearSearch();
+                }
+            }
+        });
+    }
+
+    const searchButton = document.getElementById('searchButton');
+    if (searchButton) {
+        searchButton.addEventListener('click', function() {
+            const searchTerm = searchInput.value.trim();
+            if (searchTerm) {
+                searchProducts(searchTerm);
+            } else {
+                clearSearch();
+            }
+        });
+    }
+});
+document.addEventListener('click', function(event) {
+    const profileMenu = document.getElementById('profileMenu');
+    const userInfoButton = document.querySelector('#userInfo button');
+
+    if (!profileMenu.contains(event.target) && !userInfoButton.contains(event.target)) {
+        profileMenu.classList.add('hidden');
+    }
+});
+
+async function contactSeller(productId) {
+    // 从商品缓存中查找对应商品的 userId（即卖家 ID）
+    const product = allProductsCache.find(p => p.productId === productId);
+    if (!product) {
+        alert("未找到该商品信息");
+        return;
+    }
+
+    const sellerId = product.userId;
+
+    // 权限检查
+    if (!currentUser) {
+        showLoginModal();
+        return;
+    }
+    if (currentUser.userId === sellerId) {
+        alert('不能和自己聊天');
+        return;
+    }
+
+    // 设置聊天目标并跳转
+    currentChatTargetId = sellerId;
+    const sellerNameResponse = await fetchWithAuth(`/api/users/getname/${currentChatTargetId}`);
+    let sellerName = '未知用户';
+    if (sellerNameResponse.ok) {
+        sellerName = await sellerNameResponse.text();
+    }
+    document.getElementById('chatTargetName').innerText = sellerName ;
+
+    const panel = document.getElementById('userChatPanel');
+    panel.classList.remove('translate-x-full');
+
+    loadUserChatHistory();
+
+    if (chatPollInterval) clearInterval(chatPollInterval);
+    chatPollInterval = setInterval(loadUserChatHistory, 3000);
+}
+function performSearch() {
+    const searchTerm = searchInput.value.trim();
+    if (searchTerm) {
+        searchProducts(searchTerm);
+    } else {
+        clearSearch();
+    }
+}
+function clearSearch() {
+    currentSearchKeyword = null;
+    document.getElementById('pageTitle').innerText = '全部商品';
+    loadProducts(window.currentCategory || 'all');
+}
+async function performSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput.value.trim();
+
+    if (searchTerm) {
+        await searchProducts(searchTerm);
+        document.getElementById('pageTitle').innerText = `搜索结果: "${searchTerm}"`;
+    } else {
+        loadProducts('all');
+    }
+}
+async function searchProducts(searchTerm) {
+    currentSearchKeyword = searchTerm;
+    const productsGrid = document.getElementById('productsGrid');
+    productsGrid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-gray-300"></i></div>';
+
+    try {
+        const response = await fetchWithAuth(`/api/products/search?keyword=${encodeURIComponent(searchTerm)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const products = await response.json();
+
+        if (products.length === 0) {
+            productsGrid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">没有找到相关商品</div>';
+            return;
+        }
+
+        allProductsCache = [...products];
+        let filteredProducts = applyCurrentPriceFilter(products);
+        filteredProducts = sortProducts(filteredProducts);
+        updateProductList(filteredProducts);
+    } catch (error) {
+        console.error('搜索商品时发生错误:', error);
+        productsGrid.innerHTML = '<div class="col-span-full text-center text-red-500 py-10">搜索失败，请重试</div>';
+    }
+}
+function sortProducts(products) {
+    switch(currentSortOption) {
+        case 'time':
+            return products.sort((a, b) => new Date(b.createTime) - new Date(a.createTime));
+        case 'price':
+            return products.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+        case 'default':
+        default:
+            return products;
+    }
+}
+
+        let currentChatTargetId = null;
+        let chatPollInterval = null;
+
+        function toggleUserChat() {
+            const panel = document.getElementById('userChatPanel');
+            if (panel.classList.contains('translate-x-full')) {
+                panel.classList.remove('translate-x-full');
+            } else {
+                panel.classList.add('translate-x-full');
+                if (chatPollInterval) clearInterval(chatPollInterval);
+                currentChatTargetId = null;
+            }
+        }
+
+        async function openUserChat(targetUserId) {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+            if (currentUser.userId === targetUserId) return alert('不能和自己聊天');
+
+            currentChatTargetId = targetUserId;
+            const nameResponse = await fetchWithAuth(`/api/users/getname/${targetUserId}`);
+            let targetName = nameResponse.ok ? await nameResponse.text() : '未知用户';
+            document.getElementById('chatTargetName').innerText = targetName ;
+            
+            const panel = document.getElementById('userChatPanel');
+            panel.classList.remove('translate-x-full');
+            
+            await loadUserChatHistory();
+            
+            if (chatPollInterval) clearInterval(chatPollInterval);
+            chatPollInterval = setInterval(loadUserChatHistory, 3000);
+        }
+
+        let lastMessageCount = 0;
+        let isPollingPaused = false;
+        
+        async function loadUserChatHistory() {
+            if (!currentUser || !currentChatTargetId || isPollingPaused) return;
+            
+            try {
+                const response = await fetchWithAuth(`/api/messages/conversation?userId1=${currentUser.userId}&userId2=${currentChatTargetId}`);
+                if (response.ok) {
+                    const messages = await response.json();
+                    
+                    if (messages.length !== lastMessageCount) {
+                        const container = document.getElementById('userChatMessages');
+                        container.innerHTML = '';
+                        
+                        messages.forEach(msg => {
+                            const div = document.createElement('div');
+                            div.className = 'flex flex-col space-y-2';
+                            const isMe = msg.senderId === currentUser.userId;
+                            const bubbleClass = isMe ? 'message-user' : 'message-ai'; // Reuse styles
+                            
+                            div.innerHTML = `<div class="message-bubble ${bubbleClass}">${msg.content}</div>`;
+                            container.appendChild(div);
+                            if (!isMe && !msg.isRead) {
+                                pendingReadMessages.push(msg.id);
+                            }
+                        });
+                        container.scrollTop = container.scrollHeight;
+                        lastMessageCount = messages.length;
+                    }
+                    
+                    if (pendingReadMessages.length > 0) {
+                        await markMessagesAsReadBatch(pendingReadMessages);
+                        pendingReadMessages = [];
+                    }
+                }
+            } catch (e) {
+                console.error('加载聊天历史失败:', e);
+                isPollingPaused = true;
+                setTimeout(() => { isPollingPaused = false; }, 3000);
+            }
+        }
+
+        async function sendUserMessage() {
+            if (!currentUser || !currentChatTargetId) return;
+            const input = document.getElementById('userChatInput');
+            const content = input.value.trim();
+            if (!content) return;
+
+            const message = {
+                senderId: currentUser.userId,
+                receiverId: currentChatTargetId,
+                content: content,
+                createTime: new Date().toLocaleString(),
+                isRead: false
+            };
+
+            try {
+                const response = await fetchWithAuth('/api/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(message)
+                });
+                if (response.ok) {
+                    input.value = '';
+                    loadUserChatHistory();
+                }
+            } catch (e) {
+                console.error(e);
+                alert('发送失败');
+            }
+        }
+        async function loadMyMessagesList() {
+             if (!currentUser) {
+                 showLoginModal();
+                 return;
+             }
+             
+             try {
+                 const response = await fetchWithAuth(`/api/messages/partners/${currentUser.userId}`);
+                 if (response.ok) {
+                     const partners = await response.json();
+                     const list = document.getElementById('messagesList');
+                     list.innerHTML = '';
+                     
+                     if (partners.length === 0) {
+                         list.innerHTML = '<p class="text-gray-500 text-center">暂无消息记录</p>';
+                     } else {
+                        for (const pid of partners) {
+                            const unreadResponse = await fetchWithAuth(`/api/messages/unread/count/each?from=${encodeURIComponent(pid)}&currentId=${encodeURIComponent(currentUser.userId)}`);
+                            let unreadCount = 0;
+                            if (unreadResponse.ok) {
+                                unreadCount = await unreadResponse.json();
+                            }
+                            const userNameResponse = await fetchWithAuth(`/api/users/getname/${pid}`);
+                            let userName = await userNameResponse.text();
+                            const div = document.createElement('div');
+                            div.className = 'p-3 hover:bg-gray-100 cursor-pointer border-b flex justify-between items-center';
+                            div.onclick = () => { closeModal('messagesModal'); openUserChat(pid); };
+                            div.innerHTML = `                        <span>${userName}</span>
+                                <div class="flex items-center">
+                                    ${unreadCount > 0 ? `<span class="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center ml-2">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}                            <i class="fas fa-chevron-right text-gray-400 ml-2"></i>
+                                </div>
+                            `;
+                            list.appendChild(div);
+                        }
+                     }
+                     document.getElementById('messagesModal').classList.remove('hidden');
+                 }
+             } catch (e) {
+                 console.error(e);
+             }
+        }
+
+        async function fetchProducts(classification) {
+            let url = '/api/products';
+            
+            if (classification === 'all') {
+                url = '/api/products/status/在售';
+            } else {
+                url = `/api/products/classification/${classification}`;
+            }
+
+            try {
+                const response = await fetchWithAuth(url);
+                if (!response.ok) {
+                     return [];
+                }
+                return await response.json();
+            } catch (e) {
+                console.error('Error fetching products:', e);
+                return [];
+            }
+    }
+// 显示产品的函数
+function updateProductList(products) {
+    currentProductList = sortProducts(products);
+    currentPage = 1;
+    renderPage();
+}
+
+function changePage(delta) {
+    const totalPages = Math.ceil(currentProductList.length / itemsPerPage);
+    const newPage = currentPage + delta;
+    if (newPage >= 1 && newPage <= totalPages) {
+        currentPage = newPage;
+        renderPage();
+    }
+}
+
+async function renderPage() {
+    const productsGrid = document.getElementById('productsGrid');
+    const paginationControls = document.getElementById('paginationControls');
+
+    if (!currentProductList || currentProductList.length === 0) {
+        productsGrid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">暂无符合条件的商品</div>';
+        paginationControls.classList.add('hidden');
+        return;
+    }
+
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const productsToShow = currentProductList.slice(startIndex, endIndex);
+
+    productsGrid.innerHTML = '';
+        for (const p of productsToShow) {
+        const sellerNameResponse = await fetchWithAuth(`/api/users/getname/${p.userId}`);
+        let sellerName = '未知用户';
+        if (sellerNameResponse.ok) {
+            sellerName = await sellerNameResponse.text();
+        }
+        const productCard = `            <div class="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition">
+                ${p.imageUrl ? `
+                <img src="${p.imageUrl}" alt="${p.name}" class="h-48 w-full object-cover">
+                ` : `
+                <div class="h-48 bg-gray-200 w-full flex items-center justify-center text-gray-400">
+                    <i class="fas fa-image text-4xl"></i>
+                </div>
+                `}
+                <div class="p-4">
+                    <div class="flex justify-between items-start">
+                        <h3 class="text-lg font-medium text-gray-900 truncate">${p.name}</h3>
+                        <span class="text-xs px-2 py-1 bg-gray-100 rounded text-gray-600">${p.classification}</span>
+                    </div>
+                    <p class="mt-1 text-red-600 font-bold">¥${p.price}</p>
+                    <p class="mt-2 text-sm text-gray-500 line-clamp-2 h-10">${p.description || '暂无描述'}</p>
+                    <div class="mt-4 flex justify-between items-center">
+                        <span class="text-xs text-gray-400">卖家: ${sellerName}</span>
+                        <button onclick="contactSeller('${p.productId}')" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">联系卖家</button>
+                        <button onclick="buyProduct('${p.productId}', '${p.userId}')" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">购买</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        productsGrid.innerHTML += productCard;
+    }
+
+    // Update Pagination Controls
+    const totalPages = Math.ceil(currentProductList.length / itemsPerPage);
+    if (totalPages > 1) {
+        paginationControls.classList.remove('hidden');
+        document.getElementById('pageInfo').innerText = `第 ${currentPage} 页 / 共 ${totalPages} 页`;
+        document.getElementById('prevPageBtn').disabled = currentPage === 1;
+        document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
+    } else {
+        paginationControls.classList.add('hidden');
+    }
+}
+
+        async function apiLogin(userId, password) {
+            try {
+                const response = await fetch('/api/users/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId, password: password })
+                });
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.error('Login error:', e);
+            }
+            return null;
+        }
+
+        async function apiRegister(user) {
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(user)
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiCreateOrder(order) {
+            try {
+                const response = await fetchWithAuth('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(order)
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiRequestPurchase(productId, buyerId) {
+            try {
+                const response = await fetchWithAuth(`/api/purchase-requests/${productId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ buyerId })
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiGetPurchaseRequestsByBuyerId(buyerId) {
+            try {
+                const response = await fetchWithAuth(`/api/purchase-requests/buyer/${buyerId}`);
+                if (response.ok) return await response.json();
+            } catch (e) { console.error(e); }
+            return [];
+        }
+        
+        async function apiCreateProduct(product) {
+            try {
+                const response = await fetchWithAuth('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(product)
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiCreateProductWithImage(formData) {
+            try {
+                const response = await fetchWithAuth('/api/products/with-image', {
+                    method: 'POST',
+                    body: formData
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiGetOrdersByBuyerId(buyerId) {
+            try {
+                const response = await fetchWithAuth(`/api/orders/buyer/${buyerId}`);
+                if (response.ok) return await response.json();
+            } catch (e) { console.error(e); }
+            return [];
+        }
+
+        async function apiGetOrdersBySellerId(sellerId) {
+            try {
+                const response = await fetchWithAuth(`/api/orders/seller/${sellerId}`);
+                if (response.ok) return await response.json();
+            } catch (e) { console.error(e); }
+            return [];
+        }
+
+        async function streamChat(msg, onChunk, onError) {
+             if (!conversationId) {
+                 if (onError) onError("请先登录");
+                 return;
+             }
+             try {
+                const response = await fetchWithAuth(`/ai/chat?conversationId=${conversationId}&message=${encodeURIComponent(msg)}`);
+                if (!response.ok) {
+                    if (onError) onError("请求失败");
+                    return;
+                }
+                const fullText = await response.text();
+                if (!fullText) {
+                    if (onError) onError("无回复");
+                    return;
+                }
+                let index = 0;
+                await new Promise(resolve => {
+                    const timer = setInterval(() => {
+                        onChunk(fullText.charAt(index));
+                        index += 1;
+                        if (index >= fullText.length) {
+                            clearInterval(timer);
+                            resolve();
+                        }
+                    }, 20);
+                });
+            } catch (e) {
+                console.error(e);
+                if (onError) onError("网络错误");
+            }
+        }
+
+        async function apiGetHistory(convId) {
+            try {
+                const response = await fetchWithAuth(`/ai/history?conversationId=${convId}`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            return [];
+        }
+
+        async function apiDeleteProduct(productId) {
+            try {
+                const response = await fetchWithAuth(`/api/products/${productId}`, {
+                    method: 'DELETE'
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+        async function apiGetProductsByUserId(userId) {
+            try {
+                const response = await fetchWithAuth(`/api/products/user/${userId}/all`);
+                if (response.ok) {
+                    return await response.json();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            return [];
+        }
+
+        async function apiDeleteProduct(productId) {
+            try {
+                const response = await fetch(`/api/products/${productId}`, {
+                    method: 'DELETE'
+                });
+                return response.ok;
+            } catch (e) {
+                console.error(e);
+                return false;
+            }
+        }
+
+
+        function toggleProfileMenu() {
+            document.getElementById('profileMenu').classList.toggle('hidden');
+        }
+
+        function toggleProfileMenu() {
+            document.getElementById('profileMenu').classList.toggle('hidden');
+        }
+
+        function updateUIForLogin() {
+            document.getElementById('authButtons').classList.add('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('userInfo').classList.add('flex');
+            document.getElementById('userNameDisplay').innerText = currentUser.name || currentUser.userId;
+            document.getElementById('sellBtn').classList.remove('hidden');
+            
+            const userAvatar = document.querySelector('#userInfo img');
+            if (currentUser.sex === '女') {
+                userAvatar.src = '/photos/female.png';
+            } else {
+                userAvatar.src = '/photos/male.png';
+            }
+            conversationId = 'chat_user_' + currentUser.userId;
+            loadChatHistory();
+        }
+
+        function logout(shouldReload = true) {
+            currentUser = null;
+            conversationId = null;
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('token');
+            
+            if (shouldReload) {
+                location.reload();
+            } else {
+                // 更新 UI 为未登录状态
+                document.getElementById('authButtons').classList.remove('hidden');
+                document.getElementById('userInfo').classList.add('hidden');
+                document.getElementById('userInfo').classList.remove('flex');
+                document.getElementById('sellBtn').classList.add('hidden');
+                document.getElementById('profileMenu').classList.add('hidden');
+            }
+        }
+
+        function showLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
+        function showRegisterModal() { document.getElementById('registerModal').classList.remove('hidden'); }
+        function showSellModal() { document.getElementById('sellModal').classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        async function performLogin() {
+            const id = document.getElementById('loginId').value;
+            const pass = document.getElementById('loginPass').value;
+            if (!id || !pass) return alert('请输入用户ID和密码');
+            
+            const data = await apiLogin(id, pass);
+            if (data && data.user) {
+                currentUser = data.user;
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                }
+                updateUIForLogin();
+                closeModal('loginModal');
+                alert('登录成功！');
+                checkUnreadMessages('', currentUser.userId);
+            } else {
+                alert('登录失败：ID不存在或密码错误');
+            }
+        }
+
+        async function performRegister() {
+            const id = document.getElementById('regId').value;
+            const name = document.getElementById('regName').value;
+            const pass = document.getElementById('regPass').value;
+
+            if (!id || !name || !pass) {
+                alert('请填写完整信息');
+                return;
+            }
+
+            const user = {
+            userId: document.getElementById('regId').value,
+            name: document.getElementById('regName').value,
+            password: document.getElementById('regPass').value,
+            phone: document.getElementById('regPhone').value,
+            age: document.getElementById('regAge').value,
+            sex: document.getElementById('regSex').value,
+            address: document.getElementById('regAddress').value,
+            createTime: new Date().toLocaleString()
+            };
+
+            try {
+                const response = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user)
+                });
+
+                const message = await response.text();
+
+                if (response.ok) {
+                    alert("注册成功,请登录");
+                    closeModal('registerModal');
+                } else {
+                    alert(message);
+                }
+            } catch (error) {
+                console.error('注册请求失败:', error);
+                alert('网络异常，请检查连接');
+            }
+        }
+        async function performSell() {
+            if (!currentUser) return alert('请先登录');
+            
+            const name = document.getElementById('prodName').value;
+            const price = parseFloat(document.getElementById('prodPrice').value);
+            const classification = document.getElementById('prodClass').value;
+            const desc = document.getElementById('prodDesc').value;
+            const imageInput = document.getElementById('prodImage');
+            const imageFile = imageInput && imageInput.files.length > 0 ? imageInput.files[0] : null;
+            
+            if (imageFile && !validateImageFormat(imageFile)) {
+                return;
+            }
+            
+            if (!name || !price) return alert('请填写完整信息');
+
+            const formData = new FormData();
+            formData.append('userId', currentUser.userId);
+            formData.append('name', name);
+            formData.append('price', price);
+            formData.append('classification', classification);
+            formData.append('description', desc);
+            if (imageFile) {
+                formData.append('image', imageFile);
+            }
+
+            const success = await apiCreateProductWithImage(formData);
+            if (success) {
+                alert('发布成功');
+                closeModal('sellModal');
+                document.getElementById('prodName').value = '';
+                document.getElementById('prodPrice').value = '';
+                document.getElementById('prodClass').value = 'electronics';
+                document.getElementById('prodDesc').value = '';
+                if (imageInput) {
+                    imageInput.value = '';
+                    updatePlaceholder(imageInput);
+                }
+                loadProducts('all');
+            } else {
+                alert('发布失败');
+            }
+        }
+
+        async function buyProduct(productId, sellerId) {
+            if (!currentUser) return alert('请先登录');
+            if (currentUser.userId === sellerId) return alert('不能购买自己的商品');
+
+            if (!confirm('确定要发起购买请求吗？卖家确认后才会生成订单。')) return;
+
+            const success = await apiRequestPurchase(productId, currentUser.userId);
+            if (success) {
+                alert('已发起购买请求，请等待卖家确认');
+                loadProducts(window.currentCategory || 'all');
+            } else {
+                alert('购买请求失败，商品可能已被其他人购买');
+            }
+        }
+    async function updateProductStatus(productId, status) {
+        try {
+            const response = await fetchWithAuth(`/api/products/${productId}/status`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: status })
+            });
+            return response.ok;
+        } catch (e) {
+            console.error('Error updating product status:', e);
+            return false;
+        }
+    }
+
+
+async function loadProducts(category) {
+    window.currentCategory = category;
+    updateNavigationHighlight(category);
+    document.getElementById('productsSection').classList.remove('hidden');
+    document.getElementById('ordersSection').classList.add('hidden');
+    document.getElementById('myProductsSection').classList.add('hidden');
+
+    const titleMap = {
+        'all': '全部商品',
+        'electronics': '数码电子',
+        'books': '书籍资料',
+        'clothing': '服装配饰',
+        'sports': '运动器材',
+        'others': '其他'
+    };
+    if (currentSearchKeyword) {
+        document.getElementById('pageTitle').innerText = `搜索结果: "${currentSearchKeyword}"`;
+    } else {
+        document.getElementById('pageTitle').innerText = titleMap[category] || '商品列表';
+    }
+
+    const grid = document.getElementById('productsGrid');
+    grid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-gray-300"></i></div>';
+
+    let products;
+    if (currentSearchKeyword) {
+        const response = await fetchWithAuth(`/api/products/search?keyword=${encodeURIComponent(currentSearchKeyword)}`);
+        products = await response.json();
+    } else {
+        products = await fetchProducts(category);
+    }
+
+    allProductsCache = [...products];
+    const filteredProducts = applyCurrentPriceFilter(products);
+    updateProductList(filteredProducts);
+}
+function updateNavigationHighlight(activeCategory) {
+    const navLinks = document.querySelectorAll('.space-y-1 a');
+    navLinks.forEach(link => {
+        link.classList.remove('bg-gray-100', 'text-gray-900');
+        link.classList.add('text-gray-600', 'hover:bg-gray-50', 'hover:text-gray-900');
+    });
+
+    // 根据分类设置活动状态
+    let activeLinkId;
+    switch(activeCategory) {
+        case 'all':
+            activeLinkId = 'all';
+            break;
+        case 'electronics':
+            activeLinkId = 'electronics';
+            break;
+        case 'books':
+            activeLinkId = 'books';
+            break;
+        case 'clothing':
+            activeLinkId = 'clothing';
+            break;
+        case 'sports':
+            activeLinkId = 'sports';
+            break;
+        case 'others':
+            activeLinkId = 'others';
+            break;
+        default:
+            activeLinkId = 'all';
+    }
+
+    // 为当前分类设置高亮
+    const activeLink = document.querySelector(`[onclick*="loadProducts('${activeCategory}')"]`);
+    if (activeLink) {
+        activeLink.classList.remove('text-gray-600', 'hover:bg-gray-50', 'hover:text-gray-900');
+        activeLink.classList.add('bg-gray-100', 'text-gray-900');
+    }
+}
+
+// 价格筛选函数
+function applyCurrentPriceFilter(products) {
+    if ((currentPriceMin !== null && currentPriceMin !== '') || (currentPriceMax !== null && currentPriceMax !== '')) {
+        return products.filter(product => {
+            const price = parseFloat(product.price);
+            const min = currentPriceMin !== null && currentPriceMin !== '' ? parseFloat(currentPriceMin) : 0;
+            const max = currentPriceMax !== null && currentPriceMax !== '' ? parseFloat(currentPriceMax) : Infinity;
+
+            return price >= min && price <= max;
+        });
+    }
+    return products;
+}
+function applyPriceFilter() {
+    const minPrice = document.getElementById('minPrice').value;
+    const maxPrice = document.getElementById('maxPrice').value;
+
+    if (minPrice && maxPrice && parseFloat(minPrice) > parseFloat(maxPrice)) {
+        alert('最低价不能大于最高价');
+        return;
+    }
+
+    currentPriceMin = minPrice || null;
+    currentPriceMax = maxPrice || null;
+
+    let productsToFilter;
+    if (currentSearchKeyword) {
+        productsToFilter = allProductsCache;
+    } else {
+        productsToFilter = allProductsCache;
+    }
+
+    const filteredProducts = applyCurrentPriceFilter(productsToFilter);
+    updateProductList(filteredProducts);
+
+    updatePageTitleWithFilter();
+}
+// 更新标题显示当前筛选条件
+function updatePageTitleWithFilter() {
+    const titleMap = {
+        'all': '全部商品',
+        'electronics': '数码电子',
+        'books': '书籍资料',
+        'clothing': '服装配饰',
+        'sports': '运动器材',
+        'others': '其他'
+    };
+
+    let baseTitle = titleMap[window.currentCategory || 'all'] || '商品列表';
+
+    if ((currentPriceMin !== null && currentPriceMin !== '') || (currentPriceMax !== null && currentPriceMax !== '')) {
+        const min = currentPriceMin || '0';
+        const max = currentPriceMax || '∞';
+        baseTitle += ` (¥${min} - ¥${max})`;
+    }
+
+    document.getElementById('pageTitle').innerText = baseTitle;
+}
+
+
+
+    let currentMyProductList = [];
+    let currentMyPage = 1;
+
+    async function loadMyProducts() {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+
+            document.getElementById('productsSection').classList.add('hidden');
+            document.getElementById('ordersSection').classList.add('hidden');
+            document.getElementById('myProductsSection').classList.remove('hidden');
+
+            const myProductsGrid = document.getElementById('myProductsGrid');
+            myProductsGrid.innerHTML = '<div class="col-span-full text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-gray-300"></i></div>';
+
+            const products = await apiGetProductsByUserId(currentUser.userId);
+
+            if (products.length === 0) {
+                myProductsGrid.innerHTML = '<p class="text-gray-500">您还没有发布任何商品</p>';
+                document.getElementById('myPaginationControls').classList.add('hidden');
+                return;
+            }
+
+            currentMyProductList = products.sort((a, b) => new Date(b.createTime) - new Date(a.createTime));
+            currentMyPage = 1;
+            renderMyProductsPage();
+    }
+
+    function changeMyPage(delta) {
+        const totalPages = Math.ceil(currentMyProductList.length / itemsPerPage);
+        const newPage = currentMyPage + delta;
+        if (newPage >= 1 && newPage <= totalPages) {
+            currentMyPage = newPage;
+            renderMyProductsPage();
+        }
+    }
+
+    async function renderMyProductsPage() {
+        const myProductsGrid = document.getElementById('myProductsGrid');
+        const myPaginationControls = document.getElementById('myPaginationControls');
+
+        if (!currentMyProductList || currentMyProductList.length === 0) {
+            myProductsGrid.innerHTML = '<p class="text-gray-500">您还没有发布任何商品</p>';
+            myPaginationControls.classList.add('hidden');
+            return;
+        }
+
+        const startIndex = (currentMyPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const productsToShow = currentMyProductList.slice(startIndex, endIndex);
+
+        const cards = [];
+        for (const p of productsToShow) {
+            const statusClass = p.status === '在售' || p.status === '上架中'
+                ? 'bg-green-100 text-green-800'
+                : p.status === '确认中'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-red-100 text-red-800';
+            let buyerName = '';
+            if (p.status === '确认中' && p.pendingBuyerId) {
+                try {
+                    const buyerNameResp = await fetchWithAuth(`/api/users/getname/${p.pendingBuyerId}`);
+                    if (buyerNameResp.ok) {
+                        buyerName = await buyerNameResp.text();
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+            const pendingActions = p.status === '确认中' && p.pendingBuyerId
+                ? `<div class="mt-2 text-xs text-yellow-700">${buyerName || p.pendingBuyerId}购买待确认</div>
+                   <div class="mt-2 flex space-x-2">
+                       <button onclick="confirmSale('${p.productId}', '${p.pendingBuyerId}')" class="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">确认出售</button>
+                       <button onclick="rejectSale('${p.productId}', '${p.pendingBuyerId}')" class="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300">拒绝</button>
+                   </div>`
+                : '';
+            cards.push(`
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition">
+                ${p.imageUrl ? `
+                <img src="${p.imageUrl}" alt="${p.name}" class="h-48 w-full object-cover">
+                ` : `
+                <div class="h-48 bg-gray-200 w-full flex items-center justify-center text-gray-400">
+                    <i class="fas fa-image text-4xl"></i>
+                </div>
+                `}
+                <div class="p-4">
+                    <div class="flex justify-between items-start">
+                        <h3 class="text-lg font-medium text-gray-900 truncate">${p.name}</h3>
+                        <span class="text-xs px-2 py-1 rounded ${statusClass}">${p.status}</span>
+                    </div>
+                    <p class="mt-1 text-red-600 font-bold">¥${p.price}</p>
+                    <p class="mt-2 text-sm text-gray-500 line-clamp-2 h-10">${p.description || '暂无描述'}</p>
+                    ${pendingActions}
+                    <div class="mt-4 flex justify-between items-center">
+                        <span class="text-xs text-gray-400">发布于: ${new Date(p.createTime).toLocaleDateString()}</span>
+                        <button onclick="apiDeleteProduct('${p.productId}').then(ok => ok ? loadMyProducts() : alert('删除失败'))" class="bg-red-600 text-white px-3 py-1.5 rounded text-sm hover:bg-red-700">删除</button>
+                    </div>
+                </div>
+            </div>
+        `);
+        }
+        myProductsGrid.innerHTML = cards.join('');
+
+        // Update Pagination Controls
+        const totalPages = Math.ceil(currentMyProductList.length / itemsPerPage);
+        if (totalPages > 1) {
+            myPaginationControls.classList.remove('hidden');
+            document.getElementById('myPageInfo').innerText = `第 ${currentMyPage} 页 / 共 ${totalPages} 页`;
+            document.getElementById('prevMyPageBtn').disabled = currentMyPage === 1;
+            document.getElementById('nextMyPageBtn').disabled = currentMyPage === totalPages;
+        } else {
+            myPaginationControls.classList.add('hidden');
+        }
+    }
+
+        async function confirmSale(productId, buyerId) {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+            if (!confirm('确认出售该商品？')) return;
+            const order = {
+                orderId: 'o' + Date.now(),
+                productId: productId,
+                sellerId: currentUser.userId,
+                buyerId: buyerId,
+                status: '已下单',
+                createTime: new Date().toLocaleString()
+            };
+            const success = await apiCreateOrder(order);
+            if (success) {
+                alert('已确认出售并生成订单');
+                loadMyProducts();
+            } else {
+                alert('确认失败，请稍后重试');
+            }
+        }
+
+        async function rejectSale(productId, buyerId) {
+            if (!currentUser) {
+                showLoginModal();
+                return;
+            }
+            if (!confirm('确定要拒绝本次购买请求吗？')) return;
+            try {
+                const response = await fetchWithAuth(`/api/purchase-requests/${productId}/reject`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ buyerId })
+                });
+                if (response.ok) {
+                    alert('已拒绝购买请求');
+                    loadMyProducts();
+                } else {
+                    alert('操作失败');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('网络错误，操作失败');
+            }
+        }
+
+        async function loadMyOrders(type) {
+            if (!currentUser) return alert('请先登录');
+            
+            document.getElementById('productsSection').classList.add('hidden');
+            document.getElementById('ordersSection').classList.remove('hidden');
+            document.getElementById('orderPageTitle').innerText = type === 'buy' ? '我买到的' : '我卖出的';
+            document.getElementById('myProductsSection').classList.add('hidden');
+            const tbody = document.getElementById('ordersTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4">加载中...</td></tr>';
+
+            const fetchProductName = async (productId) => {
+                try {
+                    const productResp = await fetchWithAuth(`/api/products/${productId}`);
+                    if (productResp.ok) {
+                        const product = await productResp.json();
+                        if (product && product.name) {
+                            return product.name;
+                        }
+                    }
+                } catch (e) {
+                    console.error('获取商品信息失败', e);
+                }
+                return productId;
+            };
+            
+            try {
+                let orders = [];
+                let requests = [];
+                if (type === 'buy') {
+                    const orderResponse = await fetchWithAuth(`/api/orders/buyer/${currentUser.userId}`);
+                    orders = orderResponse.ok ? await orderResponse.json() : [];
+                    requests = await apiGetPurchaseRequestsByBuyerId(currentUser.userId);
+                    requests = requests.filter(r => r.status !== '已确认');
+                } else {
+                    const orderResponse = await fetchWithAuth(`/api/orders/seller/${currentUser.userId}`);
+                    orders = orderResponse.ok ? await orderResponse.json() : [];
+                }
+                
+                if (orders.length === 0 && requests.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">暂无记录</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = '';
+                for (const r of requests) {
+                    const otherUserId = r.sellerId;
+                    const userNameResponse = await fetchWithAuth(`/api/users/getname/${otherUserId}`);
+                    let otherUserName = '未知用户';
+                    if (userNameResponse.ok) {
+                        otherUserName = await userNameResponse.text();
+                    }
+                    const productName = await fetchProductName(r.productId);
+                    const statusClass = r.status === '购买失败'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-yellow-100 text-yellow-800';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">—</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${productName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${otherUserName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">${r.status}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(r.createTime).toLocaleDateString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button onclick="openUserChat('${otherUserId}')" class="text-blue-600 hover:text-blue-900">联系对方</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                }
+                for (const o of orders) {
+                    const otherUserId = type === 'buy' ? o.sellerId : o.buyerId;
+                    const userNameResponse = await fetch(`/api/users/getname/${otherUserId}`);
+                    let otherUserName = '未知用户';
+                    if (userNameResponse.ok) {
+                        otherUserName = await userNameResponse.text();
+                    }
+                    const productName = await fetchProductName(o.productId);
+                    const row = document.createElement('tr');
+                    row.innerHTML = `                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${o.orderId}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${productName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${otherUserName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">${o.status}</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(o.createTime).toLocaleDateString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button onclick="openUserChat('${otherUserId}')" class="text-blue-600 hover:text-blue-900">联系对方</button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-red-500">加载失败</td></tr>';
+            }
+        }
+function clearPriceFilter() {
+    document.getElementById('minPrice').value = '';
+    document.getElementById('maxPrice').value = '';
+    currentPriceMin = null;
+    currentPriceMax = null;
+
+    if (currentSearchKeyword) {
+        searchProducts(currentSearchKeyword);
+    } else {
+        loadProducts(window.currentCategory || 'all');
+    }
+}
+
+        async function loadChatHistory() {
+            const chatContainer = document.getElementById('chatMessages');
+            chatContainer.innerHTML = ''; // Clear existing
+            
+            const welcomeDiv = document.createElement('div');
+            welcomeDiv.className = 'flex flex-col space-y-2';
+            welcomeDiv.innerHTML = `<div class="message-bubble message-ai">你好！我是校园易的智能助手，有什么可以帮你的吗？</div>`;
+            chatContainer.appendChild(welcomeDiv);
+
+            if (!conversationId) return;
+
+            const messages = await apiGetHistory(conversationId);
+            messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'flex flex-col space-y-2';
+                const bubbleClass = msg.role === 'USER' ? 'message-user' : 'message-ai';
+                div.innerHTML = `<div class="message-bubble ${bubbleClass}">${msg.content}</div>`;
+                chatContainer.appendChild(div);
+            });
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function toggleChat() {
+            const panel = document.getElementById('chatPanel');
+            if (panel.classList.contains('translate-x-full')) {
+                panel.classList.remove('translate-x-full');
+            } else {
+                panel.classList.add('translate-x-full');
+            }
+        }
+
+        let isSending = false;
+        let selectedChatImage = null;
+
+        function validateImageFormat(file) {
+            if (!file) return true;
+            const validTypes = ['image/jpeg', 'image/png'];
+            if (!validTypes.includes(file.type)) {
+                alert('只允许上传 JPG 或 PNG 格式的图片');
+                return false;
+            }
+            return true;
+        }
+
+        function previewChatImage(input) {
+            if (input.files && input.files[0]) {
+                if (!validateImageFormat(input.files[0])) {
+                    input.value = ''; // Clear the input
+                    return;
+                }
+                selectedChatImage = input.files[0];
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('imagePreviewContainer').classList.remove('hidden');
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function clearChatImage() {
+            selectedChatImage = null;
+            document.getElementById('chatImageInput').value = '';
+            document.getElementById('imagePreviewContainer').classList.add('hidden');
+            document.getElementById('imagePreview').src = '';
+        }
+
+        async function sendMessage() {
+            if (isSending) return;
+            
+            const input = document.getElementById('chatInput');
+            const msg = input.value.trim();
+            if (!msg && !selectedChatImage) return;
+
+            isSending = true;
+            input.disabled = true;
+
+            const chatContainer = document.getElementById('chatMessages');
+            
+            const userDiv = document.createElement('div');
+            userDiv.className = 'flex flex-col space-y-2';
+            
+            let userContent = '';
+            if (selectedChatImage) {
+                const imageUrl = URL.createObjectURL(selectedChatImage);
+                userContent += `<img src="${imageUrl}" class="max-w-xs rounded mb-2">`;
+            }
+            if (msg) {
+                userContent += `<div class="message-bubble message-user">${msg}</div>`;
+            }
+            userDiv.innerHTML = userContent;
+            chatContainer.appendChild(userDiv);
+            
+            input.value = '';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Prepare request
+            const formData = new FormData();
+            formData.append('conversationId', conversationId || 'guest');
+            formData.append('message', msg || (selectedChatImage ? '[图片]' : ''));
+            if (selectedChatImage) {
+                formData.append('image', selectedChatImage);
+            }
+
+            // Clear image after sending
+            clearChatImage();
+
+            const aiDiv = document.createElement('div');
+            aiDiv.className = 'flex flex-col space-y-2';
+            const loadingHtml = `
+                <div class="message-bubble message-ai flex items-center space-x-2">
+                    <span class="mr-2">请稍候</span>
+                    <div class="flex space-x-1">
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                    </div>
+                </div>`;
+            aiDiv.innerHTML = loadingHtml;
+            chatContainer.appendChild(aiDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            try {
+                const response = await fetchWithAuth('/ai/chat', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('请求失败');
+                
+                const text = await response.text();
+
+                // Replace loading bubble with actual reply container
+                aiDiv.innerHTML = `<div class="message-bubble message-ai"></div>`;
+                const contentDiv = aiDiv.querySelector('.message-bubble');
+                
+                let index = 0;
+                const timer = setInterval(() => {
+                    if (index < text.length) {
+                        contentDiv.innerText += text.charAt(index);
+                        index++;
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    } else {
+                        clearInterval(timer);
+                    }
+                }, 20);
+                
+            } catch (e) {
+                console.error("AI 回复出错:", e);
+                aiDiv.innerHTML = `<div class="message-bubble message-ai text-red-500">发送失败，请重试</div>`;
+            } finally {
+                isSending = false;
+                input.disabled = false;
+                input.focus();
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+async function markMessagesAsReadBatch(messageIds) {
+    try {
+        const response = await fetchWithAuth('/api/messages/read-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ids: messageIds,
+                userId: currentUser.userId
+            })
+        });
+
+        if (response.ok) {
+            checkUnreadMessages('', currentUser.userId);
+        } else {
+            console.error('批量标记已读失败:', response.status);
+        }
+    } catch (error) {
+        console.error('请求出错:', error);
+    }
+}
+async function checkUnreadMessages(fromUserId, currentUserId) {
+    if (!currentUserId) {
+        console.warn('Invalid parameters for checkUnreadMessages');
+        updateUnreadBadge(0);
+        return;
+    }
+    if (!fromUserId) {
+        try {
+            const response = await fetchWithAuth(`/api/messages/unread/count?userId=${encodeURIComponent(currentUserId)}`);
+            if (response.ok) {
+                const unreadCount = await response.json();
+                updateUnreadBadge(unreadCount);
+            } else {
+                console.error('查询未读消息数量失败:', response.status);
+                updateUnreadBadge(0);
+            }
+        } catch (error) {
+            console.error('请求出错:', error);
+            updateUnreadBadge(0);
+        }
+        return;
+    }
+
+
+    try {
+        const response = await fetchWithAuth(`/api/messages/unread?from=${encodeURIComponent(fromUserId)}&currentId=${encodeURIComponent(currentUserId)}`, {
+            method: 'GET'
+        });
+
+        if (response.ok) {
+            const hasUnread = await response.json();
+            updateUnreadBadge(hasUnread);
+        } else {
+            console.error('查询未读消息失败:', response.status);
+            updateUnreadBadge(0);
+        }
+    } catch (error) {
+        console.error('请求出错:', error);
+        updateUnreadBadge(0);
+    }
+}
+
+  function updateUnreadBadge(count) {
+      updateBadge('avatar-message-badge', count);
+      updateBadge('menu-message-badge', count);
+  }
+function updateBadge(elementId, count) {
+    const badge = document.getElementById(elementId);
+    if (count > 0) {
+        badge.innerText = count > 99 ? '99+' : count.toString();
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+     async function connectSSE(userId) {
+         if (eventSource) {
+             eventSource.close();
+         }
+        const encodedUserId = encodeURIComponent(userId);
+        eventSource = new EventSource(`/sse/connect/${encodedUserId}`);
+
+        const handleSseMessage = async function(event) {
+            const message = event.data;
+            if (message === "收到新消息" || message.startsWith("new_message:")) {
+                if (message.startsWith("new_message:")) {
+                    const senderId = message.split(":")[1];
+                    if (currentChatTargetId === senderId) {
+                        await loadUserChatHistory();
+                        const messages = document.querySelectorAll('#userChatMessages .message-bubble');
+                    }
+                }
+
+                const response = await fetchWithAuth(`/api/messages/unread/count?userId=${encodeURIComponent(currentUser.userId)}`);
+                if (response.ok) {
+                    const unreadCount = await response.json();
+                    updateUnreadBadge(unreadCount);
+                } else {
+                    console.error('查询未读消息数量失败:', response.status);
+                }
+            }
+        };
+         eventSource.onmessage = handleSseMessage;
+         eventSource.addEventListener('message', handleSseMessage);
+
+         eventSource.onerror = function(err) {
+             console.error("SSE 连接出错:", err);
+             eventSource.close();
+         };
+     }
+function updatePlaceholder(input) {
+    const label = input.nextElementSibling;
+    if (input.files.length > 0) {
+        label.textContent = "已选择文件：" + input.files[0].name;
+    } else {
+        label.textContent = "请添加图片信息";
+    }
+}
+    </script>
+</body>
+</html>

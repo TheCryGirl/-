@@ -1,0 +1,55 @@
+@startuml fig2-2_uc_product
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam usecase {
+  BackgroundColor #DCE9F5
+  BorderColor #2E5A88
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2E5A88
+}
+left to right direction
+
+actor "访客\n(Guest)" as G
+actor "买家\n(Buyer)" as B
+actor "卖家\n(Seller)" as S
+actor "管理员\n(Admin)" as A
+
+rectangle "商品与库存模块（product-service）" as M {
+  usecase "浏览商品列表" as UC1
+  usecase "查看商品详情" as UC2
+  usecase "关键词搜索商品" as UC3
+  usecase "按分类筛选商品" as UC4
+  usecase "查看商品评价" as UC5
+  usecase "发布商品" as UC6
+  usecase "修改商品信息" as UC7
+  usecase "商品上下架" as UC8
+  usecase "调整可售库存" as UC9
+  usecase "上传商品图片" as UC10
+  usecase "审核违规商品" as UC11
+  usecase "维护商品分类" as UC12
+}
+
+G --> UC1
+G --> UC2
+G --> UC3
+G --> UC4
+B --> UC2
+B --> UC3
+B --> UC4
+B --> UC5
+S --> UC6
+S --> UC7
+S --> UC8
+S --> UC9
+A --> UC11
+A --> UC12
+
+UC6 .> UC10 : <<include>>
+UC7 .> UC10 : <<include>>
+UC3 .> UC1 : <<extend>>
+UC4 .> UC1 : <<extend>>
+@enduml

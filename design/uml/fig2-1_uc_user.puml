@@ -1,0 +1,48 @@
+@startuml fig2-1_uc_user
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam usecase {
+  BackgroundColor #DCE9F5
+  BorderColor #2E5A88
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2E5A88
+}
+skinparam packageStyle rectangle
+left to right direction
+
+actor "访客\n(Guest)" as G
+actor "买家\n(Buyer)" as B
+actor "卖家\n(Seller)" as S
+actor "管理员\n(Admin)" as A
+
+rectangle "用户与认证模块（user-service）" as M {
+  usecase "注册账号" as UC1
+  usecase "账号登录" as UC2
+  usecase "找回密码" as UC3
+  usecase "维护个人档案" as UC4
+  usecase "维护收货地址" as UC5
+  usecase "查看用户信息" as UC6
+  usecase "冻结违规账号" as UC7
+  usecase "查看操作日志" as UC8
+}
+
+G --> UC1
+G --> UC2
+G --> UC3
+B --> UC4
+B --> UC5
+B --> UC6
+S --> UC4
+A --> UC6
+A --> UC7
+A --> UC8
+
+UC4 .> UC2 : <<include>>
+UC5 .> UC2 : <<include>>
+UC7 .> UC2 : <<include>>
+UC8 .> UC2 : <<include>>
+@enduml

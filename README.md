@@ -1,0 +1,53 @@
+# 云原生微服务架构实践：在线商城系统
+
+河北工业大学《软件工程实验》（2026 版）课程项目，选题六。
+
+以云原生技术栈为核心，从零设计与实现一个在线电商系统，重点实践微服务拆分、服务间通信与数据一致性、网关路由、容器化部署与可观测性。
+
+## 文档导航
+
+| 文档 | 说明 |
+| --- | --- |
+| [实验环境说明](docs/01-实验环境说明.md) | 建模、开发、部署、AI 工具的具体选型与理由 |
+| [总体实验规划](docs/02-总体实验规划.md) | 实验一到四的路线、交付物与验收标准 |
+| [Git 协作与版本留痕规范](docs/03-Git协作规范.md) | 分支策略、Commit 规范、Issue 与看板流程 |
+| [实验一：需求规格说明书](reports/实验一_需求规格说明书.docx) | 需求分析与迭代规划报告正文 |
+
+## 目录结构
+
+```
+.
+├── docs/                      项目文档（环境、规划、协作规范）
+├── reports/                   各次实验报告
+├── design/
+│   ├── uml/                   PlantUML 建模源文件
+│   └── images/                渲染出的图表
+└── src/
+    ├── campusEasy/            既有参考原型（Spring Boot）
+    └── web/                   Vue 3 前端工程
+```
+
+## 技术栈
+
+| 层次 | 选型 |
+| --- | --- |
+| 建模 | PlantUML 1.2024.7（纯净版 jar + Java 24） |
+| 后端 | Spring Boot 3.2 / Java 17 / MyBatis 3.5 |
+| 注册与配置 | Spring Cloud Alibaba Nacos |
+| 网关 | Spring Cloud Gateway |
+| 数据库 | MySQL 8.0 |
+| 缓存 | Redis 7 |
+| 前端 | Vue 3 + Vue Router + Vite + Tailwind CSS 4 |
+| 部署 | Docker Compose（本地），云服务器试用套餐（验收） |
+| 文档 | WPS Office / Markdown |
+| AI 辅助 | DeepSeek Harness（DSH） |
+
+详见 [实验环境说明](docs/01-实验环境说明.md)。
+
+## 团队协作
+
+本项目使用 Git 进行版本控制，所有任务通过 [GitHub Projects 看板](https://github.com/users/TheCryGirl/projects/1) 管理，开发流程与提交规范见 [Git 协作与版本留痕规范](docs/03-Git协作规范.md)。
+
+## AI 使用声明
+
+本项目在需求梳理、UML 源文件编写、前端骨架搭建与文档排版等环节使用了 AI 辅助工具（DeepSeek Harness）。所有 AI 生成的代码与文档均经过人工审查与修改，具体使用情况记录在各报告的「AI 使用记录」章节中。

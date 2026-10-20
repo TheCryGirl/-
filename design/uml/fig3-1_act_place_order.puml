@@ -1,0 +1,65 @@
+@startuml fig3-1_act_place_order
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam ActivityBackgroundColor #EAF1F8
+skinparam ActivityBorderColor #2E5A88
+skinparam ActivityDiamondBackgroundColor #FFF4D6
+skinparam ActivityDiamondBorderColor #B08A2E
+skinparam ArrowColor #2E5A88
+
+|买家|
+start
+:进入购物车;
+:勾选待结算商品;
+:点击"去结算";
+
+|#F0F6FC|订单服务 order-service|
+:接收下单请求\n(携带 requestId 幂等令牌);
+if (requestId 是否已处理?) then (是)
+  :返回已创建订单\n(幂等命中，不重复创建);
+  stop
+else (否)
+endif
+
+:校验商品状态与价格\n(调用商品服务);
+if (商品是否全部可售?) then (否)
+  :返回"商品已下架/失效"\n提示买家重新选择;
+  |买家|
+  :调整购物车;
+  stop
+else (是)
+  |#F0F6FC|订单服务 order-service|
+endif
+
+:锁定幂等令牌;
+:创建订单主记录\n状态 = 待支付;
+:创建订单明细;
+:发送库存预占请求;
+
+|#F0F6FC|商品服务 product-service|
+:按 SKU 逐条预占库存\n(UPDATE ... WHERE stock>=qty\nAND version=#{version});
+if (库存是否充足?) then (否)
+  :回滚本次已预占的库存;
+  :返回预占失败;
+  |#F0F6FC|订单服务 order-service|
+  :标记订单为"创建失败";
+  :释放幂等令牌;
+  |买家|
+  :提示"库存不足";
+  stop
+else (是)
+  |#F0F6FC|商品服务 product-service|
+  :库存转入"预占"状态\n(available -= qty, locked += qty);
+  |#F0F6FC|订单服务 order-service|
+endif
+
+|#F0F6FC|订单服务 order-service|
+:订单状态 = 待支付\n生成支付超时定时任务(30min);
+:清除购物车对应项;
+|买家|
+:跳转收银台;
+
+stop
+@enduml

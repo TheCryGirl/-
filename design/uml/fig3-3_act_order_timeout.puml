@@ -1,0 +1,60 @@
+@startuml fig3-3_act_order_timeout
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam ActivityBackgroundColor #EAF1F8
+skinparam ActivityBorderColor #2E5A88
+skinparam ActivityDiamondBackgroundColor #FFF4D6
+skinparam ActivityDiamondBorderColor #B08A2E
+skinparam ArrowColor #2E5A88
+
+|定时调度器|
+start
+:每 60s 扫描一次;
+:查询 created_at < now()-30min\n且 status = 待支付 的订单;
+if (是否存在待取消订单?) then (否)
+  :本轮无任务;
+  stop
+else (是)
+endif
+
+:逐条取出订单号;
+
+|#F0F6FC|订单服务 order-service|
+:对订单加分布式锁\n(lock:order:{orderId}, TTL=30s);
+if (加锁是否成功?) then (否)
+  :跳过，下一轮再试;
+  stop
+else (是)
+endif
+
+:重读订单最新状态;
+if (状态是否仍为待支付?) then (否)
+  :已被支付或已取消\n(幂等保护);
+  :释放锁;
+  stop
+else (是)
+endif
+
+:更新订单状态 = 已取消\n(条件更新 WHERE status=待支付);
+if (更新是否影响 1 行?) then (否)
+  :状态已被并发修改;
+  :释放锁，放弃本次;
+  stop
+else (是)
+endif
+
+:发布"订单已取消"事件;
+:释放分布式锁;
+
+|#F0F6FC|商品服务 product-service|
+:订阅取消事件;
+:释放预占库存\n(available += qty, locked -= qty);
+:清理预占记录;
+
+|#F0F6FC|订单服务 order-service|
+:关闭未支付的支付单;
+
+stop
+@enduml

@@ -1,0 +1,49 @@
+@startuml fig2-4_uc_order
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam usecase {
+  BackgroundColor #DCE9F5
+  BorderColor #2E5A88
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2E5A88
+}
+left to right direction
+
+actor "买家\n(Buyer)" as B
+actor "卖家\n(Seller)" as S
+actor "管理员\n(Admin)" as A
+actor "定时调度器\n(Scheduler)" as T
+
+rectangle "订单与交易模块（order-service）" as M {
+  usecase "确认订单信息" as UC1
+  usecase "提交订单" as UC2
+  usecase "取消订单" as UC3
+  usecase "查询我的订单" as UC4
+  usecase "确认收货" as UC5
+  usecase "发起退款申请" as UC6
+  usecase "卖家发货" as UC7
+  usecase "驳回待收货订单" as UC8
+  usecase "超时自动取消" as UC9
+  usecase "处理售后工单" as UC10
+  usecase "关闭异常订单" as UC11
+}
+
+B --> UC1
+B --> UC2
+B --> UC3
+B --> UC4
+B --> UC5
+B --> UC6
+S --> UC7
+S --> UC8
+A --> UC10
+A --> UC11
+T --> UC9
+
+UC2 ..> UC1 : <<include>>
+UC6 ..> UC3 : <<extend>>
+@enduml

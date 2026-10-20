@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: Ssm1
+  ai:
+    ollama:
+      base-url: "http://localhost:11434"
+      chat:
+        model: "qwen3-vl:8b"
+        temperature: 0.8
+      embedding:
+        model: "qwen3-embedding:8b"
+    mcp:
+      server:
+        stdio:
+          enabled: true
+      client:
+        request-timeout: 50000
+    vectorstore:
+      qdrant:
+        host: localhost
+        port: 6334
+        collection-name: campus_knowledge
+        initialize-schema: true
+  datasource:
+    username: root
+    password: ${DB_PASSWORD:请设置本机数据库口令}
+    url: jdbc:mysql://localhost:3306/campus_chat?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor: debug
+    org.example.ssm1: debug
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: org.example.ssm1.entity
+  configuration:
+    multiple-result-sets-enabled: true
+    use-column-label: true
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumOrdinalTypeHandler
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+qdrant:
+  host: "localhost"
+  grpc-port: 6334

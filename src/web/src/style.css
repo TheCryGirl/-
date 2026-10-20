@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+
+:root {
+  font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  color: #1f2937;
+  background-color: #f9fafb;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* 聊天消息气泡 */
+.chat-messages {
+  height: 300px;
+  overflow-y: auto;
+}
+
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 3px;
+}
+
+.message-bubble {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-user {
+  background-color: #3b82f6;
+  color: #fff;
+  margin-left: auto;
+}
+
+.message-ai {
+  background-color: #f3f4f6;
+  color: #111;
+}
+
+/* 商品卡片图片统一比例，避免长短图把网格撑歪 */
+.product-cover {
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  width: 100%;
+  background-color: #e5e7eb;
+}

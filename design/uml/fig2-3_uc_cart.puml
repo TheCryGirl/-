@@ -1,0 +1,41 @@
+@startuml fig2-3_uc_cart
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam usecase {
+  BackgroundColor #DCE9F5
+  BorderColor #2E5A88
+  FontSize 13
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #2E5A88
+}
+left to right direction
+
+actor "买家\n(Buyer)" as B
+actor "卖家\n(Seller)" as S
+
+rectangle "购物车模块（cart-service）" as M {
+  usecase "加入购物车" as UC1
+  usecase "查看购物车" as UC2
+  usecase "修改商品数量" as UC3
+  usecase "移除购物车项" as UC4
+  usecase "勾选结算项" as UC5
+  usecase "清空购物车" as UC6
+  usecase "校验库存与价格" as UC7
+  usecase "查看商品实时价格" as UC8
+}
+
+B --> UC1
+B --> UC2
+B --> UC3
+B --> UC4
+B --> UC5
+B --> UC6
+
+UC1 ..> UC7 : <<include>>
+UC5 ..> UC7 : <<include>>
+UC7 ..> UC8 : <<include>>
+S --> UC8
+@enduml

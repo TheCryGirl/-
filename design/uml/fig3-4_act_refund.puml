@@ -1,0 +1,75 @@
+@startuml fig3-4_act_refund
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam ActivityBackgroundColor #EAF1F8
+skinparam ActivityBorderColor #2E5A88
+skinparam ActivityDiamondBackgroundColor #FFF4D6
+skinparam ActivityDiamondBorderColor #B08A2E
+skinparam ArrowColor #2E5A88
+
+|买家|
+start
+:进入"我的订单";
+:选择已支付/已发货订单;
+:提交退款申请\n(填写原因与凭证);
+
+|#F0F6FC|订单服务 order-service|
+:校验订单状态是否允许退款;
+if (订单是否处于可退款状态?) then (否)
+  :提示"当前状态不可退款";
+  |买家|
+  stop
+else (是)
+  |#F0F6FC|订单服务 order-service|
+endif
+
+:创建售后工单\n状态 = 待卖家处理;
+:挂起订单后续状态流转;
+
+|卖家|
+:查看售后工单;
+if (是否同意退款?) then (否)
+  :填写驳回理由;
+  |#F0F6FC|订单服务 order-service|
+  :工单状态 = 已驳回;
+  :订单恢复正常流转;
+  |买家|
+  :收到驳回通知;
+  stop
+else (是)
+endif
+
+|#F0F6FC|订单服务 order-service|
+:工单状态 = 待退款;
+:调用支付服务发起退款;
+
+|#F0F6FC|支付服务 payment-service|
+:按原支付单号发起退款;
+:记录退款流水;
+if (退款是否成功?) then (否)
+  :标记退款异常\n进入人工处理队列;
+  |管理员|
+  :介入核对;
+  stop
+else (是)
+  |#F0F6FC|支付服务 payment-service|
+endif
+:回写退款结果;
+
+|#F0F6FC|订单服务 order-service|
+:更新订单状态 = 已退款;
+:发布"订单已退款"事件;
+
+|#F0F6FC|商品服务 product-service|
+:回补可售库存\n(available += qty);
+:销量 -1;
+
+|#F0F6FC|订单服务 order-service|
+:关闭售后工单;
+
+|买家|
+:收到退款到账通知;
+stop
+@enduml

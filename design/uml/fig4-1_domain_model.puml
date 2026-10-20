@@ -1,0 +1,174 @@
+@startuml fig4-1_domain_model
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 12
+skinparam class {
+  BackgroundColor #EAF1F8
+  BorderColor #2E5A88
+  ArrowColor #2E5A88
+}
+skinparam classAttributeIconSize 0
+hide circle
+hide empty members
+
+package "用户与认证子域" as P1 {
+  class User <<实体>> {
+    userId
+    account
+    passwordHash
+    nickname
+    phone
+    role
+    status
+    createdAt
+  }
+  class Address <<实体>> {
+    addressId
+    userId
+    receiver
+    phone
+    province
+    city
+    detail
+    isDefault
+  }
+}
+
+package "商品与库存子域" as P2 {
+  class Product <<实体>> {
+    productId
+    sellerId
+    categoryId
+    title
+    subtitle
+    mainImage
+    price
+    status
+    createdAt
+  }
+  class Sku <<实体>> {
+    skuId
+    productId
+    specName
+    price
+    stockAvailable
+    stockLocked
+    version
+  }
+  class Category <<实体>> {
+    categoryId
+    parentId
+    name
+    sortNo
+  }
+  class StockReservation <<实体>> {
+    reservationId
+    orderId
+    skuId
+    quantity
+    status
+    expireAt
+  }
+}
+
+package "购物车子域" as P3 {
+  class Cart <<实体>> {
+    cartId
+    buyerId
+    updatedAt
+  }
+  class CartItem <<实体>> {
+    cartItemId
+    cartId
+    skuId
+    quantity
+    selected
+    addedAt
+  }
+}
+
+package "订单与交易子域" as P4 {
+  class Order <<实体>> {
+    orderId
+    orderNo
+    buyerId
+    status
+    totalAmount
+    payAmount
+    addressSnapshot
+    createdAt
+    paidAt
+  }
+  class OrderItem <<实体>> {
+    orderItemId
+    orderId
+    skuId
+    productTitle
+    priceSnapshot
+    quantity
+    subtotal
+  }
+  class AfterSaleTicket <<实体>> {
+    ticketId
+    orderId
+    buyerId
+    type
+    reason
+    status
+    createdAt
+  }
+}
+
+package "支付子域" as P5 {
+  class Payment <<实体>> {
+    paymentId
+    orderId
+    payNo
+    channel
+    amount
+    status
+    paidAt
+  }
+  class PaymentCallback <<实体>> {
+    callbackId
+    tradeNo
+    paymentId
+    rawPayload
+    signVerified
+    receivedAt
+  }
+  class Refund <<实体>> {
+    refundId
+    paymentId
+    amount
+    reason
+    status
+    createdAt
+  }
+}
+
+User "1" -- "0..*" Address : 拥有
+User "1" -- "0..*" Product : 发布
+User "1" -- "0..*" Order : 购买
+User "1" -- "0..*" Cart : 拥有
+User "1" -- "0..*" CartItem : 持有
+User "1" -- "0..*" AfterSaleTicket : 发起
+
+Category "1" -- "0..*" Product : 归类
+Product "1" -- "1..*" Sku : 包含
+
+Order "1" *-- "1..*" OrderItem : 组合
+Order "1" -- "0..1" Payment : 对应
+Order "1" -- "0..*" StockReservation : 预占
+Order "1" -- "0..*" AfterSaleTicket : 关联
+
+Payment "1" -- "0..*" PaymentCallback : 接收
+Payment "1" -- "0..*" Refund : 产生
+
+CartItem "0..*" -- "1" Sku : 引用
+Cart "1" *-- "0..*" CartItem : 包含
+OrderItem "0..*" -- "1" Sku : 引用
+StockReservation "0..*" -- "1" Sku : 锁定
+
+@enduml

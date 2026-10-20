@@ -1,0 +1,61 @@
+@startuml fig3-2_act_payment_callback
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 13
+skinparam ActivityBackgroundColor #EAF1F8
+skinparam ActivityBorderColor #2E5A88
+skinparam ActivityDiamondBackgroundColor #FFF4D6
+skinparam ActivityDiamondBorderColor #B08A2E
+skinparam ArrowColor #2E5A88
+
+|第三方支付平台|
+start
+:用户完成付款;
+:异步推送支付结果\n(带 sign 与 tradeNo);
+:等待应答\n超时则按策略重推;
+
+|#F0F6FC|支付服务 payment-service|
+:接收回调报文;
+:校验签名与商户号;
+if (签名是否合法?) then (否)
+  :记录非法回调日志;
+  :返回 FAIL;
+  stop
+else (是)
+endif
+
+:写入回调流水表\nUNIQUE(tradeNo);
+if (是否重复回调?) then (是)
+  :读取首次处理结果;
+  :原样返回 SUCCESS\n(保证上游不再重推);
+  stop
+else (否)
+endif
+
+:核对回调金额与订单应付金额;
+if (金额是否一致?) then (否)
+  :标记异常交易\n进入人工对账队列;
+  :返回 SUCCESS 但内部挂起;
+  stop
+else (是)
+endif
+
+:更新支付单状态 = 支付成功;
+:发布"支付成功"领域事件;
+:返回 SUCCESS;
+
+|#F0F6FC|订单服务 order-service|
+:订阅支付成功事件;
+:更新订单状态 = 已支付;
+:通知商品服务扣减预占库存\n(locked -= qty);
+
+|#F0F6FC|商品服务 product-service|
+:确认扣减库存\n(清空对应预占记录);
+:销量 +1;
+
+|#F0F6FC|订单服务 order-service|
+:触发卖家发货待办;
+
+stop
+@enduml
