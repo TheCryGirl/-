@@ -96,8 +96,12 @@
             updated_at = NOW()
         WHERE payment_id = #{paymentId}
           AND status = 'SUCCESS'
-          AND refunded_amount &gt;= amount
           AND is_deleted = 0
+          AND (SELECT COALESCE(SUM(r.amount), 0)
+               FROM refund r
+               WHERE r.payment_id = #{paymentId}
+                 AND r.status = 'SUCCESS'
+                 AND r.is_deleted = 0) &gt;= amount
     </update>
 
     <update id="restoreSuccessIfNotFullyRefunded">
@@ -106,7 +110,11 @@
             updated_at = NOW()
         WHERE payment_id = #{paymentId}
           AND status = 'REFUNDED'
-          AND refunded_amount &lt; amount
           AND is_deleted = 0
+          AND (SELECT COALESCE(SUM(r.amount), 0)
+               FROM refund r
+               WHERE r.payment_id = #{paymentId}
+                 AND r.status = 'SUCCESS'
+                 AND r.is_deleted = 0) &lt; amount
     </update>
 </mapper>
