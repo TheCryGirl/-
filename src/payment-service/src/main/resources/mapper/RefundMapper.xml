@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.RefundMapper">
+
+    <sql id="columns">
+        refund_id, payment_id, order_id, buyer_id, amount, reason, status,
+        audited_by, audit_remark, audited_at, created_at, updated_at,
+        created_by, updated_by, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.Refund">
+        INSERT INTO refund (
+            refund_id, payment_id, order_id, buyer_id, amount, reason, status,
+            audited_by, audit_remark, audited_at, created_by, updated_by, is_deleted
+        ) VALUES (
+            #{refundId}, #{paymentId}, #{orderId}, #{buyerId}, #{amount},
+            #{reason,jdbcType=VARCHAR}, #{status}, #{auditedBy,jdbcType=VARCHAR},
+            #{auditRemark,jdbcType=VARCHAR}, #{auditedAt,jdbcType=TIMESTAMP},
+            #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.Refund">
+        SELECT <include refid="columns"/>
+        FROM refund
+        WHERE refund_id = #{refundId}
+          AND is_deleted = 0
+    </select>
+
+    <update id="updateAudit">
+        UPDATE refund
+        SET status = #{status},
+            audited_by = #{auditedBy},
+            audit_remark = #{auditRemark,jdbcType=VARCHAR},
+            audited_at = #{auditedAt},
+            updated_by = #{auditedBy},
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND status = 'PENDING'
+          AND is_deleted = 0
+    </update>
+</mapper>

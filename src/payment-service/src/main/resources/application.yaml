@@ -1,0 +1,70 @@
+server:
+  port: 9005
+
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/mall_payment?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      encoding: UTF-8
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        enabled: ${NACOS_ENABLED:true}
+        # 开发期 Nacos 未就绪时不阻塞启动，方便单服务调试
+        fail-fast: false
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+
+  jackson:
+    time-zone: Asia/Shanghai
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mall.payment.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+payment:
+  # MOCK 支付签名密钥，与前端、测试约定，不硬编码真实密钥
+  mock-secret: ${MOCK_SECRET:mock-pay-secret}
+  # 服务间内部调用令牌，网关不会转发这个头
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+services:
+  # 留空时通过 Nacos 服务名发现；本地联调可指定直连地址
+  order-url: ${ORDER_SERVICE_URL:}
+  product-url: ${PRODUCT_SERVICE_URL:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.mall.payment: debug
