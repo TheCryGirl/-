@@ -1,0 +1,218 @@
+# 在线商城 - 本地一键启动
+#
+# 用法：
+#   docker compose up -d          启动全部
+#   docker compose up -d nacos mysql redis   只启动基础设施
+#   docker compose logs -f gateway           看某个服务的日志
+#   docker compose down           停止并移除容器
+#
+# 说明：
+#   各微服务的镜像需要先用 `mvn package` 打包，再把 jar 放进对应目录。
+#   若只想跑基础设施（Nacos / MySQL / Redis），把最后几个服务块注释掉即可。
+
+services:
+  # ---------------- 基础设施 ----------------
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: mall-nacos
+    environment:
+      MODE: standalone
+      # 开发期关闭鉴权，生产必须打开
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 512m
+      JVM_XMX: 512m
+      JVM_XMN: 256m
+    ports:
+      - "8848:8848"   # 控制台与 OpenAPI
+      - "9848:9848"   # gRPC
+    volumes:
+      - nacos-data:/home/nacos/data
+      - nacos-logs:/home/nacos/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8848/nacos/v1/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: mall-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: mall-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------- 微服务 ----------------
+  # 下面每个服务都依赖基础设施就绪后才启动。
+  # 镜像用 eclipse-temurin 直接跑 jar，省去给每个服务写 Dockerfile。
+
+  gateway:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-gateway
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
+      TZ: Asia/Shanghai
+    volumes:
+      - ../gateway/target:/app
+    ports:
+      - "9000:9000"
+    depends_on:
+      nacos:
+        condition: service_healthy
+    restart: unless-stopped
+
+  user-service:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-user
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
+      TZ: Asia/Shanghai
+    volumes:
+      - ../user-service/target:/app
+    ports:
+      - "9001:9001"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  product-service:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-product
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      TZ: Asia/Shanghai
+    volumes:
+      - ../product-service/target:/app
+      - product-uploads:/app/uploads
+    ports:
+      - "9002:9002"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cart-service:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-cart
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      REDIS_HOST: redis
+      TZ: Asia/Shanghai
+    volumes:
+      - ../cart-service/target:/app
+    ports:
+      - "9003:9003"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  order-service:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-order
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      REDIS_HOST: redis
+      ORDER_TIMEOUT_MINUTES: ${ORDER_TIMEOUT_MINUTES:-30}
+      TZ: Asia/Shanghai
+    volumes:
+      - ../order-service/target:/app
+    ports:
+      - "9004:9004"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  payment-service:
+    image: eclipse-temurin:17-jre-alpine
+    container_name: mall-payment
+    working_dir: /app
+    command: ["java", "-jar", "app.jar"]
+    environment:
+      NACOS_ADDR: nacos:8848
+      DB_HOST: mysql
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      MOCK_SECRET: ${MOCK_SECRET:-mock-pay-secret}
+      TZ: Asia/Shanghai
+    volumes:
+      - ../payment-service/target:/app
+    ports:
+      - "9005:9005"
+    depends_on:
+      nacos:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  nacos-data:
+  nacos-logs:
+  mysql-data:
+  redis-data:
+  product-uploads:

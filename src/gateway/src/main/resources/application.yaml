@@ -1,0 +1,66 @@
+server:
+  port: 9000
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        # 开发期 Nacos 未就绪时不阻塞启动，方便单独调试网关。
+        # 生产环境改为 true，避免服务"假启动"却没注册成功。
+        fail-fast: false
+    gateway:
+      # 关闭默认跨域，统一由 CorsConfig 处理，避免响应头重复
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**,/api/categories/**
+        - id: product-images
+          uri: lb://product-service
+          predicates:
+            - Path=/images/**
+        - id: cart-service
+          uri: lb://cart-service
+          predicates:
+            - Path=/api/cart/**
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/payments/**
+
+  # 下游服务超时控制，防止一个服务卡住拖垮整个网关
+  http:
+    connect-timeout: 2000
+    read-timeout: 6000
+
+jwt:
+  # 与各服务保持一致，从环境变量读，不在配置里写死
+  secret: ${JWT_SECRET:dev-only-secret-please-change-in-production-0123456789}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.mall.gateway: debug
+    org.springframework.cloud.gateway: info
