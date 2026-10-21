@@ -44,6 +44,28 @@ function extractList(res) {
   return data?.list || []
 }
 
+/**
+ * 兼容两种返回：已经拆开的业务数据，或统一的 { code, message, data } 包装。
+ * 业务失败（code !== 0）返回 null，调用方据此提示错误，避免把错误包装当成数据渲染。
+ */
+export function unwrapResult(payload) {
+  if (payload && typeof payload === 'object' && 'code' in payload) {
+    return payload.code === 0 ? payload.data ?? null : null
+  }
+  return payload ?? null
+}
+
+/**
+ * 判断统一响应是否成功。Result<Void> 成功时 data 也是 null，
+ * 不能靠 unwrapResult 区分成功与失败，写操作应改用本函数。
+ */
+export function isOk(payload) {
+  if (payload && typeof payload === 'object' && 'code' in payload) {
+    return payload.code === 0
+  }
+  return true
+}
+
 /* ---------------- 用户 ---------------- */
 export const userApi = {
   register: (payload) => http.post('/users/register', payload),
@@ -53,6 +75,7 @@ export const userApi = {
   updateMe: (payload) => http.put('/users/me', payload),
   list: (params) => http.get('/users', { params }),
   updateStatus: (userId, payload) => http.put(`/users/${userId}/status`, payload),
+  updateRole: (userId, role) => http.put(`/users/${userId}/role`, { role }),
 }
 
 /* ---------------- 收货地址 ---------------- */
@@ -114,6 +137,7 @@ export const paymentApi = {
   mockRefund: (payload) => http.post('/payments/mock/refund', payload),
   refund: (paymentId, payload) => http.post(`/payments/${paymentId}/refund`, payload),
   auditRefund: (refundId, payload) => http.put(`/payments/refunds/${refundId}/audit`, payload),
+  refunds: (params) => http.get('/payments/refunds', { params }),
 }
 
 export { http, extractData, extractList }

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { cartApi } from '../api'
+import { cartApi, unwrapResult } from '../api'
 
 const router = useRouter()
 const cart = ref({ items: [] })
@@ -13,8 +13,12 @@ async function load() {
   error.value = ''
   try {
     const { data } = await cartApi.get()
-    const payload = data?.data ?? data
-    cart.value = { items: Array.isArray(payload?.items) ? payload.items : [] }
+    const payload = unwrapResult(data)
+    if (!payload) {
+      error.value = data?.message || '购物车加载失败'
+      return
+    }
+    cart.value = { items: Array.isArray(payload.items) ? payload.items : [] }
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {

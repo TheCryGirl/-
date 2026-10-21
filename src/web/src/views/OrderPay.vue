@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { orderApi, paymentApi } from '../api'
+import { orderApi, paymentApi, unwrapResult } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,12 +17,18 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [{ data: orderRes }, { data: paymentRes }] = await Promise.all([
+    const [{ data: orderRes }, paymentRes] = await Promise.all([
       orderApi.detail(orderId),
-      paymentApi.byOrder(orderId).catch(() => ({ data: null })),
+      paymentApi.byOrder(orderId).catch(() => null),
     ])
-    order.value = orderRes?.data ?? orderRes
-    payment.value = paymentRes?.data ?? paymentRes
+    const orderData = unwrapResult(orderRes)
+    if (!orderData) {
+      error.value = orderRes?.message || '订单不存在或无权查看'
+      return
+    }
+    order.value = orderData
+    // 未创建支付单时后端返回业务错误（code 60001），不能把错误包装当成支付单
+    payment.value = paymentRes ? unwrapResult(paymentRes.data) : null
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {
@@ -36,7 +42,12 @@ async function createPayment() {
   try {
     const idempotencyKey = crypto.randomUUID()
     const { data } = await paymentApi.create({ orderId, channel: 'MOCK' }, idempotencyKey)
-    payment.value = data?.data ?? data
+    const created = unwrapResult(data)
+    if (!created) {
+      error.value = data?.message || '创建支付单失败'
+      return
+    }
+    payment.value = created
   } catch (err) {
     error.value = err.response?.data?.message || '创建支付单失败'
   } finally {

@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { orderApi, paymentApi } from '../api'
+import { orderApi, paymentApi, unwrapResult } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +22,12 @@ async function load() {
   error.value = ''
   try {
     const { data } = await orderApi.detail(orderId)
-    order.value = data?.data ?? data
+    const orderData = unwrapResult(data)
+    if (!orderData) {
+      error.value = data?.message || '订单不存在或无权查看'
+      return
+    }
+    order.value = orderData
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {
@@ -66,7 +71,12 @@ async function openRefund() {
   refundMessage.value = ''
   try {
     const { data } = await paymentApi.byOrder(orderId)
-    payment.value = data?.data ?? data
+    const paymentData = unwrapResult(data)
+    if (!paymentData) {
+      error.value = data?.message || '当前订单没有可退款的支付单'
+      return
+    }
+    payment.value = paymentData
   } catch (err) {
     error.value = err.response?.data?.message || '查询支付单失败'
     return
@@ -98,7 +108,11 @@ async function submitRefund() {
       amount: cents,
       reason: refundReason.value,
     })
-    const refund = data?.data ?? data
+    const refund = unwrapResult(data)
+    if (!refund) {
+      error.value = data?.message || '申请退款失败'
+      return
+    }
     refundVisible.value = false
     refundMessage.value = `退款申请已提交，退款单号 ${refund.refundId}，等待卖家或管理员审核`
     await load()

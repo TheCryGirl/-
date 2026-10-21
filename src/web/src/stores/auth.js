@@ -1,5 +1,5 @@
 import { computed, reactive, readonly } from 'vue'
-import { userApi } from '../api'
+import { userApi, unwrapResult } from '../api'
 
 /**
  * 全局登录态。用 reactive 而非 Pinia，项目规模还小，一个文件足够，
@@ -54,7 +54,9 @@ export async function refreshUser() {
   if (!state.token) return null
   try {
     const { data } = await userApi.me()
-    const user = data?.data ?? data
+    const user = unwrapResult(data)
+    // 失败时保持原有登录态，避免把错误包装写进 localStorage
+    if (!user) return null
     setUser(user)
     return user
   } catch {

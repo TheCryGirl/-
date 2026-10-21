@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, productApi } from '../api'
+import { cartApi, isOk, productApi, unwrapResult } from '../api'
 import { isLoggedIn } from '../stores/auth'
 
 const route = useRoute()
@@ -26,7 +26,12 @@ async function load() {
   error.value = ''
   try {
     const { data } = await productApi.detail(route.params.id)
-    product.value = data?.data ?? data
+    const productData = unwrapResult(data)
+    if (!productData) {
+      error.value = data?.message || '商品不存在或已下架'
+      return
+    }
+    product.value = productData
     if (product.value?.skus?.length) {
       selectedSku.value = product.value.skus[0]
     }
@@ -70,8 +75,8 @@ async function addToCart() {
     return
   }
   try {
-    await cartApi.add({ skuId: selectedSku.value.skuId, quantity: quantity.value })
-    notice.value = '已加入购物车'
+    const { data } = await cartApi.add({ skuId: selectedSku.value.skuId, quantity: quantity.value })
+    notice.value = isOk(data) ? '已加入购物车' : data?.message || '加入购物车失败'
   } catch (err) {
     notice.value = err.response?.data?.message || '加入购物车失败'
   }
@@ -88,14 +93,24 @@ async function buyNow() {
     return
   }
   try {
+    const desiredQuantity = quantity.value
     // 契约的下单接口只接受 cartItemIds，立即购买先入购物车再取回真实条目
-    await cartApi.add({ skuId: selectedSku.value.skuId, quantity: quantity.value })
+    const addRes = await cartApi.add({ skuId: selectedSku.value.skuId, quantity: desiredQuantity })
+    if (!isOk(addRes.data)) {
+      notice.value = addRes.data?.message || '加入购物车失败'
+      return
+    }
     const { data } = await cartApi.get()
-    const cart = data?.data ?? data
+    const cart = unwrapResult(data)
     const item = cart?.items?.find((i) => i.skuId === selectedSku.value.skuId)
     if (!item) {
       notice.value = '创建购物车条目失败'
       return
+    }
+    // 同一 SKU 在购物车中会累加数量，立即购买只结算本次选择的数量
+    if (item.quantity !== desiredQuantity) {
+      await cartApi.updateQuantity(item.cartItemId, desiredQuantity)
+      item.quantity = desiredQuantity
     }
     sessionStorage.setItem('checkoutItems', JSON.stringify([item]))
     router.push({ name: 'order-confirm' })

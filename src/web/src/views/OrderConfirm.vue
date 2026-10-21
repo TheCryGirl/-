@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { addressApi, orderApi } from '../api'
+import { addressApi, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 
 const router = useRouter()
@@ -26,7 +26,7 @@ async function load() {
       return
     }
     const { data } = await addressApi.list(auth.user.userId)
-    const payload = data?.data ?? data
+    const payload = unwrapResult(data)
     addresses.value = Array.isArray(payload) ? payload : []
     const def = addresses.value.find((a) => a.isDefault)
     if (def) selectedAddressId.value = def.addressId
@@ -53,7 +53,11 @@ async function submit() {
       { addressId: selectedAddressId.value, cartItemIds },
       idempotencyKey,
     )
-    const order = data?.data ?? data
+    const order = unwrapResult(data)
+    if (!order) {
+      error.value = data?.message || '下单失败'
+      return
+    }
     sessionStorage.removeItem('checkoutItems')
     router.push({ name: 'order-pay', params: { id: order.orderId } })
   } catch (err) {

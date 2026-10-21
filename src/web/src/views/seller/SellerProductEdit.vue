@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { productApi } from '../../api'
+import { productApi, unwrapResult } from '../../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,7 +31,8 @@ const stockDraft = reactive({})
 async function loadCategories() {
   try {
     const { data } = await productApi.categories()
-    categories.value = data?.data ?? data ?? []
+    const payload = unwrapResult(data)
+    categories.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch {
     categories.value = []
   }
@@ -43,7 +44,11 @@ async function loadProduct() {
   error.value = ''
   try {
     const { data } = await productApi.detail(productId.value)
-    const product = data?.data ?? data
+    const product = unwrapResult(data)
+    if (!product) {
+      error.value = data?.message || '商品不存在或无权编辑'
+      return
+    }
     form.title = product.title || ''
     form.subtitle = product.subtitle || ''
     form.mainImage = product.mainImage || ''

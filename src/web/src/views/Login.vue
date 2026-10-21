@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { userApi } from '../api'
+import { userApi, unwrapResult } from '../api'
 import { setLogin, redirectTarget } from '../stores/auth'
 
 const router = useRouter()
@@ -19,11 +19,11 @@ async function submit() {
   error.value = ''
   try {
     const { data } = await userApi.login(account.value.trim(), password.value)
-    const payload = data?.data ?? data
+    const payload = unwrapResult(data)
     const token = payload?.token || ''
     const user = payload?.user || null
     if (!token || !user) {
-      error.value = '登录返回异常，请检查后端接口'
+      error.value = data?.message || '登录失败，请稍后重试'
       return
     }
     setLogin(token, user)

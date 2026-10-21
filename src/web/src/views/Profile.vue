@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { addressApi, userApi } from '../api'
+import { addressApi, isOk, userApi, unwrapResult } from '../api'
 import { auth, setUser } from '../stores/auth'
 
 const profile = reactive({ nickname: '', phone: '', avatar: '' })
@@ -25,7 +25,7 @@ const form = reactive({
 })
 
 function unwrap(res) {
-  return res.data?.data ?? res.data
+  return unwrapResult(res.data)
 }
 
 function fillProfile(user) {
@@ -38,6 +38,11 @@ function fillProfile(user) {
 async function loadProfile() {
   try {
     const user = unwrap(await userApi.me())
+    // 失败时不能把错误包装当成用户信息写进登录态
+    if (!user) {
+      profileError.value = '加载个人信息失败'
+      return
+    }
     setUser(user)
     fillProfile(user)
   } catch (err) {
@@ -50,7 +55,12 @@ async function saveProfile() {
   profileMessage.value = ''
   profileError.value = ''
   try {
-    const user = unwrap(await userApi.updateMe({ ...profile }))
+    const res = await userApi.updateMe({ ...profile })
+    const user = unwrap(res)
+    if (!user) {
+      profileError.value = res.data?.message || '保存失败'
+      return
+    }
     setUser(user)
     fillProfile(user)
     profileMessage.value = '个人信息已保存'
@@ -119,10 +129,13 @@ async function submitAddress() {
   saving.value = true
   try {
     const payload = { ...form }
-    if (editingId.value) {
-      await addressApi.update(editingId.value, payload)
-    } else {
-      await addressApi.create(payload)
+    const res = editingId.value
+      ? await addressApi.update(editingId.value, payload)
+      : await addressApi.create(payload)
+    // 业务失败也是 HTTP 200，必须按 code 判断
+    if (!isOk(res.data)) {
+      addressError.value = res.data?.message || '保存地址失败'
+      return
     }
     formVisible.value = false
     resetForm()
@@ -138,7 +151,11 @@ async function removeAddress(addr) {
   if (!window.confirm(`确认删除地址「${addr.receiver} ${addr.detail}」？`)) return
   addressError.value = ''
   try {
-    await addressApi.remove(addr.addressId)
+    const res = await addressApi.remove(addr.addressId)
+    if (!isOk(res.data)) {
+      addressError.value = res.data?.message || '删除失败'
+      return
+    }
     await loadAddresses()
   } catch (err) {
     addressError.value = err.response?.data?.message || err.message || '删除失败'
@@ -148,7 +165,11 @@ async function removeAddress(addr) {
 async function setDefault(addr) {
   addressError.value = ''
   try {
-    await addressApi.setDefault(addr.addressId)
+    const res = await addressApi.setDefault(addr.addressId)
+    if (!isOk(res.data)) {
+      addressError.value = res.data?.message || '设置默认地址失败'
+      return
+    }
     await loadAddresses()
   } catch (err) {
     addressError.value = err.response?.data?.message || err.message || '设置默认地址失败'
