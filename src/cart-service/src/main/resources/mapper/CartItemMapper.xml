@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.cart.mapper.CartItemMapper">
+
+    <sql id="columns">
+        cart_item_id, cart_id, user_id, product_id, sku_id, quantity,
+        is_selected AS selected, created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <select id="selectActiveByCartId" resultType="com.mall.cart.entity.CartItem">
+        SELECT <include refid="columns"/>
+        FROM cart_item
+        WHERE cart_id = #{cartId}
+          AND is_deleted = 0
+        ORDER BY created_at, cart_item_id
+    </select>
+
+    <select id="selectActiveByIdAndUser" resultType="com.mall.cart.entity.CartItem">
+        SELECT <include refid="columns"/>
+        FROM cart_item
+        WHERE cart_item_id = #{cartItemId}
+          AND user_id = #{userId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectByCartIdAndSkuForUpdate" resultType="com.mall.cart.entity.CartItem">
+        SELECT <include refid="columns"/>
+        FROM cart_item
+        WHERE cart_id = #{cartId}
+          AND sku_id = #{skuId}
+        FOR UPDATE
+    </select>
+
+    <insert id="insert" parameterType="com.mall.cart.entity.CartItem">
+        INSERT INTO cart_item (
+            cart_item_id, cart_id, user_id, product_id, sku_id,
+            quantity, is_selected, created_by, updated_by, is_deleted
+        ) VALUES (
+            #{cartItemId}, #{cartId}, #{userId}, #{productId}, #{skuId},
+            #{quantity}, 1, #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <update id="updateQuantity">
+        UPDATE cart_item
+        SET quantity = #{quantity},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE cart_item_id = #{cartItemId}
+          AND user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="updateSelected">
+        UPDATE cart_item
+        SET is_selected = #{selected},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE cart_item_id = #{cartItemId}
+          AND user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="resurrect">
+        UPDATE cart_item
+        SET quantity = #{quantity},
+            is_selected = 1,
+            is_deleted = 0,
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE cart_item_id = #{cartItemId}
+          AND user_id = #{userId}
+          AND is_deleted = 1
+    </update>
+
+    <update id="softDelete">
+        UPDATE cart_item
+        SET is_deleted = 1,
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE cart_item_id = #{cartItemId}
+          AND user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="softDeleteByCartId">
+        UPDATE cart_item
+        SET is_deleted = 1,
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE cart_id = #{cartId}
+          AND user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+</mapper>
