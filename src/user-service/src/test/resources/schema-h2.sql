@@ -1,4 +1,5 @@
 -- H2 测试用表结构，与主 schema.sql 保持字段一致
+-- 注意：H2 不支持 MySQL 的 UNIQUE KEY 写法，统一用 CONSTRAINT ... UNIQUE
 
 CREATE TABLE IF NOT EXISTS `user` (
     user_id       VARCHAR(32)  NOT NULL,
@@ -13,10 +14,10 @@ CREATE TABLE IF NOT EXISTS `user` (
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by    VARCHAR(32)  DEFAULT NULL,
     updated_by    VARCHAR(32)  DEFAULT NULL,
-    is_deleted    TINYINT(1)   NOT NULL DEFAULT 0,
+    is_deleted    TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_account (account),
-    UNIQUE KEY uk_nickname (nickname)
+    CONSTRAINT uk_account UNIQUE (account),
+    CONSTRAINT uk_nickname UNIQUE (nickname)
 );
 
 CREATE TABLE IF NOT EXISTS address (
@@ -28,9 +29,9 @@ CREATE TABLE IF NOT EXISTS address (
     city        VARCHAR(32)  NOT NULL,
     district    VARCHAR(32)  DEFAULT NULL,
     detail      VARCHAR(255) NOT NULL,
-    is_default  TINYINT(1)   NOT NULL DEFAULT 0,
+    is_default  TINYINT      NOT NULL DEFAULT 0,
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_deleted  TINYINT(1)   NOT NULL DEFAULT 0,
+    is_deleted  TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (address_id)
 );

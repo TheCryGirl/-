@@ -35,6 +35,8 @@
             <if test="city != null">city = #{city},</if>
             <if test="district != null">district = #{district},</if>
             <if test="detail != null">detail = #{detail},</if>
+            <if test="isDefault != null">is_default = #{isDefault},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
         </set>
         WHERE address_id = #{addressId}
           AND is_deleted = 0

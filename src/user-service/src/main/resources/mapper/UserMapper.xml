@@ -43,6 +43,7 @@
             <if test="avatar != null">avatar = #{avatar},</if>
             <if test="role != null">role = #{role, typeHandler=org.apache.ibatis.type.EnumTypeHandler},</if>
             <if test="status != null">status = #{status, typeHandler=org.apache.ibatis.type.EnumTypeHandler},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
             <if test="updatedBy != null">updated_by = #{updatedBy},</if>
         </set>
         WHERE user_id = #{userId}

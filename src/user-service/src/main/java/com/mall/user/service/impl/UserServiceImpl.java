@@ -169,6 +169,10 @@ public class UserServiceImpl implements UserService {
         if (target == null) {
             throw new BizException(ErrorCode.USER_NOT_FOUND, "用户不存在");
         }
+        // 避免管理员误操作把自己的账号冻结，导致无人可管理系统
+        if (targetUserId.equals(operatorId)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "不能变更自己的账号状态");
+        }
 
         UserStatus newStatus = UserStatus.valueOf(request.getStatus());
         userMapper.updateStatusById(targetUserId, newStatus.name());
