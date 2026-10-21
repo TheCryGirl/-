@@ -109,13 +109,10 @@ async function submit() {
         saving.value = false
         return
       }
-      const { data } = await productApi.create({ ...form, skus: skuPayload })
-      const created = data?.data ?? data
+      await productApi.create({ ...form, skus: skuPayload })
       message.value = '商品已提交，等待管理员审核'
-      if (created?.productId) {
-        setTimeout(() => router.push({ name: 'seller-products' }), 800)
-        return
-      }
+      setTimeout(() => router.push({ name: 'seller-products' }), 800)
+      return
     }
     await loadProduct()
   } catch (err) {

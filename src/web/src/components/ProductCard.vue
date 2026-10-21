@@ -11,7 +11,7 @@ const cover = computed(() => {
   const p = props.product
   const raw = p.mainImage || p.image
   if (!raw) return ''
-  if (raw.startsWith('http') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) return raw
   return `/images/${raw}`
 })
 

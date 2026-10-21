@@ -22,6 +22,8 @@ http.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      // 通知 App 清空内存登录态并跳转登录页，避免页面仍显示为已登录
+      window.dispatchEvent(new Event('auth:expired'))
     }
     return Promise.reject(err)
   },

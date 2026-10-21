@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { productApi } from '../api'
 import ProductCard from '../components/ProductCard.vue'
@@ -53,7 +53,8 @@ async function load(resetPage = true) {
 async function loadCategories() {
   try {
     const { data } = await productApi.categories()
-    categories.value = data?.data ?? data ?? []
+    const payload = data?.data ?? data
+    categories.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch {
     categories.value = []
   }
@@ -82,6 +83,10 @@ watch(keyword, () => {
 onMounted(() => {
   loadCategories()
   load()
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 

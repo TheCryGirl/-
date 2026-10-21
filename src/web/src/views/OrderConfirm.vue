@@ -21,8 +21,13 @@ async function load() {
   }
   try {
     items.value = JSON.parse(raw)
+    if (!auth.user?.userId) {
+      error.value = '登录状态已失效，请重新登录'
+      return
+    }
     const { data } = await addressApi.list(auth.user.userId)
-    addresses.value = data?.data ?? data ?? []
+    const payload = data?.data ?? data
+    addresses.value = Array.isArray(payload) ? payload : []
     const def = addresses.value.find((a) => a.isDefault)
     if (def) selectedAddressId.value = def.addressId
   } catch (err) {

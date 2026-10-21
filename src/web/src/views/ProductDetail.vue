@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cartApi, productApi } from '../api'
-import { auth, isLoggedIn } from '../stores/auth'
+import { isLoggedIn } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +17,8 @@ const notice = ref('')
 const cover = computed(() => {
   const raw = product.value?.mainImage || product.value?.image
   if (!raw) return ''
-  return raw.startsWith('http') || raw.startsWith('data:') ? raw : `/images/${raw}`
+  if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) return raw
+  return `/images/${raw}`
 })
 
 async function load() {

@@ -37,7 +37,7 @@ async function arbitrate(refundId, approved) {
       remark: 'ADMIN_ARBITRATION',
     })
     const refund = data?.data ?? data
-    message.value = `售后单 ${refund.refundId} 已裁定：${approved ? '支持买家退款' : '驳回退款申请'}`
+    message.value = `售后单 ${refund?.refundId || refundId} 已裁定：${approved ? '支持买家退款' : '驳回退款申请'}`
     manualRefundId.value = ''
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '仲裁失败'
@@ -70,14 +70,14 @@ onMounted(load)
         />
         <button
           class="px-4 py-2 rounded-md border border-gray-300 text-gray-600 text-sm hover:bg-gray-50 disabled:opacity-50"
-          :disabled="processing === manualRefundId"
+          :disabled="!manualRefundId || Boolean(processing)"
           @click="arbitrate(manualRefundId, false)"
         >
           驳回退款
         </button>
         <button
           class="px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50"
-          :disabled="processing === manualRefundId"
+          :disabled="!manualRefundId || Boolean(processing)"
           @click="arbitrate(manualRefundId, true)"
         >
           支持买家
@@ -105,14 +105,14 @@ onMounted(load)
         <div class="flex justify-end gap-2 mt-3">
           <button
             class="px-3 py-1 rounded border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
-            :disabled="processing === t.refundId"
+            :disabled="Boolean(processing)"
             @click="arbitrate(t.refundId, false)"
           >
             驳回
           </button>
           <button
             class="px-3 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700"
-            :disabled="processing === t.refundId"
+            :disabled="Boolean(processing)"
             @click="arbitrate(t.refundId, true)"
           >
             支持买家

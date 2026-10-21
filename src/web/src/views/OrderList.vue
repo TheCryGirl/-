@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { orderApi } from '../api'
+import { isSeller } from '../stores/auth'
 
 const router = useRouter()
 const role = ref('buyer')
@@ -21,6 +22,16 @@ const statusOptions = [
   { value: 'COMPLETED', label: '已完成' },
   { value: 'CANCELLED', label: '已取消' },
 ]
+
+// 普通买家只看“我买到的”，卖家/管理员才显示“我卖出的”
+const roleTabs = computed(() =>
+  isSeller.value
+    ? [
+        { key: 'buyer', label: '我买到的' },
+        { key: 'seller', label: '我卖出的' },
+      ]
+    : [{ key: 'buyer', label: '我买到的' }],
+)
 
 async function load() {
   loading.value = true
@@ -90,10 +101,7 @@ onMounted(load)
       <h1 class="text-lg font-semibold text-gray-900">我的订单</h1>
       <div class="flex items-center gap-2">
         <button
-          v-for="r in [
-            { key: 'buyer', label: '我买到的' },
-            { key: 'seller', label: '我卖出的' },
-          ]"
+          v-for="r in roleTabs"
           :key="r.key"
           class="px-3 py-1.5 text-sm rounded-md border"
           :class="

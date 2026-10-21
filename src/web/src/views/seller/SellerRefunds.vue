@@ -33,7 +33,7 @@ async function audit(refundId, approved, remark = '') {
   try {
     const { data } = await paymentApi.auditRefund(refundId, { approved, remark })
     const refund = data?.data ?? data
-    message.value = `退款单 ${refund.refundId} 已${approved ? '同意' : '驳回'}`
+    message.value = `退款单 ${refund?.refundId || refundId} 已${approved ? '同意' : '驳回'}`
     if (refunds.value.some((r) => r.refundId === refundId)) {
       await load()
     }
@@ -70,14 +70,14 @@ onMounted(load)
         />
         <button
           class="px-4 py-2 rounded-md border border-gray-300 text-gray-600 text-sm hover:bg-gray-50 disabled:opacity-50"
-          :disabled="processing === manualRefundId"
+          :disabled="!manualRefundId || Boolean(processing)"
           @click="audit(manualRefundId, false)"
         >
           驳回
         </button>
         <button
           class="px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-50"
-          :disabled="processing === manualRefundId"
+          :disabled="!manualRefundId || Boolean(processing)"
           @click="audit(manualRefundId, true)"
         >
           同意退款
@@ -104,14 +104,14 @@ onMounted(load)
         <div class="flex justify-end gap-2 mt-3">
           <button
             class="px-3 py-1 rounded border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
-            :disabled="processing === r.refundId"
+            :disabled="Boolean(processing)"
             @click="audit(r.refundId, false)"
           >
             驳回
           </button>
           <button
             class="px-3 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700"
-            :disabled="processing === r.refundId"
+            :disabled="Boolean(processing)"
             @click="audit(r.refundId, true)"
           >
             同意

@@ -14,7 +14,8 @@ async function load() {
     // 契约中无专门“待审核商品”接口，先用商品列表按状态过滤
     const { data } = await productApi.list({ status: 'PENDING', size: 100 })
     const payload = data?.data ?? data
-    products.value = payload?.list || payload || []
+    // 兼容分页结构 { list, total } 与直接返回数组两种形式
+    products.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {

@@ -62,10 +62,15 @@ async function saveProfile() {
 }
 
 async function loadAddresses() {
+  const userId = auth.user?.userId
+  if (!userId) {
+    addressError.value = '登录状态已失效，请重新登录'
+    return
+  }
   addressLoading.value = true
   addressError.value = ''
   try {
-    addresses.value = unwrap(await addressApi.list(auth.user.userId)) || []
+    addresses.value = unwrap(await addressApi.list(userId)) || []
   } catch (err) {
     addressError.value = err.response?.data?.message || err.message || '加载地址失败'
   } finally {

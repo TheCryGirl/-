@@ -5,9 +5,19 @@ import { userApi } from '../api'
  * 全局登录态。用 reactive 而非 Pinia，项目规模还小，一个文件足够，
  * 避免为这点状态引入额外依赖。
  */
+function readStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    // 本地缓存被损坏时兜底，避免整个应用白屏
+    localStorage.removeItem('user')
+    return null
+  }
+}
+
 const state = reactive({
   token: localStorage.getItem('token') || '',
-  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  user: readStoredUser(),
 })
 
 function persist() {

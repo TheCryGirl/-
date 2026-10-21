@@ -13,7 +13,8 @@ async function load() {
   error.value = ''
   try {
     const { data } = await cartApi.get()
-    cart.value = data?.data ?? data ?? { items: [] }
+    const payload = data?.data ?? data
+    cart.value = { items: Array.isArray(payload?.items) ? payload.items : [] }
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {

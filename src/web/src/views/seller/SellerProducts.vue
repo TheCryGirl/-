@@ -108,12 +108,15 @@ onMounted(load)
                 下架
               </button>
               <button
-                v-if="p.status === 'OFF_SHELF' || p.status === 'REJECTED'"
+                v-if="p.status === 'OFF_SHELF'"
                 class="text-xs text-gray-600 hover:text-blue-600"
                 @click="updateStatus(p.productId, 'ON_SALE')"
               >
                 上架
               </button>
+              <span v-if="p.status === 'REJECTED'" class="text-xs text-gray-400">
+                请编辑后重新提交审核
+              </span>
             </td>
           </tr>
         </tbody>

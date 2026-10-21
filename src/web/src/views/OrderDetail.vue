@@ -248,7 +248,7 @@ onMounted(load)
           确认收货
         </button>
         <button
-          v-if="['PAID', 'SHIPPED', 'COMPLETED'].includes(order.status)"
+          v-if="['PAID', 'SHIPPED', 'COMPLETED'].includes(order.status) && !refundMessage"
           class="px-5 py-2 rounded-md border border-red-500 text-red-600 text-sm hover:bg-red-50"
           :disabled="processing"
           @click="openRefund"
