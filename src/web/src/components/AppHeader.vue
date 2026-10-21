@@ -1,41 +1,35 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { auth, isLoggedIn, logout } from '../stores/auth'
-import { messageApi } from '../api'
+import { auth, isLoggedIn, logout, isSeller, isAdmin } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const menuOpen = ref(false)
-const unread = ref(0)
-let timer = null
 
 const navItems = [
   { name: 'products', label: '商品市场' },
-  { name: 'my-products', label: '我的商品', auth: true },
-  { name: 'my-orders', label: '我的订单', auth: true },
-  { name: 'sell', label: '发布商品', auth: true },
+  { name: 'cart', label: '购物车', auth: true },
+  { name: 'orders', label: '我的订单', auth: true },
+]
+
+const sellerItems = [
+  { name: 'seller-products', label: '商品管理' },
+  { name: 'seller-shipments', label: '待发货' },
+  { name: 'seller-refunds', label: '退款审核' },
+]
+
+const adminItems = [
+  { name: 'admin-users', label: '用户管理' },
+  { name: 'admin-products', label: '商品审核' },
+  { name: 'admin-after-sales', label: '售后仲裁' },
 ]
 
 const visibleNav = computed(() => navItems.filter((n) => !n.auth || isLoggedIn.value))
-const userName = computed(() => auth.user?.name || auth.user?.userId || '')
+const userName = computed(() => auth.user?.nickname || auth.user?.account || '')
 
 function isActive(item) {
   return route.name === item.name
-}
-
-async function refreshUnread() {
-  if (!isLoggedIn.value) {
-    unread.value = 0
-    return
-  }
-  try {
-    const { data } = await messageApi.unreadCount(auth.user.userId)
-    unread.value = typeof data === 'number' ? data : (data?.count ?? 0)
-  } catch {
-    // 未读数失败不该打扰用户，静默忽略
-    unread.value = 0
-  }
 }
 
 function handleLogout() {
@@ -48,22 +42,13 @@ function goLogin() {
   sessionStorage.setItem('redirectAfterLogin', route.fullPath)
   router.push({ name: 'login' })
 }
-
-onMounted(() => {
-  refreshUnread()
-  timer = setInterval(refreshUnread, 30000)
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-})
 </script>
 
 <template>
   <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center gap-6">
       <RouterLink to="/products" class="text-lg font-bold text-blue-600 whitespace-nowrap">
-        校园二手交易平台
+        在线商城
       </RouterLink>
 
       <nav class="flex items-center gap-1 flex-1">
@@ -80,22 +65,49 @@ onUnmounted(() => {
         >
           {{ item.label }}
         </RouterLink>
+
+        <!-- 卖家中心 -->
+        <div v-if="isSeller" class="relative group">
+          <button
+            class="px-3 py-2 rounded-md text-sm transition-colors"
+            :class="sellerItems.some((i) => isActive(i)) ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-100'"
+          >
+            卖家中心 ▾
+          </button>
+          <div class="absolute left-0 top-full hidden group-hover:block bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[120px]">
+            <RouterLink
+              v-for="item in sellerItems"
+              :key="item.name"
+              :to="{ name: item.name }"
+              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              {{ item.label }}
+            </RouterLink>
+          </div>
+        </div>
+
+        <!-- 管理中心 -->
+        <div v-if="isAdmin" class="relative group">
+          <button
+            class="px-3 py-2 rounded-md text-sm transition-colors"
+            :class="adminItems.some((i) => isActive(i)) ? 'bg-blue-50 text-blue-600 font-medium' : 'text-gray-600 hover:bg-gray-100'"
+          >
+            管理中心 ▾
+          </button>
+          <div class="absolute left-0 top-full hidden group-hover:block bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[120px]">
+            <RouterLink
+              v-for="item in adminItems"
+              :key="item.name"
+              :to="{ name: item.name }"
+              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              {{ item.label }}
+            </RouterLink>
+          </div>
+        </div>
       </nav>
 
       <template v-if="isLoggedIn">
-        <RouterLink
-          :to="{ name: 'messages' }"
-          class="relative px-3 py-2 rounded-md text-sm text-gray-600 hover:bg-gray-100"
-        >
-          消息
-          <span
-            v-if="unread > 0"
-            class="absolute -top-0.5 right-0 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center"
-          >
-            {{ unread > 99 ? '99+' : unread }}
-          </span>
-        </RouterLink>
-
         <div class="relative">
           <button
             class="px-3 py-2 rounded-md text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-1"
@@ -110,7 +122,13 @@ onUnmounted(() => {
             @click="menuOpen = false"
           >
             <RouterLink
-              :to="{ name: 'my-orders' }"
+              :to="{ name: 'profile' }"
+              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              个人中心
+            </RouterLink>
+            <RouterLink
+              :to="{ name: 'orders' }"
               class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             >
               我的订单
