@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.OrderItemMapper">
+
+    <resultMap id="ItemMap" type="com.mall.order.entity.OrderItem">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="productTitle" column="product_title"/>
+        <result property="specName" column="spec_name"/>
+        <result property="priceSnapshot" column="price_snapshot"/>
+        <result property="quantity" column="quantity"/>
+        <result property="subtotal" column="subtotal"/>
+        <result property="mainImage" column="main_image"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="isDeleted" column="is_deleted"/>
+    </resultMap>
+
+    <insert id="insertBatch">
+        INSERT INTO order_item(order_id, sku_id, product_id, product_title, spec_name, price_snapshot,
+                               quantity, subtotal, main_image, seller_id, created_at, is_deleted)
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (#{item.orderId}, #{item.skuId}, #{item.productId}, #{item.productTitle}, #{item.specName},
+             #{item.priceSnapshot}, #{item.quantity}, #{item.subtotal}, #{item.mainImage}, #{item.sellerId},
+             #{item.createdAt}, 0)
+        </foreach>
+    </insert>
+
+    <select id="selectByOrderId" resultMap="ItemMap">
+        SELECT id, order_id, sku_id, product_id, product_title, spec_name, price_snapshot,
+               quantity, subtotal, main_image, seller_id, created_at, is_deleted
+        FROM order_item
+        WHERE order_id = #{orderId} AND is_deleted = 0
+        ORDER BY id
+    </select>
+
+    <update id="softDeleteByOrderId">
+        UPDATE order_item
+        SET is_deleted = 1
+        WHERE order_id = #{orderId} AND is_deleted = 0
+    </update>
+</mapper>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.CompensationMapper">
+
+    <resultMap id="CompensationMap" type="com.mall.order.entity.OrderCompensation">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="status" column="status"/>
+        <result property="retryCount" column="retry_count"/>
+        <result property="nextRetryAt" column="next_retry_at"/>
+        <result property="lastError" column="last_error"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.mall.order.entity.OrderCompensation">
+        INSERT INTO order_compensation(order_id, status, retry_count, next_retry_at, last_error, created_at, updated_at)
+        VALUES (#{orderId}, #{status}, #{retryCount}, #{nextRetryAt}, #{lastError}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="selectByOrderId" resultMap="CompensationMap">
+        SELECT id, order_id, status, retry_count, next_retry_at, last_error, created_at, updated_at
+        FROM order_compensation
+        WHERE order_id = #{orderId}
+    </select>
+
+    <select id="selectDue" resultMap="CompensationMap">
+        SELECT id, order_id, status, retry_count, next_retry_at, last_error, created_at, updated_at
+        FROM order_compensation
+        WHERE status = 'PENDING' AND next_retry_at &lt;= #{now}
+        ORDER BY next_retry_at
+        LIMIT #{limit}
+    </select>
+
+    <update id="markDone">
+        UPDATE order_compensation
+        SET status = 'DONE', last_error = NULL, updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <update id="scheduleRetry">
+        UPDATE order_compensation
+        SET retry_count = #{retryCount}, next_retry_at = #{nextRetryAt}, last_error = #{lastError},
+            updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+
+    <update id="markDead">
+        UPDATE order_compensation
+        SET status = 'DEAD', last_error = #{lastError}, updated_at = #{now}
+        WHERE id = #{id}
+    </update>
+</mapper>
