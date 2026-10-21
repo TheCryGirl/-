@@ -3,6 +3,7 @@ package com.mall.user.service.impl;
 import com.mall.user.common.*;
 import com.mall.user.dto.request.LoginRequest;
 import com.mall.user.dto.request.RegisterRequest;
+import com.mall.user.dto.request.RoleRequest;
 import com.mall.user.dto.request.UpdateProfileRequest;
 import com.mall.user.dto.request.UpdateStatusRequest;
 import com.mall.user.dto.response.LoginResponse;
@@ -177,6 +178,30 @@ public class UserServiceImpl implements UserService {
         UserStatus newStatus = UserStatus.valueOf(request.getStatus());
         userMapper.updateStatusById(targetUserId, newStatus.name());
         log.info("管理员变更用户状态, operatorId={}, targetUserId={}, status={}", operatorId, targetUserId, newStatus);
+    }
+
+    @Override
+    @Transactional
+    public void updateRole(String operatorId, String targetUserId, RoleRequest request) {
+        User operator = userMapper.selectById(operatorId);
+        if (operator == null || operator.getRole() != Role.ADMIN) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限执行该操作");
+        }
+        User target = userMapper.selectById(targetUserId);
+        if (target == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND, "用户不存在");
+        }
+        // 避免管理员把自己降级后无人可管理系统
+        if (targetUserId.equals(operatorId)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "不能变更自己的角色");
+        }
+
+        Role newRole = Role.valueOf(request.getRole());
+        if (target.getRole() == newRole) {
+            return;
+        }
+        userMapper.updateRoleById(targetUserId, newRole.name(), operatorId);
+        log.info("管理员变更用户角色, operatorId={}, targetUserId={}, role={}", operatorId, targetUserId, newRole);
     }
 
     private UserResponse toResponse(User user) {

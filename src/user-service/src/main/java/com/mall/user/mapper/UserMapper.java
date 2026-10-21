@@ -25,6 +25,10 @@ public interface UserMapper {
     int updateStatusById(@Param("userId") String userId,
                          @Param("status") String status);
 
+    int updateRoleById(@Param("userId") String userId,
+                       @Param("role") String role,
+                       @Param("updatedBy") String updatedBy);
+
     List<User> selectPage(@Param("role") String role,
                           @Param("status") String status,
                           @Param("keyword") String keyword,

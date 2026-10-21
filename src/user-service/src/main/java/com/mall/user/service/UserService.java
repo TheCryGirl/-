@@ -2,6 +2,7 @@ package com.mall.user.service;
 
 import com.mall.user.dto.request.LoginRequest;
 import com.mall.user.dto.request.RegisterRequest;
+import com.mall.user.dto.request.RoleRequest;
 import com.mall.user.dto.request.UpdateProfileRequest;
 import com.mall.user.dto.request.UpdateStatusRequest;
 import com.mall.user.dto.response.LoginResponse;
@@ -24,4 +25,6 @@ public interface UserService {
     PageResponse<UserResponse> listUsers(int page, int size, String role, String status, String keyword);
 
     void updateStatus(String operatorId, String targetUserId, UpdateStatusRequest request);
+
+    void updateRole(String operatorId, String targetUserId, RoleRequest request);
 }

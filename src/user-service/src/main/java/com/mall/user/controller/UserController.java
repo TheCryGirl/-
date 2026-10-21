@@ -87,6 +87,19 @@ public class UserController {
         return Result.success(null);
     }
 
+    @PutMapping("/{userId}/role")
+    public Result<Void> updateRole(
+            @RequestHeader("X-User-Id") String operatorId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @PathVariable("userId") String targetUserId,
+            @Valid @RequestBody RoleRequest request) {
+        if (!ROLE_ADMIN.equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限执行该操作");
+        }
+        userService.updateRole(operatorId, targetUserId, request);
+        return Result.success(null);
+    }
+
     @GetMapping("/{userId}/addresses")
     public Result<List<AddressResponse>> listAddresses(
             @RequestHeader("X-User-Id") String currentUserId,

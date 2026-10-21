@@ -50,6 +50,13 @@ jwt:
   secret: ${JWT_SECRET:dev-only-secret-please-change-in-production-0123456789}
   expiration-hours: ${JWT_EXPIRATION_HOURS:168}
 
+# 初始管理员引导：注册接口只创建 BUYER，管理端需要 ADMIN 才能使用。
+# 仅在配置了账号与口令时生效；未配置则跳过，不会写入任何默认口令。
+admin:
+  bootstrap:
+    account: ${ADMIN_BOOTSTRAP_ACCOUNT:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+
 management:
   endpoints:
     web:

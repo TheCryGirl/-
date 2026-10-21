@@ -57,6 +57,15 @@
           AND is_deleted = 0
     </update>
 
+    <update id="updateRoleById">
+        UPDATE `user`
+        SET role = #{role},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
     <select id="selectPage" resultType="com.mall.user.entity.User">
         SELECT user_id, account, nickname, phone, avatar, role, status,
                created_at, updated_at, created_by, updated_by, is_deleted
