@@ -9,22 +9,21 @@ const error = ref('')
 const ok = ref('')
 
 const form = reactive({
-  userId: '',
-  name: '',
+  account: '',
+  nickname: '',
   password: '',
   confirm: '',
-  age: '',
-  sex: '男',
-  address: '',
   phone: '',
 })
 
 function validate() {
-  if (!form.userId.trim()) return '请填写账号'
-  if (!form.name.trim()) return '请填写昵称'
-  if (form.password.length < 6) return '密码至少 6 位'
+  if (!form.account.trim()) return '请填写账号'
+  if (!/^[a-zA-Z0-9_]{4,20}$/.test(form.account.trim())) return '账号须为 4-20 位字母、数字或下划线'
+  if (!form.nickname.trim()) return '请填写昵称'
+  if (form.nickname.trim().length < 2 || form.nickname.trim().length > 20) return '昵称须为 2-20 位'
+  if (form.password.length < 6 || form.password.length > 32) return '密码须为 6-32 位'
   if (form.password !== form.confirm) return '两次输入的密码不一致'
-  if (form.phone && !/^\d{11}$/.test(form.phone)) return '手机号应为 11 位数字'
+  if (form.phone && !/^1[3-9]\d{9}$/.test(form.phone)) return '手机号格式不正确'
   return ''
 }
 
@@ -38,26 +37,17 @@ async function submit() {
   error.value = ''
   ok.value = ''
   try {
-    const payload = {
-      userId: form.userId.trim(),
-      name: form.name.trim(),
+    await userApi.register({
+      account: form.account.trim(),
+      nickname: form.nickname.trim(),
       password: form.password,
-      age: form.age || null,
-      sex: form.sex,
-      address: form.address || null,
-      phone: form.phone || null,
-    }
-    await userApi.register(payload)
+      phone: form.phone || undefined,
+    })
     ok.value = '注册成功，正在跳转到登录页…'
     setTimeout(() => router.push({ name: 'login' }), 900)
   } catch (err) {
     const body = err.response?.data
-    error.value =
-      typeof body === 'string' && body
-        ? body
-        : err.response?.status === 400
-          ? '账号或昵称已被占用'
-          : '注册失败，请稍后重试'
+    error.value = body?.message || err.message || '注册失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -72,35 +62,19 @@ async function submit() {
     <form class="grid sm:grid-cols-2 gap-4" @submit.prevent="submit">
       <div>
         <label class="block text-sm text-gray-600 mb-1">账号 *</label>
-        <input v-model="form.userId" type="text" class="field" />
+        <input v-model="form.account" type="text" class="field" placeholder="4-20 位字母数字下划线" />
       </div>
       <div>
         <label class="block text-sm text-gray-600 mb-1">昵称 *</label>
-        <input v-model="form.name" type="text" class="field" />
+        <input v-model="form.nickname" type="text" class="field" placeholder="2-20 位" />
       </div>
       <div>
         <label class="block text-sm text-gray-600 mb-1">密码 *</label>
-        <input v-model="form.password" type="password" class="field" />
+        <input v-model="form.password" type="password" class="field" placeholder="6-32 位" />
       </div>
       <div>
         <label class="block text-sm text-gray-600 mb-1">确认密码 *</label>
         <input v-model="form.confirm" type="password" class="field" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">年龄</label>
-        <input v-model="form.age" type="number" min="1" max="120" class="field" />
-      </div>
-      <div>
-        <label class="block text-sm text-gray-600 mb-1">性别</label>
-        <select v-model="form.sex" class="field">
-          <option value="男">男</option>
-          <option value="女">女</option>
-          <option value="保密">保密</option>
-        </select>
-      </div>
-      <div class="sm:col-span-2">
-        <label class="block text-sm text-gray-600 mb-1">宿舍地址</label>
-        <input v-model="form.address" type="text" class="field" />
       </div>
       <div class="sm:col-span-2">
         <label class="block text-sm text-gray-600 mb-1">手机号</label>

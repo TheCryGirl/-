@@ -2,56 +2,46 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { productApi } from '../api'
-import { auth, isLoggedIn } from '../stores/auth'
-import { purchaseApi } from '../api'
 import ProductCard from '../components/ProductCard.vue'
 
 const router = useRouter()
 
 const products = ref([])
+const categories = ref([])
 const loading = ref(false)
 const error = ref('')
 
 const keyword = ref('')
-const classification = ref('')
-const sortBy = ref('default')
-const priceRange = ref({ low: '', high: '' })
+const categoryId = ref('')
+const sort = ref('default')
+const priceRange = ref({ min: '', max: '' })
 
-const PAGE_SIZE = 12
 const page = ref(1)
+const size = ref(20)
+const total = ref(0)
 
-const toast = ref('')
-let toastTimer = null
-function showToast(msg) {
-  toast.value = msg
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => (toast.value = ''), 2200)
-}
+const sortOptions = [
+  { value: 'default', label: '默认排序' },
+  { value: 'newest', label: '最新发布' },
+  { value: 'price_asc', label: '价格从低到高' },
+  { value: 'price_desc', label: '价格从高到低' },
+]
 
-async function load() {
+async function load(resetPage = true) {
+  if (resetPage) page.value = 1
   loading.value = true
   error.value = ''
   try {
-    let data = []
+    const params = { page: page.value, size: size.value, sort: sort.value }
+    if (keyword.value.trim()) params.keyword = keyword.value.trim()
+    if (categoryId.value) params.categoryId = categoryId.value
+    if (priceRange.value.min) params.minPrice = priceRange.value.min * 100
+    if (priceRange.value.max) params.maxPrice = priceRange.value.max * 100
 
-    if (priceRange.value.low !== '' && priceRange.value.high !== '') {
-      const res = await productApi.byPriceRange(priceRange.value.low, priceRange.value.high)
-      data = res.data || []
-    } else if (keyword.value.trim()) {
-      const res = await productApi.search(keyword.value.trim())
-      data = res.data || []
-    } else if (classification.value.trim()) {
-      const res = await productApi.byClassification(classification.value.trim())
-      data = res.data || []
-    } else {
-      // 默认展示在售商品
-      const res = await productApi.byStatus(1)
-      data = res.data || []
-    }
-
-    if (!Array.isArray(data)) data = data.list || data.content || []
-    products.value = data
-    page.value = 1
+    const { data } = await productApi.list(params)
+    const payload = data?.data ?? data
+    products.value = Array.isArray(payload) ? payload : payload?.list || []
+    total.value = payload?.total ?? products.value.length
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
     products.value = []
@@ -60,62 +50,39 @@ async function load() {
   }
 }
 
-const sorted = computed(() => {
-  const arr = [...products.value]
-  const num = (v) => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : 0
+async function loadCategories() {
+  try {
+    const { data } = await productApi.categories()
+    categories.value = data?.data ?? data ?? []
+  } catch {
+    categories.value = []
   }
-  if (sortBy.value === 'price-asc') arr.sort((a, b) => num(a.price) - num(b.price))
-  else if (sortBy.value === 'price-desc') arr.sort((a, b) => num(b.price) - num(a.price))
-  else if (sortBy.value === 'newest')
-    arr.sort((a, b) =>
-      String(b.createTime || b.createdAt || '').localeCompare(
-        String(a.createTime || a.createdAt || ''),
-      ),
-    )
-  return arr
-})
-
-const totalPages = computed(() => Math.max(1, Math.ceil(sorted.value.length / PAGE_SIZE)))
-const paged = computed(() =>
-  sorted.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
-)
+}
 
 function resetFilters() {
   keyword.value = ''
-  classification.value = ''
-  priceRange.value = { low: '', high: '' }
-  sortBy.value = 'default'
+  categoryId.value = ''
+  sort.value = 'default'
+  priceRange.value = { min: '', max: '' }
   load()
 }
 
-async function want(product) {
-  if (!isLoggedIn.value) {
-    sessionStorage.setItem('redirectAfterLogin', '/products')
-    router.push({ name: 'login' })
-    return
-  }
-  try {
-    await purchaseApi.create(product.productId ?? product.id)
-    showToast('已向卖家发起购买申请，请到消息页沟通')
-  } catch (err) {
-    showToast(err.response?.data?.message || '发起申请失败')
-  }
+function openDetail(product) {
+  router.push({ name: 'product-detail', params: { id: product.productId } })
 }
 
-function openDetail(product) {
-  const id = product.productId ?? product.id
-  if (id) router.push({ name: 'product-detail', params: { id } })
-}
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
 let searchTimer = null
 watch(keyword, () => {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(load, 400)
+  searchTimer = setTimeout(() => load(), 400)
 })
 
-onMounted(load)
+onMounted(() => {
+  loadCategories()
+  load()
+})
 </script>
 
 <template>
@@ -129,27 +96,31 @@ onMounted(load)
           placeholder="搜索商品名称"
           class="flex-1 min-w-50 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <input
-          v-model="classification"
-          type="text"
-          placeholder="分类"
-          class="w-32 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
         <select
-          v-model="sortBy"
+          v-model="categoryId"
           class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          @change="load()"
         >
-          <option value="default">默认排序</option>
-          <option value="newest">最新发布</option>
-          <option value="price-asc">价格从低到高</option>
-          <option value="price-desc">价格从高到低</option>
+          <option value="">全部分类</option>
+          <option v-for="c in categories" :key="c.categoryId" :value="c.categoryId">
+            {{ c.name }}
+          </option>
+        </select>
+        <select
+          v-model="sort"
+          class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          @change="load()"
+        >
+          <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
         </select>
       </div>
 
       <div class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="text-gray-500">价格区间</span>
+        <span class="text-gray-500">价格区间（元）</span>
         <input
-          v-model="priceRange.low"
+          v-model.number="priceRange.min"
           type="number"
           min="0"
           placeholder="最低"
@@ -157,7 +128,7 @@ onMounted(load)
         />
         <span class="text-gray-400">—</span>
         <input
-          v-model="priceRange.high"
+          v-model.number="priceRange.max"
           type="number"
           min="0"
           placeholder="最高"
@@ -165,7 +136,7 @@ onMounted(load)
         />
         <button
           class="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-          @click="load"
+          @click="load()"
         >
           查询
         </button>
@@ -183,15 +154,8 @@ onMounted(load)
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-base font-medium text-gray-800">
           商品市场
-          <span class="text-sm text-gray-400 font-normal">共 {{ sorted.length }} 件</span>
+          <span class="text-sm text-gray-400 font-normal">共 {{ total }} 件</span>
         </h2>
-        <RouterLink
-          v-if="isLoggedIn"
-          :to="{ name: 'sell' }"
-          class="text-sm text-blue-600 hover:underline"
-        >
-          + 发布商品
-        </RouterLink>
       </div>
 
       <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
@@ -201,17 +165,15 @@ onMounted(load)
         <button class="ml-2 text-blue-600 underline" @click="load">重试</button>
       </div>
 
-      <div v-else-if="!paged.length" class="py-16 text-center text-gray-400 text-sm">
+      <div v-else-if="!products.length" class="py-16 text-center text-gray-400 text-sm">
         没有找到符合条件的商品
       </div>
 
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         <ProductCard
-          v-for="p in paged"
-          :key="p.productId ?? p.id"
+          v-for="p in products"
+          :key="p.productId"
           :product="p"
-          :current-user-id="auth.user?.userId || ''"
-          @want="want"
           @click="openDetail"
         />
       </div>
@@ -221,7 +183,7 @@ onMounted(load)
         <button
           class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
           :disabled="page === 1"
-          @click="page--"
+          @click="page--; load(false)"
         >
           上一页
         </button>
@@ -229,18 +191,11 @@ onMounted(load)
         <button
           class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
           :disabled="page === totalPages"
-          @click="page++"
+          @click="page++; load(false)"
         >
           下一页
         </button>
       </div>
     </section>
-
-    <div
-      v-if="toast"
-      class="fixed left-1/2 -translate-x-1/2 bottom-24 px-4 py-2 rounded-md bg-gray-800 text-white text-sm shadow-lg z-50"
-    >
-      {{ toast }}
-    </div>
   </div>
 </template>

@@ -1,6 +1,5 @@
 <script setup>
 import AppHeader from './components/AppHeader.vue'
-import AiAssistant from './components/AiAssistant.vue'
 </script>
 
 <template>
@@ -10,8 +9,7 @@ import AiAssistant from './components/AiAssistant.vue'
       <RouterView />
     </main>
     <footer class="py-4 text-center text-xs text-gray-400 border-t border-gray-200">
-      校园二手交易平台 · 软件工程课程实验
+      在线商城 · 软件工程课程实验
     </footer>
-    <AiAssistant />
   </div>
 </template>
