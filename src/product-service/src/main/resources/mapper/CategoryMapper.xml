@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.CategoryMapper">
+    <select id="selectAll" resultType="com.mall.product.entity.Category">
+        SELECT category_id, parent_id, name, sort_no, is_deleted
+        FROM category
+        WHERE is_deleted = 0
+        ORDER BY sort_no, category_id
+    </select>
+</mapper>

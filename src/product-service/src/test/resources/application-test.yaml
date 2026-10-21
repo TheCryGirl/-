@@ -1,0 +1,33 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:product;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE;LOCK_TIMEOUT=10000
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 40
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+      data-locations: classpath:data-h2.sql
+      encoding: UTF-8
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mall.product.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+product:
+  upload-dir: target/test-uploads
+  internal-token: ""
+  reservation:
+    scan-interval-ms: 3600000

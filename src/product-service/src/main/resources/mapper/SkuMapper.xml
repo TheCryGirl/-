@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.SkuMapper">
+
+    <resultMap id="SkuMap" type="com.mall.product.entity.Sku">
+        <id property="skuId" column="sku_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="specName" column="spec_name"/>
+        <result property="price" column="price"/>
+        <result property="stockAvailable" column="stock_available"/>
+        <result property="stockLocked" column="stock_locked"/>
+        <result property="version" column="version"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="isDeleted" column="is_deleted"/>
+    </resultMap>
+
+    <sql id="skuColumns">
+        sku_id, product_id, spec_name, price, stock_available, stock_locked, version,
+        created_at, updated_at, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.product.entity.Sku">
+        INSERT INTO sku(sku_id, product_id, spec_name, price, stock_available, stock_locked, version,
+                        created_at, updated_at, is_deleted)
+        VALUES (#{skuId}, #{productId}, #{specName}, #{price}, #{stockAvailable}, 0, 0,
+                #{createdAt}, #{updatedAt}, 0)
+    </insert>
+
+    <select id="selectById" resultMap="SkuMap">
+        SELECT <include refid="skuColumns"/>
+        FROM sku
+        WHERE sku_id = #{skuId} AND is_deleted = 0
+    </select>
+
+    <select id="selectByProductId" resultMap="SkuMap">
+        SELECT <include refid="skuColumns"/>
+        FROM sku
+        WHERE product_id = #{productId} AND is_deleted = 0
+        ORDER BY spec_name
+    </select>
+
+    <update id="updateStockAvailable">
+        UPDATE sku
+        SET stock_available = #{stockAvailable}, version = version + 1, updated_at = NOW()
+        WHERE sku_id = #{skuId} AND is_deleted = 0
+    </update>
+
+    <update id="reserve">
+        UPDATE sku
+        SET stock_locked = stock_locked + #{quantity},
+            stock_available = stock_available - #{quantity},
+            version = version + 1,
+            updated_at = NOW()
+        WHERE sku_id = #{skuId}
+          AND is_deleted = 0
+          AND stock_available &gt;= #{quantity}
+          AND EXISTS (
+              SELECT 1 FROM product p
+              WHERE p.product_id = sku.product_id
+                AND p.is_deleted = 0
+                AND p.status = 'ON_SALE'
+          )
+    </update>
+
+    <update id="restore">
+        UPDATE sku
+        SET stock_locked = stock_locked - #{quantity},
+            stock_available = stock_available + #{quantity},
+            version = version + 1,
+            updated_at = NOW()
+        WHERE sku_id = #{skuId}
+          AND is_deleted = 0
+          AND stock_locked &gt;= #{quantity}
+    </update>
+
+    <update id="confirm">
+        UPDATE sku
+        SET stock_locked = stock_locked - #{quantity},
+            version = version + 1,
+            updated_at = NOW()
+        WHERE sku_id = #{skuId}
+          AND is_deleted = 0
+          AND stock_locked &gt;= #{quantity}
+    </update>
+
+    <update id="softDeleteByProductId">
+        UPDATE sku
+        SET is_deleted = 1, updated_at = NOW()
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </update>
+</mapper>
+
