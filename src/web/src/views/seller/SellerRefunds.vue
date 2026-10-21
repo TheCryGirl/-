@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { paymentApi } from '../../api'
+import { paymentApi, unwrapResult } from '../../api'
 
 const refunds = ref([])
 const loading = ref(true)
@@ -13,8 +13,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    // 接口契约暂未定义“卖家退款列表”，先保持空列表；有列表数据后按 refundId 渲染即可
-    refunds.value = []
+    const { data } = await paymentApi.refunds({ status: 'PENDING', page: 1, size: 50 })
+    const payload = unwrapResult(data)
+    refunds.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {
@@ -32,8 +33,12 @@ async function audit(refundId, approved, remark = '') {
   message.value = ''
   try {
     const { data } = await paymentApi.auditRefund(refundId, { approved, remark })
-    const refund = data?.data ?? data
-    message.value = `退款单 ${refund?.refundId || refundId} 已${approved ? '同意' : '驳回'}`
+    const refund = unwrapResult(data)
+    if (!refund) {
+      error.value = data?.message || '审核失败'
+      return
+    }
+    message.value = `退款单 ${refund.refundId || refundId} 已${approved ? '同意' : '驳回'}`
     if (refunds.value.some((r) => r.refundId === refundId)) {
       await load()
     }
@@ -84,7 +89,7 @@ onMounted(load)
         </button>
       </div>
       <p class="text-xs text-gray-400">
-        卖家退款列表接口尚未在《05-接口契约》中定义，待后端补充后本页会自动展示待审核退款单。
+        列表来自 GET /api/payments/refunds?status=PENDING；也可以直接输入退款单号审核。
       </p>
     </section>
 
@@ -100,6 +105,7 @@ onMounted(load)
           <span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">待审核</span>
         </div>
         <p class="text-sm text-gray-900">退款金额：¥{{ formatPrice(r.amount) }}</p>
+        <p class="text-xs text-gray-400">订单：{{ r.orderId }} · 申请时间：{{ r.createdAt || '—' }}</p>
         <p class="text-sm text-gray-500">原因：{{ r.reason || '—' }}</p>
         <div class="flex justify-end gap-2 mt-3">
           <button

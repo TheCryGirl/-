@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { paymentApi } from '../../api'
+import { paymentApi, unwrapResult } from '../../api'
 
 const tickets = ref([])
 const loading = ref(true)
@@ -13,8 +13,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    // 契约中尚无售后工单（after_sale_ticket）查询接口，先保持空列表
-    tickets.value = []
+    const { data } = await paymentApi.refunds({ status: 'PENDING', page: 1, size: 50 })
+    const payload = unwrapResult(data)
+    tickets.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   } finally {
@@ -36,9 +37,14 @@ async function arbitrate(refundId, approved) {
       approved,
       remark: 'ADMIN_ARBITRATION',
     })
-    const refund = data?.data ?? data
-    message.value = `售后单 ${refund?.refundId || refundId} 已裁定：${approved ? '支持买家退款' : '驳回退款申请'}`
+    const refund = unwrapResult(data)
+    if (!refund) {
+      error.value = data?.message || '仲裁失败'
+      return
+    }
+    message.value = `售后单 ${refund.refundId || refundId} 已裁定：${approved ? '支持买家退款' : '驳回退款申请'}`
     manualRefundId.value = ''
+    await load()
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '仲裁失败'
   } finally {
@@ -84,7 +90,7 @@ onMounted(load)
         </button>
       </div>
       <p class="text-xs text-gray-400">
-        售后工单列表接口尚未在《05-接口契约》中定义；当前管理员可直接对争议退款单做出最终裁定。
+        列表来自待审核退款单，管理员可直接对争议退款单做出最终裁定；也可以按退款单号操作。
       </p>
     </section>
 
@@ -94,12 +100,12 @@ onMounted(load)
     </div>
 
     <div v-else class="bg-white rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-100">
-      <div v-for="t in tickets" :key="t.ticketId" class="p-4">
+      <div v-for="t in tickets" :key="t.refundId" class="p-4">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-sm text-gray-500">售后单：{{ t.ticketId }}</span>
-          <span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">待仲裁</span>
+          <span class="text-sm text-gray-500">退款单：{{ t.refundId }}</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">待审核</span>
         </div>
-        <p class="text-sm text-gray-900">订单：{{ t.orderNo }}</p>
+        <p class="text-sm text-gray-900">订单：{{ t.orderId }}</p>
         <p class="text-sm text-gray-700">退款金额：¥{{ formatPrice(t.amount) }}</p>
         <p class="text-sm text-gray-500">原因：{{ t.reason || '—' }}</p>
         <div class="flex justify-end gap-2 mt-3">
