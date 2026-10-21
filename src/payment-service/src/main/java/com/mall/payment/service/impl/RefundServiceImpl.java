@@ -6,6 +6,7 @@ import com.mall.payment.common.IdGenerator;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.RefundStatus;
 import com.mall.payment.dto.request.RefundRequest;
+import com.mall.payment.dto.response.PageResponse;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.entity.Payment;
 import com.mall.payment.entity.Refund;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 退款实现。
@@ -113,6 +116,21 @@ public class RefundServiceImpl implements RefundService {
     }
 
     @Override
+    public PageResponse<RefundResponse> listRefunds(int page, int size, String status) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        String normalizedStatus = normalizeStatus(status);
+
+        int offset = (safePage - 1) * safeSize;
+        long total = refundMapper.countPage(normalizedStatus);
+        List<RefundResponse> list = refundMapper.selectPage(normalizedStatus, offset, safeSize)
+                .stream()
+                .map(RefundResponse::from)
+                .collect(Collectors.toList());
+        return PageResponse.of(safePage, safeSize, total, list);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public RefundResponse autoRefund(Payment payment, String reason) {
         Payment latest = paymentMapper.selectById(payment.getPaymentId());
@@ -135,5 +153,16 @@ public class RefundServiceImpl implements RefundService {
         log.warn("订单取消自动退款完成, paymentId={}, refundId={}, amount={}",
                 latest.getPaymentId(), audited.getRefundId(), audited.getAmount());
         return audited;
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        try {
+            return RefundStatus.valueOf(status.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "退款状态不合法");
+        }
     }
 }

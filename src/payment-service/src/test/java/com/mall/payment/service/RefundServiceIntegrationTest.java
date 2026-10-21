@@ -5,6 +5,7 @@ import com.mall.payment.client.ProductClient;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.dto.request.RefundRequest;
+import com.mall.payment.dto.response.PageResponse;
 import com.mall.payment.dto.response.RefundResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -97,6 +98,28 @@ class RefundServiceIntegrationTest {
 
         BizException exception = assertThrows(BizException.class,
                 () -> refundService.auditRefund(refund.getRefundId(), false, "SELLER01", "重复审核"));
+
+        assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
+    }
+
+    @Test
+    void listsRefundsByStatus() {
+        RefundResponse pending = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(5000L));
+        RefundResponse rejected = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(1000L));
+        refundService.auditRefund(rejected.getRefundId(), false, "SELLER01", "不符合条件");
+
+        PageResponse<RefundResponse> all = refundService.listRefunds(1, 10, null);
+        assertEquals(2, all.getTotal());
+
+        PageResponse<RefundResponse> pendingPage = refundService.listRefunds(1, 10, "PENDING");
+        assertEquals(1, pendingPage.getTotal());
+        assertEquals(pending.getRefundId(), pendingPage.getList().get(0).getRefundId());
+    }
+
+    @Test
+    void rejectsInvalidRefundStatus() {
+        BizException exception = assertThrows(BizException.class,
+                () -> refundService.listRefunds(1, 10, "UNKNOWN"));
 
         assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
     }

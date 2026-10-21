@@ -5,6 +5,7 @@ import com.mall.payment.entity.Refund;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 退款单数据访问。
@@ -23,4 +24,10 @@ public interface RefundMapper {
                     @Param("auditedBy") String auditedBy,
                     @Param("auditRemark") String auditRemark,
                     @Param("auditedAt") LocalDateTime auditedAt);
+
+    List<Refund> selectPage(@Param("status") String status,
+                            @Param("offset") int offset,
+                            @Param("size") int size);
+
+    long countPage(@Param("status") String status);
 }

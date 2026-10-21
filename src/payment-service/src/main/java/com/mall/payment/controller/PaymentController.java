@@ -8,6 +8,7 @@ import com.mall.payment.dto.request.CreatePaymentRequest;
 import com.mall.payment.dto.request.PaymentCallbackRequest;
 import com.mall.payment.dto.request.RefundRequest;
 import com.mall.payment.dto.response.CreatePaymentResponse;
+import com.mall.payment.dto.response.PageResponse;
 import com.mall.payment.dto.response.PaymentDetailResponse;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.service.CallbackResult;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -71,6 +73,18 @@ public class PaymentController {
         return result.isSuccess()
                 ? Result.success(null)
                 : Result.fail(result.getCode(), result.getMessage());
+    }
+
+    @GetMapping("/refunds")
+    public Result<PageResponse<RefundResponse>> listRefunds(
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String status) {
+        if (!ROLE_SELLER.equals(role) && !ROLE_ADMIN.equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限查看退款列表");
+        }
+        return Result.success(refundService.listRefunds(page, size, status));
     }
 
     @PostMapping("/{paymentId}/refund")

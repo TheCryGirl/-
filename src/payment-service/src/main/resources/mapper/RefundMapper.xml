@@ -40,4 +40,24 @@
           AND status = 'PENDING'
           AND is_deleted = 0
     </update>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.Refund">
+        SELECT <include refid="columns"/>
+        FROM refund
+        WHERE is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM refund
+        WHERE is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
 </mapper>
