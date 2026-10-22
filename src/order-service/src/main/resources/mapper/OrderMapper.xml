@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.OrderMapper">
+
+    <resultMap id="OrderMap" type="com.mall.order.entity.Order">
+        <id property="orderId" column="order_id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="buyerId" column="buyer_id"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="status" column="status"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="payAmount" column="pay_amount"/>
+        <result property="receiver" column="receiver"/>
+        <result property="receiverPhone" column="receiver_phone"/>
+        <result property="addressFull" column="address_full"/>
+        <result property="trackingNo" column="tracking_no"/>
+        <result property="expireAt" column="expire_at"/>
+        <result property="paidAt" column="paid_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="isDeleted" column="is_deleted"/>
+        <result property="inventoryReleased" column="inventory_released"/>
+    </resultMap>
+
+    <sql id="orderColumns">
+        order_id, order_no, buyer_id, seller_id, status, total_amount, pay_amount,
+        receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
+        created_at, updated_at, created_by, updated_by, is_deleted, inventory_released
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.order.entity.Order">
+        INSERT INTO `order`(order_id, order_no, buyer_id, seller_id, status, total_amount, pay_amount,
+                            receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
+                            created_at, updated_at, created_by, updated_by, is_deleted, inventory_released)
+        VALUES (#{orderId}, #{orderNo}, #{buyerId}, #{sellerId}, #{status}, #{totalAmount}, #{payAmount},
+                #{receiver}, #{receiverPhone}, #{addressFull}, #{trackingNo}, #{expireAt}, #{paidAt},
+                #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0, 0)
+    </insert>
+
+    <select id="selectById" resultMap="OrderMap">
+        SELECT <include refid="orderColumns"/>
+        FROM `order`
+        WHERE order_id = #{orderId} AND is_deleted = 0
+    </select>
+
+    <select id="selectList" resultMap="OrderMap">
+        SELECT <include refid="orderColumns"/>
+        FROM `order`
+        WHERE is_deleted = 0
+        <choose>
+            <when test="buyerId != null and buyerId != ''">
+                AND buyer_id = #{buyerId}
+            </when>
+            <when test="sellerId != null and sellerId != ''">
+                AND seller_id = #{sellerId}
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(*)
+        FROM `order`
+        WHERE is_deleted = 0
+        <choose>
+            <when test="buyerId != null and buyerId != ''">
+                AND buyer_id = #{buyerId}
+            </when>
+            <when test="sellerId != null and sellerId != ''">
+                AND seller_id = #{sellerId}
+            </when>
+            <otherwise>
+                AND 1 = 0
+            </otherwise>
+        </choose>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <select id="selectTimeoutCandidates" resultType="string">
+        SELECT order_id
+        FROM `order`
+        WHERE status = 'PENDING_PAYMENT'
+          AND created_at &lt;= #{deadline}
+          AND is_deleted = 0
+        ORDER BY created_at
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectUnreleasedCancelled" resultType="string">
+        SELECT order_id
+        FROM `order`
+        WHERE status = 'CANCELLED'
+          AND inventory_released = 0
+          AND is_deleted = 0
+        ORDER BY updated_at
+        LIMIT #{limit}
+    </select>
+
+    <update id="markPaid">
+        UPDATE `order`
+        SET status = 'PAID', paid_at = #{paidAt}, updated_at = #{paidAt}
+        WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT' AND is_deleted = 0
+    </update>
+
+    <update id="markShipped">
+        UPDATE `order`
+        SET status = 'SHIPPED', tracking_no = #{trackingNo}, updated_at = #{updatedAt}
+        WHERE order_id = #{orderId} AND status = 'PAID' AND is_deleted = 0
+    </update>
+
+    <update id="markCompleted">
+        UPDATE `order`
+        SET status = 'COMPLETED', updated_at = #{updatedAt}
+        WHERE order_id = #{orderId} AND status = 'SHIPPED' AND is_deleted = 0
+    </update>
+
+    <update id="markCancelled">
+        UPDATE `order`
+        SET status = 'CANCELLED', updated_at = #{updatedAt}
+        WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT' AND is_deleted = 0
+    </update>
+
+    <update id="markRefunded">
+        UPDATE `order`
+        SET status = 'REFUNDED', updated_at = #{updatedAt}
+        WHERE order_id = #{orderId}
+          AND status IN ('PAID', 'SHIPPED', 'COMPLETED')
+          AND is_deleted = 0
+    </update>
+
+    <update id="markInventoryReleased">
+        UPDATE `order`
+        SET inventory_released = 1, updated_at = NOW()
+        WHERE order_id = #{orderId} AND is_deleted = 0
+    </update>
+
+    <update id="softDelete">
+        UPDATE `order`
+        SET is_deleted = 1, updated_at = NOW()
+        WHERE order_id = #{orderId} AND is_deleted = 0
+    </update>
+</mapper>
+

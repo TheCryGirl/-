@@ -1,0 +1,76 @@
+server:
+  port: 9004
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/mall_order?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 2
+      connection-timeout: 3000
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      encoding: UTF-8
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        namespace: ${NACOS_NAMESPACE:public}
+        enabled: ${NACOS_ENABLED:true}
+        fail-fast: false
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mall.order.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+services:
+  # 留空时通过 Nacos 服务名发现；本地联调可指定直连地址
+  product-url: ${PRODUCT_SERVICE_URL:}
+  cart-url: ${CART_SERVICE_URL:}
+  user-url: ${USER_SERVICE_URL:}
+
+order:
+  internal-token: ${INTERNAL_TOKEN:}
+  timeout:
+    minutes: ${ORDER_TIMEOUT_MINUTES:30}
+    scan-interval-ms: 60000
+    batch-size: 100
+  compensation:
+    max-retry: 8
+  jobs:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.mall.order: debug
