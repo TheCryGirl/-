@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.ProductMapper">
+
+    <resultMap id="ProductMap" type="com.mall.product.entity.Product">
+        <id property="productId" column="product_id"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="title" column="title"/>
+        <result property="subtitle" column="subtitle"/>
+        <result property="mainImage" column="main_image"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="status" column="status"/>
+        <result property="salesCount" column="sales_count"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="isDeleted" column="is_deleted"/>
+    </resultMap>
+
+    <sql id="productColumns">
+        product_id, seller_id, title, subtitle, main_image, category_id, status, sales_count,
+        created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.product.entity.Product">
+        INSERT INTO product(product_id, seller_id, title, subtitle, main_image, category_id, status,
+                            sales_count, created_at, updated_at, created_by, updated_by, is_deleted)
+        VALUES (#{productId}, #{sellerId}, #{title}, #{subtitle}, #{mainImage}, #{categoryId}, #{status},
+                0, #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0)
+    </insert>
+
+    <update id="updateInfo" parameterType="com.mall.product.entity.Product">
+        UPDATE product
+        <set>
+            <if test="title != null and title != ''">title = #{title},</if>
+            <if test="subtitle != null">subtitle = #{subtitle},</if>
+            <if test="mainImage != null">main_image = #{mainImage},</if>
+            <if test="categoryId != null and categoryId != ''">category_id = #{categoryId},</if>
+            status = 'PENDING',
+            updated_at = #{updatedAt},
+            updated_by = #{updatedBy}
+        </set>
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE product
+        SET status = #{status}, updated_at = NOW(), updated_by = #{updatedBy}
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </update>
+
+    <update id="softDelete">
+        UPDATE product
+        SET is_deleted = 1, status = 'OFF_SHELF', updated_at = NOW(), updated_by = #{updatedBy}
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </update>
+
+    <select id="selectById" resultMap="ProductMap">
+        SELECT <include refid="productColumns"/>
+        FROM product
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </select>
+
+    <sql id="publicWhere">
+        p.is_deleted = 0
+        AND p.status = 'ON_SALE'
+        AND s.is_deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND p.title LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="categoryId != null and categoryId != ''">
+            AND p.category_id = #{categoryId}
+        </if>
+        <if test="minPrice != null">
+            AND s.price &gt;= #{minPrice}
+        </if>
+        <if test="maxPrice != null">
+            AND s.price &lt;= #{maxPrice}
+        </if>
+    </sql>
+
+    <select id="selectPublicList" resultType="com.mall.product.dto.response.ProductListItem">
+        SELECT p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id, p.status,
+               MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock,
+               p.created_at
+        FROM product p
+        JOIN sku s ON s.product_id = p.product_id
+        WHERE <include refid="publicWhere"/>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 p.status, p.created_at, p.sales_count
+        HAVING SUM(s.stock_available) &gt; 0
+        ORDER BY
+        <choose>
+            <when test="sort == 'newest'">p.created_at DESC</when>
+            <when test="sort == 'price_asc'">price ASC</when>
+            <when test="sort == 'price_desc'">price DESC</when>
+            <when test="sort == 'sales_desc'">p.sales_count DESC</when>
+            <otherwise>p.created_at DESC</otherwise>
+        </choose>
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countPublic" resultType="long">
+        SELECT COUNT(*)
+        FROM (
+            SELECT p.product_id
+            FROM product p
+            JOIN sku s ON s.product_id = p.product_id
+            WHERE <include refid="publicWhere"/>
+            GROUP BY p.product_id
+            HAVING SUM(s.stock_available) &gt; 0
+        ) t
+    </select>
+
+    <select id="selectMine" resultType="com.mall.product.dto.response.ProductListItem">
+        SELECT p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id, p.status,
+               MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock,
+               p.created_at
+        FROM product p
+        LEFT JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE p.seller_id = #{sellerId} AND p.is_deleted = 0
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 p.status, p.created_at
+        ORDER BY p.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countMine" resultType="long">
+        SELECT COUNT(*)
+        FROM product p
+        WHERE p.seller_id = #{sellerId} AND p.is_deleted = 0
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+    </select>
+
+    <update id="incrementSales">
+        UPDATE product
+        SET sales_count = sales_count + #{quantity}, updated_at = NOW()
+        WHERE product_id = #{productId} AND is_deleted = 0
+    </update>
+</mapper>
+

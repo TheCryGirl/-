@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.StockReservationMapper">
+
+    <resultMap id="ReservationMap" type="com.mall.product.entity.StockReservation">
+        <id property="reservationId" column="reservation_id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="status" column="status"/>
+        <result property="expireAt" column="expire_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="ItemMap" type="com.mall.product.entity.StockReservationItem">
+        <id property="id" column="id"/>
+        <result property="reservationId" column="reservation_id"/>
+        <result property="skuId" column="sku_id"/>
+        <result property="quantity" column="quantity"/>
+    </resultMap>
+
+    <insert id="insertReservation" parameterType="com.mall.product.entity.StockReservation">
+        INSERT INTO stock_reservation(reservation_id, order_id, status, expire_at, created_at, updated_at)
+        VALUES (#{reservationId}, #{orderId}, #{status}, #{expireAt}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <insert id="insertItem" parameterType="com.mall.product.entity.StockReservationItem">
+        INSERT INTO stock_reservation_item(reservation_id, sku_id, quantity)
+        VALUES (#{reservationId}, #{skuId}, #{quantity})
+    </insert>
+
+    <select id="selectByOrderId" resultMap="ReservationMap">
+        SELECT reservation_id, order_id, status, expire_at, created_at, updated_at
+        FROM stock_reservation
+        WHERE order_id = #{orderId}
+    </select>
+
+    <select id="selectItems" resultMap="ItemMap">
+        SELECT id, reservation_id, sku_id, quantity
+        FROM stock_reservation_item
+        WHERE reservation_id = #{reservationId}
+        ORDER BY sku_id
+    </select>
+
+    <select id="selectExpiredOrderIds" resultType="string">
+        SELECT order_id
+        FROM stock_reservation
+        WHERE status = 'LOCKED' AND expire_at &lt;= #{now}
+        ORDER BY expire_at
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE stock_reservation
+        SET status = #{to}, updated_at = #{updatedAt}
+        WHERE order_id = #{orderId} AND status = #{from}
+    </update>
+</mapper>

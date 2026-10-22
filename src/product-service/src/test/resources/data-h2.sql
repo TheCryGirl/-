@@ -1,0 +1,9 @@
+MERGE INTO category KEY(category_id) VALUES ('C01', NULL, '教材图书', 1, 0);
+MERGE INTO category KEY(category_id) VALUES ('C02', NULL, '数码电子', 2, 0);
+MERGE INTO category KEY(category_id) VALUES ('C03', NULL, '生活用品', 3, 0);
+MERGE INTO category KEY(category_id) VALUES ('C04', NULL, '服饰鞋包', 4, 0);
+MERGE INTO category KEY(category_id) VALUES ('C05', NULL, '运动户外', 5, 0);
+MERGE INTO category KEY(category_id) VALUES ('C0101', 'C01', '专业教材', 1, 0);
+MERGE INTO category KEY(category_id) VALUES ('C0102', 'C01', '考研资料', 2, 0);
+MERGE INTO category KEY(category_id) VALUES ('C0201', 'C02', '手机平板', 1, 0);
+MERGE INTO category KEY(category_id) VALUES ('C0202', 'C02', '电脑配件', 2, 0);
