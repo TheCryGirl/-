@@ -28,6 +28,30 @@
           AND is_deleted = 0
     </select>
 
+    <sql id="pageWhere">
+        WHERE is_deleted = 0
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="buyerId != null and buyerId != ''">
+            AND buyer_id = #{buyerId}
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.Refund">
+        SELECT <include refid="columns"/>
+        FROM refund
+        <include refid="pageWhere"/>
+        ORDER BY created_at DESC, refund_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM refund
+        <include refid="pageWhere"/>
+    </select>
+
     <update id="updateAudit">
         UPDATE refund
         SET status = #{status},
