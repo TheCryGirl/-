@@ -57,7 +57,7 @@ class PaymentCreationIntegrationTest {
 
     @Test
     void createsPaymentUsingAmountFromOrder() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
         CreatePaymentResponse response = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
@@ -70,13 +70,13 @@ class PaymentCreationIntegrationTest {
         assertEquals(0L, saved.getRefundedAmount());
         assertEquals(BUYER_ID, saved.getBuyerId());
         assertEquals(1, count("payment"));
-        verify(orderClient, times(1)).getOrder(ORDER_ID);
+        verify(orderClient, times(1)).getOrder(ORDER_ID, BUYER_ID);
         verifyNoInteractions(productClient);
     }
 
     @Test
     void sameIdempotencyKeyReturnsSamePaymentWithoutQueryingOrderAgain() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
         CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
@@ -84,12 +84,12 @@ class PaymentCreationIntegrationTest {
 
         assertEquals(first.getPaymentId(), second.getPaymentId());
         assertEquals(1, count("payment"));
-        verify(orderClient, times(1)).getOrder(ORDER_ID);
+        verify(orderClient, times(1)).getOrder(ORDER_ID, BUYER_ID);
     }
 
     @Test
     void pendingPaymentIsReusedForSameOrderWithDifferentIdempotencyKey() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
         CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
@@ -97,12 +97,12 @@ class PaymentCreationIntegrationTest {
 
         assertEquals(first.getPaymentId(), second.getPaymentId());
         assertEquals(1, count("payment"));
-        verify(orderClient, times(1)).getOrder(ORDER_ID);
+        verify(orderClient, times(1)).getOrder(ORDER_ID, BUYER_ID);
     }
 
     @Test
     void rejectsOrderOwnedByAnotherBuyer() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, "U20002")));
 
         BizException exception = assertThrows(BizException.class,
@@ -114,7 +114,7 @@ class PaymentCreationIntegrationTest {
 
     @Test
     void rejectsOrderNotPendingPayment() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PAID, BUYER_ID)));
 
         BizException exception = assertThrows(BizException.class,

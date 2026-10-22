@@ -26,10 +26,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 支付单接口。服务内部路径不带 /api，与《05-接口契约》1.2 节一致。
+ * 支付单接口。
+ *
+ * <p>同时映射带 /api 与不带 /api 的路径：项目其他服务也这样处理，
+ * 用于兼容网关当前按 /api/** 原样转发、尚未统一 StripPrefix 的现状。
  */
 @RestController
-@RequestMapping("/payments")
+@RequestMapping({"/payments", "/api/payments"})
 @RequiredArgsConstructor
 public class PaymentController {
 

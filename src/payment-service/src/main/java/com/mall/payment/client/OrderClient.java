@@ -6,6 +6,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 /**
  * 订单服务内部接口。生产环境按服务名从 Nacos 发现，
@@ -15,7 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 public interface OrderClient {
 
     @GetMapping("/orders/{orderId}")
-    Result<OrderDTO> getOrder(@PathVariable("orderId") String orderId);
+    Result<OrderDTO> getOrder(@PathVariable("orderId") String orderId,
+                              @RequestHeader("X-User-Id") String userId);
 
     @PostMapping("/orders/{orderId}/paid")
     Result<Void> markPaid(@PathVariable("orderId") String orderId);

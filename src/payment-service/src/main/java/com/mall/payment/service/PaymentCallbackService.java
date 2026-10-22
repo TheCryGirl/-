@@ -2,6 +2,7 @@ package com.mall.payment.service;
 
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
+import com.mall.payment.client.dto.ConfirmStockResponse;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.ErrorCode;
@@ -78,7 +79,7 @@ public class PaymentCallbackService {
 
     private OrderDTO queryOrder(Payment payment) {
         try {
-            Result<OrderDTO> result = orderClient.getOrder(payment.getOrderId());
+            Result<OrderDTO> result = orderClient.getOrder(payment.getOrderId(), payment.getBuyerId());
             if (result == null || result.getCode() != 0 || result.getData() == null) {
                 log.error("查询订单失败, orderId={}, code={}",
                         payment.getOrderId(), result == null ? null : result.getCode());
@@ -86,7 +87,8 @@ public class PaymentCallbackService {
             }
             return result.getData();
         } catch (Exception e) {
-            log.error("调用订单服务失败, orderId={}", payment.getOrderId(), e);
+            log.error("调用订单服务失败, orderId={}, buyerId={}",
+                    payment.getOrderId(), payment.getBuyerId(), e);
             return null;
         }
     }
@@ -105,10 +107,16 @@ public class PaymentCallbackService {
 
     private void confirmStock(Payment payment) {
         try {
-            Result<Void> result = productClient.confirmStock(new StockConfirmRequest(payment.getOrderId()));
+            Result<ConfirmStockResponse> result =
+                    productClient.confirmStock(new StockConfirmRequest(payment.getOrderId()));
             if (result == null || result.getCode() != 0) {
                 log.error("确认扣减库存失败, orderId={}, code={}",
                         payment.getOrderId(), result == null ? null : result.getCode());
+                return;
+            }
+            ConfirmStockResponse data = result.getData();
+            if (data == null || !data.confirmed()) {
+                log.error("库存确认未生效, orderId={}, data={}", payment.getOrderId(), data);
             }
         } catch (Exception e) {
             log.error("确认扣减库存异常, orderId={}", payment.getOrderId(), e);
