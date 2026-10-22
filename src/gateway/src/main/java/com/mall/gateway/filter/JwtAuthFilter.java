@@ -13,6 +13,7 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -25,6 +26,9 @@ import reactor.core.publisher.Mono;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * JWT 鉴权过滤器。
@@ -47,17 +51,30 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
     /**
-     * 白名单：无需登录即可访问。
-     * 与契约 1.5 节保持一致，改这里要同步改契约。
+     * 仅 POST 可匿名访问的白名单。
+     * 支付回调由签名保证来源可信，不能要求登录。
      */
-    private static final List<String> WHITE_LIST = List.of(
+    private static final List<String> PUBLIC_POST = List.of(
             "/api/users/register",
             "/api/users/login",
-            "/api/products/**",
+            "/api/payments/callback"
+    );
+
+    /**
+     * 仅 GET 可匿名访问的白名单。
+     * 商品写操作（发布/修改/上下架/审核）与 /api/products/mine 必须登录，
+     * 因此不能笼统放行 /api/products/**。
+     */
+    private static final List<String> PUBLIC_GET = List.of(
             "/api/categories/**",
             "/images/**",
             "/actuator/**"
     );
+
+    private static final Pattern PRODUCT_DETAIL_PATH = Pattern.compile("^/api/products/([^/]+)$");
+
+    /** /api/products/{x} 中属于功能路径而非商品 ID 的保留字 */
+    private static final Set<String> PRODUCT_RESERVED_SEGMENTS = Set.of("mine", "skus", "images");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -69,8 +86,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
 
-        // 1. 白名单直接放行
-        if (isWhiteListed(path)) {
+        // 1. 白名单直接放行（按方法与路径精确判定）
+        if (isWhiteListed(request.getMethod(), path)) {
             return chain.filter(exchange);
         }
 
@@ -116,8 +133,26 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return chain.filter(exchange.mutate().request(mutated).build());
     }
 
-    private boolean isWhiteListed(String path) {
-        return WHITE_LIST.stream().anyMatch(pattern -> MATCHER.match(pattern, path));
+    private boolean isWhiteListed(HttpMethod method, String path) {
+        // 浏览器跨域预检不携带令牌，直接放行
+        if (method == HttpMethod.OPTIONS) {
+            return true;
+        }
+        if (method == HttpMethod.POST
+                && PUBLIC_POST.stream().anyMatch(pattern -> MATCHER.match(pattern, path))) {
+            return true;
+        }
+        if (method != HttpMethod.GET) {
+            return false;
+        }
+        if (PUBLIC_GET.stream().anyMatch(pattern -> MATCHER.match(pattern, path))) {
+            return true;
+        }
+        if ("/api/products".equals(path)) {
+            return true;
+        }
+        Matcher matcher = PRODUCT_DETAIL_PATH.matcher(path);
+        return matcher.matches() && !PRODUCT_RESERVED_SEGMENTS.contains(matcher.group(1));
     }
 
     /** 返回统一结构的 401 响应 */

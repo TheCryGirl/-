@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: user-service
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-h2.sql
+
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+
+# 测试资源中的 application.yaml 会整体替换主配置，MyBatis 的 XML 映射必须在这里重新声明
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.mall.user.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+jwt:
+  secret: test-secret-please-change-in-production-0123456789
+  expiration-hours: 1

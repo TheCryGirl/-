@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.AddressMapper">
+
+    <insert id="insert">
+        INSERT INTO address (address_id, user_id, receiver, phone, province, city, district, detail,
+                             is_default, created_at, updated_at, is_deleted)
+        VALUES (#{addressId}, #{userId}, #{receiver}, #{phone}, #{province}, #{city}, #{district},
+                #{detail}, #{isDefault}, #{createdAt}, #{updatedAt}, #{isDeleted})
+    </insert>
+
+    <select id="selectById" resultType="com.mall.user.entity.Address">
+        SELECT address_id, user_id, receiver, phone, province, city, district, detail,
+               is_default, created_at, updated_at, is_deleted
+        FROM address
+        WHERE address_id = #{addressId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectByUserId" resultType="com.mall.user.entity.Address">
+        SELECT address_id, user_id, receiver, phone, province, city, district, detail,
+               is_default, created_at, updated_at, is_deleted
+        FROM address
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+        ORDER BY is_default DESC, created_at DESC
+    </select>
+
+    <update id="updateById">
+        UPDATE address
+        <set>
+            <if test="receiver != null">receiver = #{receiver},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="province != null">province = #{province},</if>
+            <if test="city != null">city = #{city},</if>
+            <if test="district != null">district = #{district},</if>
+            <if test="detail != null">detail = #{detail},</if>
+            <if test="isDefault != null">is_default = #{isDefault},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE address_id = #{addressId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="deleteById">
+        UPDATE address
+        SET is_deleted = 1
+        WHERE address_id = #{addressId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="clearDefaultByUserId">
+        UPDATE address
+        SET is_default = 0
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="setDefaultById">
+        UPDATE address
+        SET is_default = 1
+        WHERE address_id = #{addressId}
+          AND is_deleted = 0
+    </update>
+</mapper>
