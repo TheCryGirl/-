@@ -29,6 +29,10 @@
 │   └── images/                渲染出的图表
 └── src/
     ├── campusEasy/            既有参考原型（Spring Boot）
+    ├── gateway/               API 网关（9000）
+    ├── user-service/          用户服务（9001）
+    ├── payment-service/       支付服务（9005）
+    ├── scripts/               本地一键启停脚本
     └── web/                   Vue 3 前端工程
 ```
 

@@ -21,26 +21,38 @@ spring:
           uri: lb://user-service
           predicates:
             - Path=/api/users/**
+          filters:
+            # 契约 1.2：下游服务路径不带 /api 前缀
+            - StripPrefix=1
         - id: product-service
           uri: lb://product-service
           predicates:
             - Path=/api/products/**,/api/categories/**
+          filters:
+            - StripPrefix=1
         - id: product-images
           uri: lb://product-service
           predicates:
             - Path=/images/**
+          # 静态图片路径与 product-service 一致，不加 StripPrefix
         - id: cart-service
           uri: lb://cart-service
           predicates:
             - Path=/api/cart/**
+          filters:
+            - StripPrefix=1
         - id: order-service
           uri: lb://order-service
           predicates:
             - Path=/api/orders/**
+          filters:
+            - StripPrefix=1
         - id: payment-service
           uri: lb://payment-service
           predicates:
             - Path=/api/payments/**
+          filters:
+            - StripPrefix=1
 
   # 下游服务超时控制，防止一个服务卡住拖垮整个网关
   http:

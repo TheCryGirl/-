@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { isLoggedIn } from '../stores/auth'
+import { isLoggedIn, currentRole } from '../stores/auth'
 
 const routes = [
   { path: '/', redirect: '/products' },
@@ -16,6 +16,42 @@ const routes = [
     meta: { title: '商品详情' },
   },
   {
+    path: '/cart',
+    name: 'cart',
+    component: () => import('../views/Cart.vue'),
+    meta: { title: '购物车', requiresAuth: true },
+  },
+  {
+    path: '/orders/confirm',
+    name: 'order-confirm',
+    component: () => import('../views/OrderConfirm.vue'),
+    meta: { title: '确认订单', requiresAuth: true },
+  },
+  {
+    path: '/orders/:id/pay',
+    name: 'order-pay',
+    component: () => import('../views/OrderPay.vue'),
+    meta: { title: '支付订单', requiresAuth: true },
+  },
+  {
+    path: '/orders',
+    name: 'orders',
+    component: () => import('../views/OrderList.vue'),
+    meta: { title: '我的订单', requiresAuth: true },
+  },
+  {
+    path: '/orders/:id',
+    name: 'order-detail',
+    component: () => import('../views/OrderDetail.vue'),
+    meta: { title: '订单详情', requiresAuth: true },
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('../views/Profile.vue'),
+    meta: { title: '个人中心', requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('../views/Login.vue'),
@@ -27,29 +63,55 @@ const routes = [
     component: () => import('../views/Register.vue'),
     meta: { title: '注册', guestOnly: true },
   },
+  // 卖家中心
   {
-    path: '/sell',
-    name: 'sell',
-    component: () => import('../views/Publish.vue'),
-    meta: { title: '发布商品', requiresAuth: true },
+    path: '/seller/products',
+    name: 'seller-products',
+    component: () => import('../views/seller/SellerProducts.vue'),
+    meta: { title: '商品管理', requiresAuth: true, role: 'SELLER' },
   },
   {
-    path: '/my/products',
-    name: 'my-products',
-    component: () => import('../views/MyProducts.vue'),
-    meta: { title: '我的商品', requiresAuth: true },
+    path: '/seller/products/new',
+    name: 'seller-product-new',
+    component: () => import('../views/seller/SellerProductEdit.vue'),
+    meta: { title: '发布商品', requiresAuth: true, role: 'SELLER' },
   },
   {
-    path: '/my/orders',
-    name: 'my-orders',
-    component: () => import('../views/MyOrders.vue'),
-    meta: { title: '我的订单', requiresAuth: true },
+    path: '/seller/products/:id/edit',
+    name: 'seller-product-edit',
+    component: () => import('../views/seller/SellerProductEdit.vue'),
+    meta: { title: '编辑商品', requiresAuth: true, role: 'SELLER' },
   },
   {
-    path: '/messages',
-    name: 'messages',
-    component: () => import('../views/Messages.vue'),
-    meta: { title: '消息', requiresAuth: true },
+    path: '/seller/shipments',
+    name: 'seller-shipments',
+    component: () => import('../views/seller/SellerShipments.vue'),
+    meta: { title: '待发货', requiresAuth: true, role: 'SELLER' },
+  },
+  {
+    path: '/seller/refunds',
+    name: 'seller-refunds',
+    component: () => import('../views/seller/SellerRefunds.vue'),
+    meta: { title: '退款审核', requiresAuth: true, role: 'SELLER' },
+  },
+  // 管理中心（管理员）
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: () => import('../views/admin/AdminUsers.vue'),
+    meta: { title: '用户管理', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
+    path: '/admin/products',
+    name: 'admin-products',
+    component: () => import('../views/admin/AdminProducts.vue'),
+    meta: { title: '商品审核', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
+    path: '/admin/after-sales',
+    name: 'admin-after-sales',
+    component: () => import('../views/admin/AdminAfterSales.vue'),
+    meta: { title: '售后仲裁', requiresAuth: true, role: 'ADMIN' },
   },
   { path: '/:pathMatch(.*)*', redirect: '/products' },
 ]
@@ -61,13 +123,16 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} - 校园二手交易平台` : '校园二手交易平台'
+  document.title = to.meta.title ? `${to.meta.title} - 在线商城` : '在线商城'
 
   if (to.meta.requiresAuth && !isLoggedIn.value) {
     sessionStorage.setItem('redirectAfterLogin', to.fullPath)
     return { name: 'login' }
   }
   if (to.meta.guestOnly && isLoggedIn.value) {
+    return { name: 'products' }
+  }
+  if (to.meta.role && currentRole.value !== 'ADMIN' && currentRole.value !== to.meta.role) {
     return { name: 'products' }
   }
   return true
