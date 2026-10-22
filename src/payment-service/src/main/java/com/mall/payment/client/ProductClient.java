@@ -1,5 +1,6 @@
 package com.mall.payment.client;
 
+import com.mall.payment.client.dto.ConfirmStockResponse;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.Result;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -13,5 +14,5 @@ import org.springframework.web.bind.annotation.RequestBody;
 public interface ProductClient {
 
     @PostMapping("/products/skus/confirm")
-    Result<Void> confirmStock(@RequestBody StockConfirmRequest request);
+    Result<ConfirmStockResponse> confirmStock(@RequestBody StockConfirmRequest request);
 }

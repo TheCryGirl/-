@@ -4,6 +4,8 @@ import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
+import com.mall.payment.common.PageResult;
+import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.RefundRequest;
 import com.mall.payment.dto.response.RefundResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,7 +16,13 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class RefundServiceIntegrationTest {
@@ -43,6 +51,7 @@ class RefundServiceIntegrationTest {
         jdbcTemplate.update("DELETE FROM payment_callback");
         jdbcTemplate.update("DELETE FROM payment");
         insertPaidPayment();
+        when(orderClient.markRefunded(ORDER_ID)).thenReturn(Result.success(null));
     }
 
     @Test
@@ -66,9 +75,11 @@ class RefundServiceIntegrationTest {
         assertEquals(11800L, refundedAmount());
         refundService.auditRefund(first.getRefundId(), true, "SELLER01", "同意");
         assertEquals("SUCCESS", paymentStatus());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
 
         refundService.auditRefund(second.getRefundId(), true, "SELLER01", "同意");
         assertEquals("REFUNDED", paymentStatus());
+        verify(orderClient, times(1)).markRefunded(ORDER_ID);
 
         BizException exception = assertThrows(BizException.class,
                 () -> refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(1L)));
@@ -82,12 +93,14 @@ class RefundServiceIntegrationTest {
 
         assertEquals(0L, refundedAmount());
         assertEquals("SUCCESS", paymentStatus());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
 
         RefundResponse full = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(11800L));
         refundService.auditRefund(full.getRefundId(), true, "SELLER01", "同意");
 
         assertEquals(11800L, refundedAmount());
         assertEquals("REFUNDED", paymentStatus());
+        verify(orderClient, times(1)).markRefunded(ORDER_ID);
     }
 
     @Test
@@ -99,6 +112,7 @@ class RefundServiceIntegrationTest {
                 () -> refundService.auditRefund(refund.getRefundId(), false, "SELLER01", "重复审核"));
 
         assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
     }
 
     @Test
@@ -110,13 +124,57 @@ class RefundServiceIntegrationTest {
         assertEquals(0, count("refund"));
     }
 
+    @Test
+    void listsRefundsWithBuyerIsolationStatusFilterAndPagination() {
+        insertPaidPayment("PAYTEST0000000000003", "P20261020000003",
+                "O50003", "U20002", 5000L);
+        refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(1000L));
+        refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(2000L));
+        refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(3000L));
+        RefundResponse otherBuyerRefund = refundService.createRefund(
+                "U20002", "PAYTEST0000000000003", refund(500L));
+
+        PageResult<RefundResponse> buyerPage = refundService.listRefunds(
+                BUYER_ID, "BUYER", "PENDING", 1, 2);
+        assertEquals(3, buyerPage.getTotal());
+        assertEquals(2, buyerPage.getPages());
+        assertEquals(2, buyerPage.getList().size());
+        assertTrue(buyerPage.getList().stream()
+                .allMatch(item -> BUYER_ID.equals(item.getBuyerId())));
+        assertFalse(buyerPage.getList().stream()
+                .anyMatch(item -> item.getRefundId().equals(otherBuyerRefund.getRefundId())));
+
+        PageResult<RefundResponse> secondPage = refundService.listRefunds(
+                BUYER_ID, "BUYER", "PENDING", 2, 2);
+        assertEquals(1, secondPage.getList().size());
+
+        PageResult<RefundResponse> reviewerPage = refundService.listRefunds(
+                "SELLER01", "SELLER", "PENDING", 1, 20);
+        assertEquals(4, reviewerPage.getTotal());
+
+        PageResult<RefundResponse> successPage = refundService.listRefunds(
+                BUYER_ID, "BUYER", "SUCCESS", 1, 20);
+        assertEquals(0, successPage.getTotal());
+        assertEquals(0, successPage.getPages());
+        assertTrue(successPage.getList().isEmpty());
+
+        BizException invalidStatus = assertThrows(BizException.class,
+                () -> refundService.listRefunds(BUYER_ID, "BUYER", "UNKNOWN", 1, 20));
+        assertEquals(ErrorCode.PARAM_INVALID, invalidStatus.getCode());
+    }
+
     private void insertPaidPayment() {
+        insertPaidPayment(PAYMENT_ID, PAY_NO, ORDER_ID, BUYER_ID, PAID_AMOUNT);
+    }
+
+    private void insertPaidPayment(String paymentId, String payNo, String orderId,
+                                   String buyerId, long amount) {
         jdbcTemplate.update("""
                 INSERT INTO payment (
                     payment_id, pay_no, order_id, buyer_id, channel, amount,
                     refunded_amount, status, paid_at, created_by, updated_by, is_deleted
                 ) VALUES (?, ?, ?, ?, 'MOCK', ?, 0, 'SUCCESS', CURRENT_TIMESTAMP, ?, ?, 0)
-                """, PAYMENT_ID, PAY_NO, ORDER_ID, BUYER_ID, PAID_AMOUNT, BUYER_ID, BUYER_ID);
+                """, paymentId, payNo, orderId, buyerId, amount, buyerId, buyerId);
     }
 
     private RefundRequest refund(long amount) {

@@ -56,3 +56,6 @@ CREATE TABLE refund (
     is_deleted      TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (refund_id)
 );
+
+CREATE INDEX idx_refund_status_created ON refund (status, created_at);
+CREATE INDEX idx_refund_buyer_status_created ON refund (buyer_id, status, created_at);

@@ -48,8 +48,8 @@ mybatis:
 payment:
   # MOCK 支付签名密钥，与前端、测试约定，不硬编码真实密钥
   mock-secret: ${MOCK_SECRET:mock-pay-secret}
-  # 服务间内部调用令牌，网关不会转发这个头
-  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+  # 服务间内部调用令牌，与 order/product 服务保持一致；未配置时开发期不校验
+  internal-token: ${INTERNAL_TOKEN:}
 
 services:
   # 留空时通过 Nacos 服务名发现；本地联调可指定直连地址

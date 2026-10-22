@@ -2,6 +2,7 @@ package com.mall.payment.service;
 
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
+import com.mall.payment.client.dto.ConfirmStockResponse;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.ErrorCode;
@@ -55,11 +56,15 @@ public class PaymentCallbackService {
                     payment.getPaymentId(), payment.getOrderId());
             return result;
         }
-        if (order.getStatus() == OrderStatus.CANCELLED) {
-            log.warn("订单已取消但收到支付成功回调，发起自动退款, paymentId={}, orderId={}",
-                    payment.getPaymentId(), payment.getOrderId());
+        if (order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.REFUNDED) {
+            String reason = order.getStatus() == OrderStatus.CANCELLED
+                    ? "订单已取消，支付款自动退回"
+                    : "订单已退款，重复支付款自动退回";
+            log.warn("订单已关闭但收到支付成功回调，发起自动退款, paymentId={}, orderId={}, orderStatus={}",
+                    payment.getPaymentId(), payment.getOrderId(), order.getStatus());
             try {
-                RefundResponse refund = refundService.autoRefund(payment, "订单已取消，支付款自动退回");
+                RefundResponse refund = refundService.autoRefund(payment, reason);
                 if (refund != null) {
                     log.warn("自动退款完成, paymentId={}, refundId={}, amount={}",
                             payment.getPaymentId(), refund.getRefundId(), refund.getAmount());
@@ -78,7 +83,7 @@ public class PaymentCallbackService {
 
     private OrderDTO queryOrder(Payment payment) {
         try {
-            Result<OrderDTO> result = orderClient.getOrder(payment.getOrderId());
+            Result<OrderDTO> result = orderClient.getOrder(payment.getOrderId(), payment.getBuyerId());
             if (result == null || result.getCode() != 0 || result.getData() == null) {
                 log.error("查询订单失败, orderId={}, code={}",
                         payment.getOrderId(), result == null ? null : result.getCode());
@@ -86,7 +91,8 @@ public class PaymentCallbackService {
             }
             return result.getData();
         } catch (Exception e) {
-            log.error("调用订单服务失败, orderId={}", payment.getOrderId(), e);
+            log.error("调用订单服务失败, orderId={}, buyerId={}",
+                    payment.getOrderId(), payment.getBuyerId(), e);
             return null;
         }
     }
@@ -105,10 +111,16 @@ public class PaymentCallbackService {
 
     private void confirmStock(Payment payment) {
         try {
-            Result<Void> result = productClient.confirmStock(new StockConfirmRequest(payment.getOrderId()));
+            Result<ConfirmStockResponse> result =
+                    productClient.confirmStock(new StockConfirmRequest(payment.getOrderId()));
             if (result == null || result.getCode() != 0) {
                 log.error("确认扣减库存失败, orderId={}, code={}",
                         payment.getOrderId(), result == null ? null : result.getCode());
+                return;
+            }
+            ConfirmStockResponse data = result.getData();
+            if (data == null || !data.confirmed()) {
+                log.error("库存确认未生效, orderId={}, data={}", payment.getOrderId(), data);
             }
         } catch (Exception e) {
             log.error("确认扣减库存异常, orderId={}", payment.getOrderId(), e);

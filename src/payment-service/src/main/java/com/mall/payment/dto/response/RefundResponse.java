@@ -17,6 +17,7 @@ public class RefundResponse {
     private String refundId;
     private String paymentId;
     private String orderId;
+    private String buyerId;
     private Long amount;
     private String reason;
     private RefundStatus status;
@@ -29,6 +30,7 @@ public class RefundResponse {
                 .refundId(refund.getRefundId())
                 .paymentId(refund.getPaymentId())
                 .orderId(refund.getOrderId())
+                .buyerId(refund.getBuyerId())
                 .amount(refund.getAmount())
                 .reason(refund.getReason())
                 .status(refund.getStatus())

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 开发与测试用的 MOCK 支付入口。
  */
 @RestController
-@RequestMapping("/payments/mock")
+@RequestMapping({"/payments/mock", "/api/payments/mock"})
 @RequiredArgsConstructor
 public class MockPaymentController {
 

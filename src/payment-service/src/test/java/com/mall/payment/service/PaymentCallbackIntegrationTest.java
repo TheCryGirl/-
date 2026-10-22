@@ -2,6 +2,7 @@ package com.mall.payment.service;
 
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
+import com.mall.payment.client.dto.ConfirmStockResponse;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.ErrorCode;
@@ -78,6 +79,7 @@ class PaymentCallbackIntegrationTest {
         assertEquals(1, count("payment_callback"));
         assertEquals("PROCESSED", callbackStatus("T-VALID"));
         verify(orderClient, times(1)).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
         verify(productClient, times(1)).confirmStock(any(StockConfirmRequest.class));
     }
 
@@ -143,7 +145,7 @@ class PaymentCallbackIntegrationTest {
 
     @Test
     void cancelledOrderTriggersAutomaticRefund() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(OrderStatus.CANCELLED)));
 
         CallbackResult result = callbackService.process(callback("T-CANCELLED", AMOUNT));
@@ -154,6 +156,24 @@ class PaymentCallbackIntegrationTest {
         assertEquals(1, count("refund"));
         assertEquals("SUCCESS", refundStatus());
         verify(orderClient, never()).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
+        verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
+    }
+
+    @Test
+    void refundedOrderTriggersAutomaticRefund() {
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
+                .thenReturn(Result.success(order(OrderStatus.REFUNDED)));
+
+        CallbackResult result = callbackService.process(callback("T-ORDER-REFUNDED", AMOUNT));
+
+        assertTrue(result.isSuccess());
+        assertEquals("REFUNDED", paymentStatus());
+        assertEquals(AMOUNT, paymentRefundedAmount());
+        assertEquals(1, count("refund"));
+        assertEquals("SUCCESS", refundStatus());
+        verify(orderClient, never()).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
         verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
     }
 
@@ -217,10 +237,11 @@ class PaymentCallbackIntegrationTest {
     }
 
     private void stubNormalOrder() {
-        when(orderClient.getOrder(ORDER_ID))
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(OrderStatus.PENDING_PAYMENT)));
         when(orderClient.markPaid(ORDER_ID)).thenReturn(Result.success(null));
-        when(productClient.confirmStock(any(StockConfirmRequest.class))).thenReturn(Result.success(null));
+        when(productClient.confirmStock(any(StockConfirmRequest.class)))
+                .thenReturn(Result.success(new ConfirmStockResponse(true)));
     }
 
     private OrderDTO order(OrderStatus status) {

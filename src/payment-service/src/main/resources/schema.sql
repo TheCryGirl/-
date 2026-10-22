@@ -60,5 +60,6 @@ CREATE TABLE IF NOT EXISTS refund (
     is_deleted      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
     PRIMARY KEY (refund_id),
     KEY idx_payment_created (payment_id, created_at),
-    KEY idx_buyer_created (buyer_id, created_at)
+    KEY idx_status_created (status, created_at),
+    KEY idx_buyer_status_created (buyer_id, status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单';

@@ -16,6 +16,10 @@ public class FeignConfig {
 
     @Bean
     public RequestInterceptor internalTokenInterceptor() {
-        return template -> template.header("X-Internal-Token", internalToken);
+        return template -> {
+            if (internalToken != null && !internalToken.isBlank()) {
+                template.header("X-Internal-Token", internalToken);
+            }
+        };
     }
 }

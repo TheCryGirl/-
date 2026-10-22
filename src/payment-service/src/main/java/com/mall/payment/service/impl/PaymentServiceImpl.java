@@ -61,7 +61,7 @@ public class PaymentServiceImpl implements PaymentService {
             return toCreateResponse(latest);
         }
 
-        OrderDTO order = fetchOrder(request.getOrderId());
+        OrderDTO order = fetchOrder(request.getOrderId(), buyerId);
         if (!buyerId.equals(order.getBuyerId())) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权支付该订单");
         }
@@ -121,12 +121,12 @@ public class PaymentServiceImpl implements PaymentService {
         return payment;
     }
 
-    private OrderDTO fetchOrder(String orderId) {
+    private OrderDTO fetchOrder(String orderId, String buyerId) {
         Result<OrderDTO> result;
         try {
-            result = orderClient.getOrder(orderId);
+            result = orderClient.getOrder(orderId, buyerId);
         } catch (Exception e) {
-            log.error("调用订单服务失败, orderId={}", orderId, e);
+            log.error("调用订单服务失败, orderId={}, buyerId={}", orderId, buyerId, e);
             throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "订单服务暂不可用，请稍后重试");
         }
         if (result == null) {
