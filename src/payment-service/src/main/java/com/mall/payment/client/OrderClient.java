@@ -21,4 +21,7 @@ public interface OrderClient {
 
     @PostMapping("/orders/{orderId}/paid")
     Result<Void> markPaid(@PathVariable("orderId") String orderId);
+
+    @PostMapping("/orders/{orderId}/refunded")
+    Result<Void> markRefunded(@PathVariable("orderId") String orderId);
 }

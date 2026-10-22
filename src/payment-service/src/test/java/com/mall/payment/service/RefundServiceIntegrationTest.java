@@ -5,6 +5,7 @@ import com.mall.payment.client.ProductClient;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.PageResult;
+import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.RefundRequest;
 import com.mall.payment.dto.response.RefundResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class RefundServiceIntegrationTest {
@@ -46,6 +51,7 @@ class RefundServiceIntegrationTest {
         jdbcTemplate.update("DELETE FROM payment_callback");
         jdbcTemplate.update("DELETE FROM payment");
         insertPaidPayment();
+        when(orderClient.markRefunded(ORDER_ID)).thenReturn(Result.success(null));
     }
 
     @Test
@@ -69,9 +75,11 @@ class RefundServiceIntegrationTest {
         assertEquals(11800L, refundedAmount());
         refundService.auditRefund(first.getRefundId(), true, "SELLER01", "同意");
         assertEquals("SUCCESS", paymentStatus());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
 
         refundService.auditRefund(second.getRefundId(), true, "SELLER01", "同意");
         assertEquals("REFUNDED", paymentStatus());
+        verify(orderClient, times(1)).markRefunded(ORDER_ID);
 
         BizException exception = assertThrows(BizException.class,
                 () -> refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(1L)));
@@ -85,12 +93,14 @@ class RefundServiceIntegrationTest {
 
         assertEquals(0L, refundedAmount());
         assertEquals("SUCCESS", paymentStatus());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
 
         RefundResponse full = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(11800L));
         refundService.auditRefund(full.getRefundId(), true, "SELLER01", "同意");
 
         assertEquals(11800L, refundedAmount());
         assertEquals("REFUNDED", paymentStatus());
+        verify(orderClient, times(1)).markRefunded(ORDER_ID);
     }
 
     @Test
@@ -102,6 +112,7 @@ class RefundServiceIntegrationTest {
                 () -> refundService.auditRefund(refund.getRefundId(), false, "SELLER01", "重复审核"));
 
         assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
+        verify(orderClient, never()).markRefunded(ORDER_ID);
     }
 
     @Test

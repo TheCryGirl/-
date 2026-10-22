@@ -56,11 +56,15 @@ public class PaymentCallbackService {
                     payment.getPaymentId(), payment.getOrderId());
             return result;
         }
-        if (order.getStatus() == OrderStatus.CANCELLED) {
-            log.warn("订单已取消但收到支付成功回调，发起自动退款, paymentId={}, orderId={}",
-                    payment.getPaymentId(), payment.getOrderId());
+        if (order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.REFUNDED) {
+            String reason = order.getStatus() == OrderStatus.CANCELLED
+                    ? "订单已取消，支付款自动退回"
+                    : "订单已退款，重复支付款自动退回";
+            log.warn("订单已关闭但收到支付成功回调，发起自动退款, paymentId={}, orderId={}, orderStatus={}",
+                    payment.getPaymentId(), payment.getOrderId(), order.getStatus());
             try {
-                RefundResponse refund = refundService.autoRefund(payment, "订单已取消，支付款自动退回");
+                RefundResponse refund = refundService.autoRefund(payment, reason);
                 if (refund != null) {
                     log.warn("自动退款完成, paymentId={}, refundId={}, amount={}",
                             payment.getPaymentId(), refund.getRefundId(), refund.getAmount());

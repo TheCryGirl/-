@@ -79,6 +79,7 @@ class PaymentCallbackIntegrationTest {
         assertEquals(1, count("payment_callback"));
         assertEquals("PROCESSED", callbackStatus("T-VALID"));
         verify(orderClient, times(1)).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
         verify(productClient, times(1)).confirmStock(any(StockConfirmRequest.class));
     }
 
@@ -155,6 +156,24 @@ class PaymentCallbackIntegrationTest {
         assertEquals(1, count("refund"));
         assertEquals("SUCCESS", refundStatus());
         verify(orderClient, never()).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
+        verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
+    }
+
+    @Test
+    void refundedOrderTriggersAutomaticRefund() {
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID))
+                .thenReturn(Result.success(order(OrderStatus.REFUNDED)));
+
+        CallbackResult result = callbackService.process(callback("T-ORDER-REFUNDED", AMOUNT));
+
+        assertTrue(result.isSuccess());
+        assertEquals("REFUNDED", paymentStatus());
+        assertEquals(AMOUNT, paymentRefundedAmount());
+        assertEquals(1, count("refund"));
+        assertEquals("SUCCESS", refundStatus());
+        verify(orderClient, never()).markPaid(ORDER_ID);
+        verify(orderClient, never()).markRefunded(ORDER_ID);
         verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
     }
 

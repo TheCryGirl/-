@@ -1,11 +1,13 @@
 package com.mall.payment.service.impl;
 
+import com.mall.payment.client.OrderClient;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
 import com.mall.payment.common.PageResult;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.RefundStatus;
+import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.RefundRequest;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.entity.Payment;
@@ -17,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,6 +41,7 @@ public class RefundServiceImpl implements RefundService {
 
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
+    private final OrderClient orderClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -89,6 +94,11 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RefundResponse auditRefund(String refundId, boolean approved, String auditedBy, String remark) {
+        return doAudit(refundId, approved, auditedBy, remark, true);
+    }
+
+    private RefundResponse doAudit(String refundId, boolean approved, String auditedBy,
+                                   String remark, boolean notifyOrder) {
         Refund refund = refundMapper.selectById(refundId);
         if (refund == null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "退款单不存在");
@@ -103,8 +113,9 @@ public class RefundServiceImpl implements RefundService {
             throw new BizException(ErrorCode.PARAM_INVALID, "退款单已被处理");
         }
 
+        boolean fullyRefunded = false;
         if (approved) {
-            paymentMapper.markRefundedIfFullyRefunded(refund.getPaymentId());
+            fullyRefunded = paymentMapper.markRefundedIfFullyRefunded(refund.getPaymentId()) > 0;
             log.info("退款审核通过, refundId={}, paymentId={}, amount={}, auditedBy={}",
                     refundId, refund.getPaymentId(), refund.getAmount(), auditedBy);
         } else {
@@ -114,7 +125,11 @@ public class RefundServiceImpl implements RefundService {
                     refundId, refund.getPaymentId(), refund.getAmount(), auditedBy);
         }
 
-        return RefundResponse.from(refundMapper.selectById(refundId));
+        RefundResponse response = RefundResponse.from(refundMapper.selectById(refundId));
+        if (approved && fullyRefunded && notifyOrder) {
+            scheduleOrderRefundedNotification(refund.getOrderId());
+        }
+        return response;
     }
 
     @Override
@@ -158,10 +173,43 @@ public class RefundServiceImpl implements RefundService {
         request.setAmount(remaining);
         request.setReason(reason);
         RefundResponse created = createRefund(latest.getBuyerId(), latest.getPaymentId(), request);
-        RefundResponse audited = auditRefund(created.getRefundId(), true, "SYSTEM", "订单取消自动退款");
-        log.warn("订单取消自动退款完成, paymentId={}, refundId={}, amount={}",
+        // 订单已取消/已退款，不能再调用 order-service 的 /refunded（它只接受已支付后的状态）
+        RefundResponse audited = doAudit(created.getRefundId(), true, "SYSTEM",
+                "订单关闭自动退款", false);
+        log.warn("订单关闭自动退款完成, paymentId={}, refundId={}, amount={}",
                 latest.getPaymentId(), audited.getRefundId(), audited.getAmount());
         return audited;
+    }
+
+    /**
+     * 本地事务提交后再通知订单服务，避免远程调用占用数据库连接，也避免远程失败回滚已成功的退款。
+     */
+    private void scheduleOrderRefundedNotification(String orderId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyOrderRefunded(orderId);
+                }
+            });
+        } else {
+            notifyOrderRefunded(orderId);
+        }
+    }
+
+    private void notifyOrderRefunded(String orderId) {
+        try {
+            Result<Void> result = orderClient.markRefunded(orderId);
+            if (result == null || result.getCode() != 0) {
+                log.error("通知订单退款完成失败, orderId={}, code={}, message={}",
+                        orderId, result == null ? null : result.getCode(),
+                        result == null ? null : result.getMessage());
+            } else {
+                log.info("通知订单退款完成, orderId={}", orderId);
+            }
+        } catch (Exception e) {
+            log.error("通知订单退款完成异常，需人工补偿, orderId={}", orderId, e);
+        }
     }
 
     private RefundStatus parseStatus(String status) {
