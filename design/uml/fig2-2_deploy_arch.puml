@@ -1,0 +1,82 @@
+@startuml fig2-2_deploy_arch
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 12
+skinparam node {
+  BackgroundColor #EAF1F8
+  BorderColor #2E5A88
+}
+skinparam component {
+  BackgroundColor #DCE8F5
+  BorderColor #2E5A88
+  ArrowColor #2E5A88
+}
+
+title 图 2-2 系统物理（部署）架构
+
+node "开发/验收主机 (单机)" as HOST {
+
+  node "前端运行时" as FE {
+    component "Vite Dev Server / 静态站点\n:5173" as VITE
+  }
+
+  node "JVM 进程组 (JDK 17)" as JVM {
+    component "gateway\n:9000" as GW
+    component "user-service\n:9001" as USER
+    component "product-service\n:9002" as PROD
+    component "cart-service\n:9003" as CART
+    component "order-service\n:9004" as ORDER
+    component "payment-service\n:9005" as PAY
+  }
+
+  node "基础设施" as BASE {
+    component "Nacos 2.3.2\n:8848 (单机模式)\n注册中心 + 配置中心" as NACOS
+    database "MySQL 8.4\n:3306" as MYSQL {
+      folder "mall_user" as D1
+      folder "mall_product" as D2
+      folder "mall_cart" as D3
+      folder "mall_order" as D4
+      folder "mall_payment" as D5
+    }
+  }
+}
+
+actor "用户浏览器" as U
+
+U --> VITE : HTTP
+VITE --> GW : /api 反向代理
+
+GW --> USER
+GW --> PROD
+GW --> CART
+GW --> ORDER
+GW --> PAY
+
+USER --> D1
+PROD --> D2
+CART --> D3
+ORDER --> D4
+PAY --> D5
+
+USER ..> NACOS
+PROD ..> NACOS
+CART ..> NACOS
+ORDER ..> NACOS
+PAY ..> NACOS
+GW ..> NACOS
+
+note right of NACOS
+  每个服务启动时注册，
+  按服务名 lb:// 负载均衡；
+  order-service 订阅
+  mall-platform.yml 配置
+end note
+
+note bottom of JVM
+  六个 JVM 进程独立部署，
+  各自持有独立数据源；
+  预留 Docker Compose 编排能力
+end note
+
+@enduml

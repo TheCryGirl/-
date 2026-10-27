@@ -1,0 +1,180 @@
+@startuml fig2-3_class_model
+skinparam dpi 200
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 11
+skinparam class {
+  BackgroundColor #EAF1F8
+  BorderColor #2E5A88
+  ArrowColor #2E5A88
+}
+skinparam classAttributeIconSize 0
+hide circle
+hide empty members
+
+title 图 2-3 核心类模型
+
+package "user-service" as SU {
+  class User <<实体>> {
+    - userId : String
+    - account : String
+    - passwordHash : String
+    - nickname : String
+    - phone : String
+    - role : Role
+    - status : UserStatus
+    + isActive() : boolean
+  }
+  class Address <<实体>> {
+    - addressId : String
+    - userId : String
+    - receiver : String
+    - phone : String
+    - province : String
+    - city : String
+    - detail : String
+    - isDefault : Boolean
+  }
+  class JwtUtil <<工具>> {
+    - key : SecretKey
+    + generateToken(userId, role) : String
+  }
+  User "1" -- "0..*" Address : 拥有
+  JwtUtil ..> User : 签发令牌
+}
+
+package "product-service" as SP {
+  class Product <<聚合根>> {
+    - productId : String
+    - sellerId : String
+    - title : String
+    - categoryId : String
+    - status : ProductStatus
+    + onSale() : boolean
+  }
+  class Sku <<实体>> {
+    - skuId : String
+    - productId : String
+    - specName : String
+    - price : long
+    - stockAvailable : int
+    - stockLocked : int
+    + available() : int
+  }
+  class Category <<实体>> {
+    - categoryId : String
+    - parentId : String
+    - name : String
+    - sortNo : int
+  }
+  class StockReservation <<实体>> {
+    - reservationId : String
+    - orderId : String
+    - status : ReservationStatus
+    - expireAt : LocalDateTime
+  }
+  Product "1" *-- "1..*" Sku : 包含
+  Category "1" -- "0..*" Product : 归类
+  Sku "1" -- "0..*" StockReservation : 预占
+}
+
+package "cart-service" as SC {
+  class Cart <<实体>> {
+    - cartId : String
+    - userId : String
+  }
+  class CartItem <<实体>> {
+    - cartItemId : String
+    - skuId : String
+    - productId : String
+    - quantity : int
+    - selected : Boolean
+    - isDeleted : Boolean
+  }
+  Cart "1" *-- "0..*" CartItem : 包含
+}
+
+package "order-service" as SO {
+  class Order <<聚合根>> {
+    - orderId : String
+    - orderNo : String
+    - buyerId : String
+    - sellerId : String
+    - status : OrderStatus
+    - totalAmount : long
+    - payAmount : long
+    - expireAt : LocalDateTime
+    + canTransitTo(target) : boolean
+  }
+  class OrderItem <<实体>> {
+    - orderId : String
+    - skuId : String
+    - productTitle : String
+    - priceSnapshot : long
+    - quantity : int
+  }
+  class OrderIdempotency <<实体>> {
+    - idemKey : String
+    - buyerId : String
+    - orderId : String
+    - status : IdempotencyStatus
+  }
+  class CompensationTask <<实体>> {
+    - orderId : String
+    - retryCount : int
+    - nextRetryAt : LocalDateTime
+    - status : CompensationStatus
+  }
+  Order "1" *-- "1..*" OrderItem : 包含
+  Order "1" -- "1" OrderIdempotency : 幂等
+  Order "1" -- "0..1" CompensationTask : 补偿
+}
+
+package "payment-service" as SPA {
+  class Payment <<实体>> {
+    - paymentId : String
+    - payNo : String
+    - orderId : String
+    - amount : long
+    - refundedAmount : long
+    - status : PaymentStatus
+  }
+  class Refund <<实体>> {
+    - refundId : String
+    - paymentId : String
+    - amount : long
+    - reason : String
+    - status : RefundStatus
+  }
+  class PaymentCallback <<实体>> {
+    - tradeNo : String
+    - processStatus : String
+  }
+  Payment "1" -- "0..*" Refund : 产生
+  Payment "1" -- "0..*" PaymentCallback : 回调
+}
+
+class OrderStatus <<枚举>> {
+  PENDING_PAYMENT
+  PAID
+  SHIPPED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+class PaymentStatus <<枚举>> {
+  PENDING
+  SUCCESS
+  REFUNDED
+  CLOSED
+}
+Order --> OrderStatus
+Payment --> PaymentStatus
+
+note right of Order
+  跨服务只通过 ID 引用，
+  不持有对方实体，
+  不跨库 JOIN
+end note
+
+@enduml

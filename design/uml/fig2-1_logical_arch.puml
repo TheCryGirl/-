@@ -1,0 +1,73 @@
+@startuml fig2-1_logical_arch
+skinparam dpi 200
+left to right direction
+
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 12
+skinparam component {
+  BackgroundColor #EAF1F8
+  BorderColor #2E5A88
+  ArrowColor #2E5A88
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #8FA8C4
+}
+
+title 图 2-1 系统逻辑架构
+
+package "客户端层" as CLIENT {
+  [浏览器\nVue 3 + Vite\n5173] as WEB
+}
+
+package "接入层" as EDGE {
+  [API 网关\nSpring Cloud Gateway 9000\nJWT 校验 / 路由 / 跨域] as GW
+}
+
+package "业务服务层" as SVC {
+  [用户服务\nuser-service 9001] as USER
+  [商品服务\nproduct-service 9002] as PROD
+  [购物车服务\ncart-service 9003] as CART
+  [订单服务\norder-service 9004] as ORDER
+  [支付服务\npayment-service 9005] as PAY
+}
+
+package "基础设施层" as INFRA {
+  [Nacos 2.3.2\n8848\n注册 + 配置] as NACOS
+  database "MySQL 8\n一服务一库" as DB
+}
+
+WEB --> GW : HTTP/JSON
+GW --> USER
+GW --> PROD
+GW --> CART
+GW --> ORDER
+GW --> PAY
+
+ORDER ..> PROD : 库存
+ORDER ..> CART : 购物车
+ORDER ..> USER : 地址
+PAY ..> ORDER : 通知
+PAY ..> PROD : 库存
+CART ..> PROD : 商品
+
+USER ---> DB
+PROD ---> DB
+CART ---> DB
+ORDER ---> DB
+PAY ---> DB
+
+SVC ..> NACOS : 注册 / 订阅
+
+note bottom of GW
+  解析 JWT 后注入
+  X-User-Id / X-User-Role，
+  下游不重复解析
+end note
+
+note bottom of INFRA
+  服务间同步调用走 OpenFeign，不经过网关；
+  异步补偿用数据库任务表 + 定时任务
+end note
+
+@enduml

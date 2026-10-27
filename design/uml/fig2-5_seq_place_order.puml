@@ -1,0 +1,57 @@
+@startuml fig2-5_seq_place_order
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 11
+skinparam sequence {
+  ArrowColor #2E5A88
+  ActorBorderColor #2E5A88
+  LifeLineBorderColor #8FA8C4
+  ParticipantBorderColor #2E5A88
+  ParticipantBackgroundColor #EAF1F8
+}
+
+title 图 2-5 下单与库存预占时序
+
+actor "买家" as B
+participant "网关" as GW
+participant "订单服务" as O
+participant "购物车服务" as C
+participant "用户服务" as U
+participant "商品服务" as P
+database "mall_order" as DB
+
+B -> GW : POST /api/orders\nIdempotency-Key
+GW -> O : 注入 X-User-Id
+O -> O : 校验幂等键格式
+O -> DB : INSERT idempotency\n(唯一键去重)
+alt 键已存在
+  DB --> O : DuplicateKey
+  O --> GW : 返回首次结果
+else 首次提交
+  O -> C : GET /cart
+  C --> O : 购物车明细
+  O -> P : 批量查 SKU 与库存
+  P --> O : 价格 / 可售库存
+  O -> O : 金额校验、地址校验
+  O -> U : GET /users/{id}/addresses
+  U --> O : 地址快照
+  O -> DB : INSERT order + order_item
+  O -> P : POST /products/skus/reserve
+  alt 库存不足
+    P --> O : 30003
+    O -> DB : 逻辑删除订单\n记录补偿
+    O --> GW : 库存不足
+  else 预占成功
+    P --> O : 预占记录 LOCKED
+    O -> C : DELETE /cart/items/{id}
+    O --> GW : orderId + expireAt
+  end
+end
+GW --> B : 订单号与应付金额
+
+note over O,P
+  先落订单再预占库存：
+  预占失败时回滚成本最小
+end note
+
+@enduml
