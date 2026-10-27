@@ -113,6 +113,36 @@ const routes = [
     component: () => import('../views/admin/AdminAfterSales.vue'),
     meta: { title: '售后仲裁', requiresAuth: true, role: 'ADMIN' },
   },
+    {
+      path: '/admin/shops',
+      name: 'admin-shops',
+      component: () => import('../views/admin/AdminShops.vue'),
+      meta: { title: '店铺管理', requiresAuth: true, role: 'ADMIN' },
+    },
+    {
+      path: '/admin/refunds',
+      name: 'admin-refunds',
+      component: () => import('../views/admin/AdminRefunds.vue'),
+      meta: { title: '退款复核', requiresAuth: true, role: 'ADMIN' },
+    },
+    {
+      path: '/admin/finance',
+      name: 'admin-finance',
+      component: () => import('../views/admin/AdminFinance.vue'),
+      meta: { title: '资金对账', requiresAuth: true, role: 'ADMIN' },
+    },
+    {
+      path: '/admin/risk',
+      name: 'admin-risk',
+      component: () => import('../views/admin/AdminRisk.vue'),
+      meta: { title: '基础风控', requiresAuth: true, role: 'ADMIN' },
+    },
+    {
+      path: '/admin/config',
+      name: 'admin-config',
+      component: () => import('../views/admin/AdminConfig.vue'),
+      meta: { title: '系统配置', requiresAuth: true, role: 'ADMIN' },
+    },
   { path: '/:pathMatch(.*)*', redirect: '/products' },
 ]
 
