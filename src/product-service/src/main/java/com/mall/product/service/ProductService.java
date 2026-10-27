@@ -6,11 +6,14 @@ import com.mall.product.common.IdGenerator;
 import com.mall.product.common.PageResult;
 import com.mall.product.common.ProductStatus;
 import com.mall.product.dto.request.AuditProductRequest;
+import com.mall.product.dto.request.CreateCategoryRequest;
 import com.mall.product.dto.request.CreateProductRequest;
 import com.mall.product.dto.request.CreateSkuRequest;
+import com.mall.product.dto.request.UpdateCategoryRequest;
 import com.mall.product.dto.request.UpdateProductRequest;
 import com.mall.product.dto.request.UpdateStatusRequest;
 import com.mall.product.dto.request.UpdateStockRequest;
+import com.mall.product.dto.response.CategoryResponse;
 import com.mall.product.dto.response.ImageUploadResponse;
 import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.dto.response.ProductListItem;
@@ -286,6 +289,89 @@ public class ProductService {
         return categoryMapper.selectAll();
     }
 
+    @Transactional
+    public CategoryResponse createCategory(String adminId, CreateCategoryRequest request) {
+        requireUser(adminId);
+        validateCategoryRequest(request.getName(), request.getParentId(), null);
+        Category category = new Category();
+        category.setCategoryId("C" + IdGenerator.randomHex(10));
+        category.setParentId(trimToNull(request.getParentId()));
+        category.setName(request.getName().trim());
+        category.setSortNo(request.getSortNo() == null ? 0 : request.getSortNo());
+        category.setIsDeleted(0);
+        try {
+            categoryMapper.insert(category);
+        } catch (DataIntegrityViolationException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分类已存在或参数不合法", e);
+        }
+        return toCategoryResponse(category);
+    }
+
+    @Transactional
+    public CategoryResponse updateCategory(String categoryId, String adminId, UpdateCategoryRequest request) {
+        requireUser(adminId);
+        Category category = requireCategory(categoryId);
+        String name = request.getName() == null ? category.getName() : request.getName().trim();
+        String parentId = request.getParentId() == null ? category.getParentId() : trimToNull(request.getParentId());
+        Integer sortNo = request.getSortNo() == null ? category.getSortNo() : request.getSortNo();
+        validateCategoryRequest(name, parentId, categoryId);
+        category.setName(name);
+        category.setParentId(parentId);
+        category.setSortNo(sortNo == null ? 0 : sortNo);
+        categoryMapper.update(category);
+        return toCategoryResponse(category);
+    }
+
+    @Transactional
+    public CategoryResponse sortCategory(String categoryId, String adminId, int sortNo) {
+        requireUser(adminId);
+        Category category = requireCategory(categoryId);
+        if (sortNo < 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "排序号不能为负数");
+        }
+        category.setSortNo(sortNo);
+        categoryMapper.update(category);
+        return toCategoryResponse(category);
+    }
+
+    @Transactional
+    public void deleteCategory(String categoryId, String adminId) {
+        requireUser(adminId);
+        requireCategory(categoryId);
+        if (categoryMapper.countProducts(categoryId) > 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分类下存在商品，请先处理商品");
+        }
+        if (categoryMapper.countChildren(categoryId) > 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分类下存在子分类，请先处理子分类");
+        }
+        categoryMapper.softDelete(categoryId, adminId);
+    }
+
+    private Category requireCategory(String categoryId) {
+        Category category = categoryMapper.selectById(categoryId);
+        if (category == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分类不存在");
+        }
+        return category;
+    }
+
+    private void validateCategoryRequest(String name, String parentId, String categoryId) {
+        if (name == null || name.isBlank() || name.trim().length() > 32) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "分类名称不能为空且不能超过 32 个字符");
+        }
+        if (parentId != null) {
+            if (parentId.equals(categoryId)) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "分类不能设置自己为父分类");
+            }
+            if (categoryMapper.selectById(parentId) == null) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "父分类不存在");
+            }
+        }
+    }
+
+    private static CategoryResponse toCategoryResponse(Category category) {
+        return new CategoryResponse(category.getCategoryId(), category.getParentId(), category.getName(), category.getSortNo());
+    }
     public ImageUploadResponse uploadImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "图片不能为空");
@@ -326,7 +412,9 @@ public class ProductService {
         if (product.getStatus() != ProductStatus.ON_SALE && !admin && !owner) {
             throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品已下架或尚未审核通过");
         }
-        List<Sku> skus = skuMapper.selectByProductId(productId);
+        if (!admin && !owner && categoryMapper.selectById(product.getCategoryId()) == null) {
+            throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品分类已删除");
+        }        List<Sku> skus = skuMapper.selectByProductId(productId);
         ProductDetailResponse response = new ProductDetailResponse();
         response.setProductId(product.getProductId());
         response.setSellerId(product.getSellerId());
@@ -413,3 +501,6 @@ public class ProductService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
+
+
+

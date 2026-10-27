@@ -4,8 +4,10 @@ import com.mall.product.common.BizException;
 import com.mall.product.common.ErrorCode;
 import com.mall.product.common.ProductStatus;
 import com.mall.product.dto.request.AuditProductRequest;
+import com.mall.product.dto.request.CreateCategoryRequest;
 import com.mall.product.dto.request.CreateProductRequest;
 import com.mall.product.dto.request.CreateSkuRequest;
+import com.mall.product.dto.request.UpdateCategoryRequest;
 import com.mall.product.dto.request.UpdateStockRequest;
 import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.mapper.SkuMapper;
@@ -126,5 +128,39 @@ class ProductServiceTest {
                 .isInstanceOf(BizException.class)
                 .extracting(e -> ((BizException) e).getCode())
                 .isEqualTo(ErrorCode.PARAM_INVALID);
+    }
+
+    @Test
+    void adminCanManageEmptyCategoriesAndCannotDeleteCategoryWithProducts() {
+        CreateCategoryRequest create = new CreateCategoryRequest();
+        create.setName("临时分类");
+        create.setSortNo(99);
+        var category = productService.createCategory("U-ADMIN", create);
+        assertThat(category.getName()).isEqualTo("临时分类");
+
+        UpdateCategoryRequest update = new UpdateCategoryRequest();
+        update.setName("临时分类-改名");
+        update.setSortNo(3);
+        assertThat(productService.updateCategory(category.getCategoryId(), "U-ADMIN", update).getName())
+                .isEqualTo("临时分类-改名");
+        assertThat(productService.sortCategory(category.getCategoryId(), "U-ADMIN", 1).getSortNo())
+                .isEqualTo(1);
+        productService.deleteCategory(category.getCategoryId(), "U-ADMIN");
+        assertThat(productService.categories()).noneMatch(item -> item.getCategoryId().equals(category.getCategoryId()));
+
+        CreateProductRequest product = new CreateProductRequest();
+        product.setTitle("分类删除保护商品");
+        product.setCategoryId("C04");
+        CreateSkuRequest sku = new CreateSkuRequest();
+        sku.setSpecName("默认");
+        sku.setPrice(1000L);
+        sku.setStockAvailable(1);
+        product.setSkus(List.of(sku));
+        ProductDetailResponse created = productService.create("U-SELLER-DELETE", product);
+        assertThatThrownBy(() -> productService.deleteCategory("C04", "U-ADMIN"))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
+        productService.delete(created.getProductId(), "U-SELLER-DELETE");
     }
 }
