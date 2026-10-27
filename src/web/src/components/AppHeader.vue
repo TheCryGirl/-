@@ -21,8 +21,13 @@ const sellerItems = [
 
 const adminItems = [
   { name: 'admin-users', label: '用户管理' },
+  { name: 'admin-shops', label: '店铺管理' },
   { name: 'admin-products', label: '商品审核' },
+  { name: 'admin-refunds', label: '退款复核' },
   { name: 'admin-after-sales', label: '售后仲裁' },
+  { name: 'admin-finance', label: '资金对账' },
+  { name: 'admin-risk', label: '基础风控' },
+  { name: 'admin-config', label: '系统配置' },
 ]
 
 const visibleNav = computed(() => navItems.filter((n) => !n.auth || isLoggedIn.value))
