@@ -2,6 +2,7 @@ package com.mall.order.controller;
 
 import com.mall.order.common.PageResult;
 import com.mall.order.common.Result;
+import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.dto.request.CreateOrderRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
 import com.mall.order.dto.response.CreateOrderResponse;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
+    private final InternalTokenVerifier internalTokenVerifier;
 
     @PostMapping
     public Result<CreateOrderResponse> create(
@@ -55,14 +57,18 @@ public class OrderController {
 
     /** payment-service 内部调用：支付回调成功后标记订单已支付。 */
     @PostMapping("/{orderId}/paid")
-    public Result<Void> paid(@PathVariable String orderId) {
+    public Result<Void> paid(@PathVariable String orderId,
+                             @RequestHeader(value = "X-Internal-Token", required = false) String token) {
+        internalTokenVerifier.verify(token);
         orderService.markPaid(orderId);
         return Result.success();
     }
 
     /** 预留的退款完成通知入口，供 payment-service 后续接入。 */
     @PostMapping("/{orderId}/refunded")
-    public Result<Void> refunded(@PathVariable String orderId) {
+    public Result<Void> refunded(@PathVariable String orderId,
+                                 @RequestHeader(value = "X-Internal-Token", required = false) String token) {
+        internalTokenVerifier.verify(token);
         orderService.markRefunded(orderId);
         return Result.success();
     }
