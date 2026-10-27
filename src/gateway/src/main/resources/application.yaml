@@ -47,6 +47,12 @@ spring:
             - Path=/api/orders/**
           filters:
             - StripPrefix=1
+        - id: platform-config
+          uri: lb://order-service
+          predicates:
+            - Path=/api/config/**
+          filters:
+            - StripPrefix=1
         - id: payment-service
           uri: lb://payment-service
           predicates:
