@@ -485,7 +485,7 @@ public class OrderService {
 
     private AddressDTO findAddress(String buyerId, String addressId) {
         try {
-            Result<List<AddressDTO>> result = userClient.addresses(buyerId);
+            Result<List<AddressDTO>> result = userClient.addresses(buyerId, buyerId);
             List<AddressDTO> addresses = unwrap(result, "user-service");
             return addresses.stream().filter(address -> addressId.equals(address.getAddressId()))
                     .findFirst()

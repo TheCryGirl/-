@@ -126,7 +126,7 @@ class OrderServiceTest {
 
         when(cartClient.getCart(anyString())).thenReturn(Result.success(cart));
         when(cartClient.deleteItem(anyString(), anyString())).thenReturn(Result.success());
-        when(userClient.addresses(anyString())).thenReturn(Result.success(List.of(address)));
+        when(userClient.addresses(anyString(), anyString())).thenReturn(Result.success(List.of(address)));
         when(productClient.getProduct(anyString())).thenReturn(Result.success(product));
         when(productClient.reserve(anyString(), any(ReserveStockRequestDTO.class)))
                 .thenReturn(Result.success(new ReserveStockResponseDTO("R1",
