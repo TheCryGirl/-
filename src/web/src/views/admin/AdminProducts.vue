@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { productApi } from '../../api'
+import { isOk, productApi, unwrapResult } from '../../api'
 
 const products = ref([])
 const loading = ref(true)
@@ -11,9 +11,13 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    // 契约中无专门“待审核商品”接口，先用商品列表按状态过滤
+    // 管理员带 status 时后端走管理列表，可按审核状态筛选
     const { data } = await productApi.list({ status: 'PENDING', size: 100 })
-    const payload = data?.data ?? data
+    const payload = unwrapResult(data)
+    if (!payload) {
+      error.value = data?.message || '加载待审核商品失败'
+      return
+    }
     // 兼容分页结构 { list, total } 与直接返回数组两种形式
     products.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
@@ -26,7 +30,11 @@ async function load() {
 async function audit(productId, approved) {
   processing.value = productId
   try {
-    await productApi.audit(productId, { approved, remark: '' })
+    const { data } = await productApi.audit(productId, { approved, remark: '' })
+    if (!isOk(data)) {
+      error.value = data?.message || '审核失败'
+      return
+    }
     await load()
   } catch (err) {
     error.value = err.response?.data?.message || '审核失败'

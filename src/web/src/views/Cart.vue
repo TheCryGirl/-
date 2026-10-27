@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { cartApi, unwrapResult } from '../api'
+import { cartApi, isOk, unwrapResult } from '../api'
 
 const router = useRouter()
 const cart = ref({ items: [] })
@@ -31,11 +31,18 @@ const selectedTotal = computed(() => selectedItems.value.reduce((sum, i) => sum 
 const selectedCount = computed(() => selectedItems.value.reduce((sum, i) => sum + i.quantity, 0))
 
 async function updateSelected(item) {
+  error.value = ''
   try {
-    await cartApi.updateSelected(item.cartItemId, !item.selected)
+    const { data } = await cartApi.updateSelected(item.cartItemId, !item.selected)
+    if (!isOk(data)) {
+      error.value = data?.message || '操作失败'
+      await load()
+      return
+    }
     item.selected = !item.selected
   } catch (err) {
     error.value = err.response?.data?.message || '操作失败'
+    await load()
   }
 }
 
@@ -48,7 +55,11 @@ async function updateQuantity(item) {
     item.quantity = max
   }
   try {
-    await cartApi.updateQuantity(item.cartItemId, item.quantity)
+    const { data } = await cartApi.updateQuantity(item.cartItemId, item.quantity)
+    if (!isOk(data)) {
+      error.value = data?.message || '修改数量失败'
+      await load()
+    }
   } catch (err) {
     error.value = err.response?.data?.message || '修改数量失败'
     load()
@@ -64,8 +75,13 @@ function changeQuantity(item, delta) {
 }
 
 async function removeItem(item) {
+  error.value = ''
   try {
-    await cartApi.remove(item.cartItemId)
+    const { data } = await cartApi.remove(item.cartItemId)
+    if (!isOk(data)) {
+      error.value = data?.message || '删除失败'
+      return
+    }
     cart.value.items = cart.value.items.filter((i) => i.cartItemId !== item.cartItemId)
   } catch (err) {
     error.value = err.response?.data?.message || '删除失败'

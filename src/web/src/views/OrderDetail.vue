@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { orderApi, paymentApi, unwrapResult } from '../api'
+import { isOk, orderApi, paymentApi, unwrapResult } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,8 +38,13 @@ async function load() {
 async function cancel() {
   if (!confirm('确定取消该订单吗？')) return
   processing.value = true
+  error.value = ''
   try {
-    await orderApi.cancel(orderId)
+    const { data } = await orderApi.cancel(orderId)
+    if (!isOk(data)) {
+      error.value = data?.message || '取消失败'
+      return
+    }
     await load()
   } catch (err) {
     error.value = err.response?.data?.message || '取消失败'
@@ -51,8 +56,13 @@ async function cancel() {
 async function confirmReceive() {
   if (!confirm('确认已收到商品吗？')) return
   processing.value = true
+  error.value = ''
   try {
-    await orderApi.confirm(orderId)
+    const { data } = await orderApi.confirm(orderId)
+    if (!isOk(data)) {
+      error.value = data?.message || '确认收货失败'
+      return
+    }
     await load()
   } catch (err) {
     error.value = err.response?.data?.message || '确认收货失败'

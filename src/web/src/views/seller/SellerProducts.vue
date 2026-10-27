@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { productApi } from '../../api'
+import { isOk, productApi, unwrapResult } from '../../api'
 
 const products = ref([])
 const loading = ref(true)
@@ -11,7 +11,11 @@ async function load() {
   error.value = ''
   try {
     const { data } = await productApi.mine()
-    const payload = data?.data ?? data
+    const payload = unwrapResult(data)
+    if (!payload) {
+      error.value = data?.message || '加载商品失败'
+      return
+    }
     products.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
@@ -21,8 +25,13 @@ async function load() {
 }
 
 async function updateStatus(productId, status) {
+  error.value = ''
   try {
-    await productApi.updateStatus(productId, status)
+    const { data } = await productApi.updateStatus(productId, status)
+    if (!isOk(data)) {
+      error.value = data?.message || '操作失败'
+      return
+    }
     await load()
   } catch (err) {
     error.value = err.response?.data?.message || '操作失败'

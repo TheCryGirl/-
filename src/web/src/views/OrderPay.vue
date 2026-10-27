@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { orderApi, paymentApi, unwrapResult } from '../api'
+import { isOk, orderApi, paymentApi, unwrapResult } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,7 +61,11 @@ async function mockPay() {
   error.value = ''
   try {
     // MOCK 支付接口按 paymentId 定位支付单，内部走完整回调流程
-    await paymentApi.mockPay({ paymentId: payment.value.paymentId })
+    const { data } = await paymentApi.mockPay({ paymentId: payment.value.paymentId })
+    if (!isOk(data)) {
+      error.value = data?.message || '支付失败'
+      return
+    }
     await load()
     // 1.5 秒后跳转到订单详情
     setTimeout(() => router.push({ name: 'order-detail', params: { id: orderId } }), 1500)

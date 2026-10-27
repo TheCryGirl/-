@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { orderApi } from '../../api'
+import { isOk, orderApi, unwrapResult } from '../../api'
 
 const orders = ref([])
 const loading = ref(true)
@@ -12,7 +12,11 @@ async function load() {
   error.value = ''
   try {
     const { data } = await orderApi.list({ role: 'seller', status: 'PAID', page: 1, size: 50 })
-    const payload = data?.data ?? data
+    const payload = unwrapResult(data)
+    if (!payload) {
+      error.value = data?.message || '加载待发货订单失败'
+      return
+    }
     orders.value = Array.isArray(payload) ? payload : payload?.list || []
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
@@ -25,8 +29,13 @@ async function ship(orderId) {
   const no = prompt('请输入物流单号')
   if (!no) return
   processing.value = orderId
+  error.value = ''
   try {
-    await orderApi.ship(orderId, { trackingNo: no })
+    const { data } = await orderApi.ship(orderId, { trackingNo: no })
+    if (!isOk(data)) {
+      error.value = data?.message || '发货失败'
+      return
+    }
     await load()
   } catch (err) {
     error.value = err.response?.data?.message || '发货失败'

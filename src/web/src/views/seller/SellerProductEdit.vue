@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { productApi, unwrapResult } from '../../api'
+import { isOk, productApi, unwrapResult } from '../../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -105,7 +105,11 @@ async function submit() {
   saving.value = true
   try {
     if (isEdit.value) {
-      await productApi.update(productId.value, { ...form })
+      const { data } = await productApi.update(productId.value, { ...form })
+      if (!isOk(data)) {
+        error.value = data?.message || '保存失败'
+        return
+      }
       message.value = '商品信息已保存'
     } else {
       const skuPayload = buildSkus(skus.value)
@@ -114,7 +118,11 @@ async function submit() {
         saving.value = false
         return
       }
-      await productApi.create({ ...form, skus: skuPayload })
+      const { data } = await productApi.create({ ...form, skus: skuPayload })
+      if (!isOk(data)) {
+        error.value = data?.message || '发布失败'
+        return
+      }
       message.value = '商品已提交，等待管理员审核'
       setTimeout(() => router.push({ name: 'seller-products' }), 800)
       return
@@ -141,11 +149,15 @@ async function addSku() {
   }
   saving.value = true
   try {
-    await productApi.createSku(productId.value, {
+    const { data } = await productApi.createSku(productId.value, {
       specName: newSku.specName.trim(),
       price,
       stockAvailable: Math.max(0, Math.floor(Number(newSku.stockAvailable) || 0)),
     })
+    if (!isOk(data)) {
+      error.value = data?.message || '新增规格失败'
+      return
+    }
     newSku.specName = ''
     newSku.price = ''
     newSku.stockAvailable = ''
@@ -164,7 +176,11 @@ async function saveStock(sku) {
   const stock = Math.max(0, Math.floor(Number(stockDraft[sku.skuId]) || 0))
   saving.value = true
   try {
-    await productApi.updateStock(sku.skuId, stock)
+    const { data } = await productApi.updateStock(sku.skuId, stock)
+    if (!isOk(data)) {
+      error.value = data?.message || '调整库存失败'
+      return
+    }
     message.value = `规格 ${sku.specName} 库存已更新为 ${stock}`
     await loadProduct()
   } catch (err) {
