@@ -9,3 +9,5 @@ INSERT IGNORE INTO category (category_id, parent_id, name, sort_no) VALUES
 ('C0102', 'C01', '考研资料', 2),
 ('C0201', 'C02', '手机平板', 1),
 ('C0202', 'C02', '电脑配件', 2);
+INSERT IGNORE INTO product_setting (setting_key, setting_value) VALUES ('LOW_STOCK_THRESHOLD', 5);
+

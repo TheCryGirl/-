@@ -9,6 +9,7 @@
         <result property="price" column="price"/>
         <result property="stockAvailable" column="stock_available"/>
         <result property="stockLocked" column="stock_locked"/>
+        <result property="lowStockThreshold" column="low_stock_threshold"/>
         <result property="version" column="version"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
@@ -16,14 +17,14 @@
     </resultMap>
 
     <sql id="skuColumns">
-        sku_id, product_id, spec_name, price, stock_available, stock_locked, version,
+        sku_id, product_id, spec_name, price, stock_available, stock_locked, low_stock_threshold, version,
         created_at, updated_at, is_deleted
     </sql>
 
     <insert id="insert" parameterType="com.mall.product.entity.Sku">
         INSERT INTO sku(sku_id, product_id, spec_name, price, stock_available, stock_locked, version,
-                        created_at, updated_at, is_deleted)
-        VALUES (#{skuId}, #{productId}, #{specName}, #{price}, #{stockAvailable}, 0, 0,
+                        low_stock_threshold, created_at, updated_at, is_deleted)
+        VALUES (#{skuId}, #{productId}, #{specName}, #{price}, #{stockAvailable}, 0, 0, #{lowStockThreshold},
                 #{createdAt}, #{updatedAt}, 0)
     </insert>
 
@@ -99,5 +100,30 @@
         SET is_deleted = 1, updated_at = NOW()
         WHERE product_id = #{productId} AND is_deleted = 0
     </update>
+
+    <update id="updateLowStockThreshold">
+        UPDATE sku
+        SET low_stock_threshold = #{threshold}, updated_at = NOW()
+        WHERE sku_id = #{skuId} AND is_deleted = 0
+    </update>
+
+    <select id="selectLowStockAlerts" resultType="com.mall.product.dto.response.LowStockAlertResponse">
+        SELECT s.sku_id, s.product_id, p.title AS product_title, s.spec_name,
+               s.stock_available, s.stock_locked,
+               COALESCE(s.low_stock_threshold, #{globalThreshold}) AS threshold
+        FROM sku s
+        JOIN product p ON p.product_id = s.product_id AND p.is_deleted = 0
+        WHERE s.is_deleted = 0
+          AND (#{sellerId} IS NULL OR p.seller_id = #{sellerId})
+          AND s.stock_available &lt; COALESCE(s.low_stock_threshold, #{globalThreshold})
+        ORDER BY s.stock_available ASC, s.updated_at ASC, s.sku_id
+    </select>
 </mapper>
+
+
+
+
+
+
+
 

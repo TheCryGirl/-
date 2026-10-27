@@ -7,3 +7,5 @@ MERGE INTO category KEY(category_id) VALUES ('C0101', 'C01', '专业教材', 1, 
 MERGE INTO category KEY(category_id) VALUES ('C0102', 'C01', '考研资料', 2, 0);
 MERGE INTO category KEY(category_id) VALUES ('C0201', 'C02', '手机平板', 1, 0);
 MERGE INTO category KEY(category_id) VALUES ('C0202', 'C02', '电脑配件', 2, 0);
+MERGE INTO product_setting KEY(setting_key) VALUES ('LOW_STOCK_THRESHOLD', 5, CURRENT_TIMESTAMP);
+

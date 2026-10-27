@@ -31,4 +31,10 @@ public interface SkuMapper {
     int refundRestock(@Param("skuId") String skuId, @Param("quantity") int quantity);
 
     int softDeleteByProductId(@Param("productId") String productId, @Param("updatedBy") String updatedBy);
+
+    int updateLowStockThreshold(@Param("skuId") String skuId, @Param("threshold") Integer threshold);
+
+    List<com.mall.product.dto.response.LowStockAlertResponse> selectLowStockAlerts(@Param("sellerId") String sellerId, @Param("globalThreshold") int globalThreshold);
 }
+
+

@@ -13,4 +13,7 @@ public class SkuResponse {
     private Long price;
     private Integer stockAvailable;
     private Integer stockLocked;
+    private Integer lowStockThreshold;
 }
+
+

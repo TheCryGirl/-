@@ -65,3 +65,10 @@ CREATE TABLE stock_reservation_item (
     PRIMARY KEY (id),
     CONSTRAINT uk_reservation_sku UNIQUE (reservation_id, sku_id)
 );
+CREATE TABLE product_setting (
+    setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+    setting_value INT NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+ALTER TABLE sku ADD low_stock_threshold INT;
+

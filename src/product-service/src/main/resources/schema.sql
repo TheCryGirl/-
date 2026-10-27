@@ -67,3 +67,12 @@ CREATE TABLE IF NOT EXISTS stock_reservation_item (
     UNIQUE KEY uk_reservation_sku (reservation_id, sku_id),
     KEY idx_reservation (reservation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='库存预占明细';
+CREATE TABLE IF NOT EXISTS product_setting (
+    setting_key   VARCHAR(64) NOT NULL,
+    setting_value INT NOT NULL,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (setting_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品库存配置';
+
+ALTER TABLE sku ADD COLUMN IF NOT EXISTS low_stock_threshold INT NULL COMMENT 'SKU 低库存阈值覆盖值';
+
