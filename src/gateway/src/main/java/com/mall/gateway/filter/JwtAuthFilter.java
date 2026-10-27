@@ -78,8 +78,15 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${jwt.secret}")
-    private String jwtSecret;
+    /** 签名密钥，启动时从环境变量 JWT_SECRET 注入并校验，不提供硬编码默认值 */
+    private final SecretKey key;
+
+    public JwtAuthFilter(@Value("${jwt.secret}") String jwtSecret) {
+        if (jwtSecret == null || jwtSecret.length() < 32) {
+            throw new IllegalArgumentException("JWT_SECRET 长度至少 32 位，请通过环境变量配置后再启动网关");
+        }
+        this.key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -101,7 +108,6 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         // 3. 解析令牌
         Claims claims;
         try {
-            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
             claims = Jwts.parser()
                     .verifyWith(key)
                     .build()

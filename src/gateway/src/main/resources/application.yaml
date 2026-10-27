@@ -60,8 +60,8 @@ spring:
     read-timeout: 6000
 
 jwt:
-  # 与各服务保持一致，从环境变量读，不在配置里写死
-  secret: ${JWT_SECRET:dev-only-secret-please-change-in-production-0123456789}
+  # 与各服务保持一致，从环境变量读，不在配置里写死；未设置时网关启动失败
+  secret: ${JWT_SECRET:}
 
 management:
   endpoints:
