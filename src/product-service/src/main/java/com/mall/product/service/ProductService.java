@@ -90,6 +90,7 @@ public class ProductService {
                     .price(skuRequest.getPrice())
                     .stockAvailable(skuRequest.getStockAvailable())
                     .stockLocked(0)
+                    .lowStockThreshold(skuRequest.getLowStockThreshold())
                     .version(0)
                     .createdAt(now)
                     .updatedAt(now)
@@ -255,6 +256,7 @@ public class ProductService {
                 .price(request.getPrice())
                 .stockAvailable(request.getStockAvailable())
                 .stockLocked(0)
+                .lowStockThreshold(request.getLowStockThreshold())
                 .version(0)
                 .createdAt(now)
                 .updatedAt(now)
@@ -430,7 +432,7 @@ public class ProductService {
 
     private SkuResponse toSkuResponse(Sku sku) {
         return new SkuResponse(sku.getSkuId(), sku.getSpecName(), sku.getPrice(),
-                sku.getStockAvailable(), sku.getStockLocked());
+                sku.getStockAvailable(), sku.getStockLocked(), sku.getLowStockThreshold());
     }
 
     private Product requireOwnedProduct(String productId, String sellerId) {
@@ -501,6 +503,5 @@ public class ProductService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-
 
 

@@ -18,8 +18,10 @@ public class Sku {
     private Long price;
     private Integer stockAvailable;
     private Integer stockLocked;
+    private Integer lowStockThreshold;
     private Integer version;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer isDeleted;
 }
+

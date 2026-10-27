@@ -18,4 +18,8 @@ public class CreateSkuRequest {
     @NotNull(message = "库存不能为空")
     @Min(value = 0, message = "库存不能小于 0")
     private Integer stockAvailable;
+
+    @Min(value = 0, message = "低库存阈值不能为负数")
+    private Integer lowStockThreshold;
 }
+
