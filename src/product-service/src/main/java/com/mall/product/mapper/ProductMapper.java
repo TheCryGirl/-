@@ -34,6 +34,12 @@ public interface ProductMapper {
                      @Param("minPrice") Long minPrice,
                      @Param("maxPrice") Long maxPrice);
 
+    List<ProductListItem> selectAdminList(@Param("status") String status,
+                                          @Param("offset") int offset,
+                                          @Param("size") int size);
+
+    long countAdmin(@Param("status") String status);
+
     List<ProductListItem> selectMine(@Param("sellerId") String sellerId,
                                      @Param("status") String status,
                                      @Param("offset") int offset,

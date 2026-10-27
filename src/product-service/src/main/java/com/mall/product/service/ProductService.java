@@ -161,8 +161,15 @@ public class ProductService {
         skuMapper.softDeleteByProductId(productId, sellerId);
     }
 
+    /**
+     * 商品列表。普通用户走公开列表（BR-08：只返回在售且在库商品）；
+     * 管理员带 status 参数时走管理列表，用于商品审核页按状态筛选。
+     */
     public PageResult<ProductListItem> list(String keyword, String categoryId, Long minPrice, Long maxPrice,
-                                            String sort, int page, int size) {
+                                            String sort, String status, String role, int page, int size) {
+        if ("ADMIN".equalsIgnoreCase(role) && status != null && !status.isBlank()) {
+            return listForAdmin(status, page, size);
+        }
         if (minPrice != null && minPrice < 0 || maxPrice != null && maxPrice < 0) {
             throw new BizException(ErrorCode.PARAM_INVALID, "价格区间不能为负数");
         }
@@ -178,6 +185,23 @@ public class ProductService {
         List<ProductListItem> items = productMapper.selectPublicList(trimToNull(keyword), trimToNull(categoryId),
                 minPrice, maxPrice, safeSort, (safePage - 1) * safeSize, safeSize);
         long total = productMapper.countPublic(trimToNull(keyword), trimToNull(categoryId), minPrice, maxPrice);
+        return PageResult.of(items, total, safePage, safeSize);
+    }
+
+    /**
+     * 管理员商品列表：可按状态筛选，不过滤库存与上架状态，供审核页使用。
+     */
+    private PageResult<ProductListItem> listForAdmin(String status, int page, int size) {
+        String safeStatus = status.trim().toUpperCase(Locale.ROOT);
+        try {
+            ProductStatus.valueOf(safeStatus);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "商品状态不合法");
+        }
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        List<ProductListItem> items = productMapper.selectAdminList(safeStatus, (safePage - 1) * safeSize, safeSize);
+        long total = productMapper.countAdmin(safeStatus);
         return PageResult.of(items, total, safePage, safeSize);
     }
 

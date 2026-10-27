@@ -70,7 +70,7 @@ class ProductServiceTest {
         ProductDetailResponse audited = productService.audit(created.getProductId(), "U-ADMIN", audit);
         assertThat(audited.getStatus()).isEqualTo(ProductStatus.ON_SALE);
 
-        var page = productService.list(null, null, null, null, "price_asc", 1, 20);
+        var page = productService.list(null, null, null, null, "price_asc", null, null, 1, 20);
         assertThat(page.list()).hasSize(1);
         assertThat(page.list().get(0).getProductId()).isEqualTo(created.getProductId());
 
@@ -94,5 +94,37 @@ class ProductServiceTest {
         third.setStockAvailable(8);
         productService.addSku(created.getProductId(), "U-SELLER-1", third);
         assertThat(skuMapper.selectByProductId(created.getProductId())).hasSize(3);
+    }
+
+    /**
+     * 待审核商品不能被普通用户看到，但管理员能按状态查出来（商品审核页依赖该能力）。
+     */
+    @Test
+    void adminCanListPendingProductsByStatus() {
+        CreateSkuRequest sku = new CreateSkuRequest();
+        sku.setSpecName("默认规格");
+        sku.setPrice(5000L);
+        sku.setStockAvailable(5);
+
+        CreateProductRequest create = new CreateProductRequest();
+        create.setTitle("待审核商品");
+        create.setCategoryId("C04");
+        create.setSkus(List.of(sku));
+        ProductDetailResponse created = productService.create("U-SELLER-2", create);
+
+        // 普通用户（无角色）即使传了 status 也走公开列表，拿不到待审核商品
+        var publicPage = productService.list(null, null, null, null, "default", "PENDING", null, 1, 20);
+        assertThat(publicPage.list()).isEmpty();
+
+        // 管理员按 PENDING 筛选能拿到
+        var adminPage = productService.list(null, null, null, null, "default", "PENDING", "ADMIN", 1, 20);
+        assertThat(adminPage.total()).isEqualTo(1);
+        assertThat(adminPage.list().get(0).getProductId()).isEqualTo(created.getProductId());
+
+        // 状态非法时拒绝
+        assertThatThrownBy(() -> productService.list(null, null, null, null, "default", "UNKNOWN", "ADMIN", 1, 20))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.PARAM_INVALID);
     }
 }

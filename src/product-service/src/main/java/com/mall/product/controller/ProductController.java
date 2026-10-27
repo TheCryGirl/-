@@ -36,6 +36,10 @@ public class ProductController {
 
     private final ProductService productService;
 
+    /**
+     * 商品列表。带 status 参数时仅对管理员生效（商品审核页按状态筛选），
+     * 普通用户仍按 BR-08 只看在售且在库商品。
+     */
     @GetMapping
     public Result<PageResult<ProductListItem>> list(
             @RequestParam(required = false) String keyword,
@@ -43,9 +47,11 @@ public class ProductController {
             @RequestParam(required = false) Long minPrice,
             @RequestParam(required = false) Long maxPrice,
             @RequestParam(defaultValue = "default") String sort,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, page, size));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, status, role, page, size));
     }
 
     @GetMapping("/mine")

@@ -113,6 +113,32 @@
         ) t
     </select>
 
+    <!-- 管理员商品列表：按状态筛选，不过滤库存与上架状态，供审核页使用 -->
+    <select id="selectAdminList" resultType="com.mall.product.dto.response.ProductListItem">
+        SELECT p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id, p.status,
+               MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock,
+               p.created_at
+        FROM product p
+        LEFT JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE p.is_deleted = 0
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 p.status, p.created_at
+        ORDER BY p.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM product p
+        WHERE p.is_deleted = 0
+        <if test="status != null and status != ''">
+            AND p.status = #{status}
+        </if>
+    </select>
+
     <select id="selectMine" resultType="com.mall.product.dto.response.ProductListItem">
         SELECT p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id, p.status,
                MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock,
