@@ -75,7 +75,7 @@ async function addToCart() {
     return
   }
   try {
-    const { data } = await cartApi.add({ skuId: selectedSku.value.skuId, quantity: quantity.value })
+    const { data } = await cartApi.add({ productId: route.params.id, skuId: selectedSku.value.skuId, quantity: quantity.value })
     notice.value = isOk(data) ? '已加入购物车' : data?.message || '加入购物车失败'
   } catch (err) {
     notice.value = err.response?.data?.message || '加入购物车失败'
@@ -95,7 +95,7 @@ async function buyNow() {
   try {
     const desiredQuantity = quantity.value
     // 契约的下单接口只接受 cartItemIds，立即购买先入购物车再取回真实条目
-    const addRes = await cartApi.add({ skuId: selectedSku.value.skuId, quantity: desiredQuantity })
+    const addRes = await cartApi.add({ productId: route.params.id, skuId: selectedSku.value.skuId, quantity: desiredQuantity })
     if (!isOk(addRes.data)) {
       notice.value = addRes.data?.message || '加入购物车失败'
       return
