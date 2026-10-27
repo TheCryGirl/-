@@ -199,6 +199,36 @@ public class StockService {
     /**
      * 兜底释放过期预占，避免下单方崩溃后库存永久 locked。
      */
+    /**
+     * 退款回补库存（BR-28）。
+     *
+     * <p>退款成功后把已扣减的库存加回可售数量。按预占明细逐 SKU 回补，
+     * 以实际退款成功的明细为准。幂等：同一订单重复调用时，只在预占状态为
+     * CONFIRMED 时回补一次，回补后置为 REFUNDED，避免重复加库存。
+     */
+    public void refundRestock(String orderId) {
+        transactionTemplate.executeWithoutResult(status -> {
+            StockReservation reservation = reservationMapper.selectByOrderId(orderId);
+            if (reservation == null) {
+                throw new BizException(ErrorCode.RESERVATION_NOT_FOUND, "预占记录不存在");
+            }
+            // 只有已确认扣减的预占需要回补
+            if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+                return;
+            }
+            // 先原子地把状态从 CONFIRMED 改成 REFUNDED，成功者才回补，保证幂等
+            int updated = reservationMapper.updateStatus(orderId, ReservationStatus.CONFIRMED,
+                    ReservationStatus.REFUNDED, LocalDateTime.now());
+            if (updated == 0) {
+                return;
+            }
+            List<StockReservationItem> items = reservationMapper.selectItems(reservation.getReservationId());
+            for (StockReservationItem item : items) {
+                skuMapper.refundRestock(item.getSkuId(), item.getQuantity());
+            }
+        });
+    }
+
     @Scheduled(fixedDelayString = "${product.reservation.scan-interval-ms:60000}", initialDelayString = "30000")
     public void releaseExpiredReservations() {
         List<String> orderIds = reservationMapper.selectExpiredOrderIds(LocalDateTime.now(), 100);
