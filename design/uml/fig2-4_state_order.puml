@@ -1,0 +1,47 @@
+@startuml fig2-4_state_order
+skinparam dpi 200
+skinparam defaultFontName Microsoft YaHei
+skinparam defaultFontSize 12
+skinparam state {
+  BackgroundColor #EAF1F8
+  BorderColor #2E5A88
+  ArrowColor #2E5A88
+}
+
+title 图 2-4 订单状态机
+
+[*] --> PENDING_PAYMENT : 买家提交订单\n（幂等键去重 + 库存预占）
+
+PENDING_PAYMENT --> PAID : 支付回调成功\n条件更新 WHERE status=PENDING_PAYMENT
+PENDING_PAYMENT --> CANCELLED : 买家主动取消
+PENDING_PAYMENT --> CANCELLED : 超时扫描（默认 30 分钟）
+
+PAID --> SHIPPED : 卖家发货\n填写物流单号
+SHIPPED --> COMPLETED : 买家确认收货
+SHIPPED --> COMPLETED : 发货后 15 天自动确认
+
+PAID --> REFUNDED : 退款审核通过且全额退款
+SHIPPED --> REFUNDED : 退款审核通过且全额退款
+COMPLETED --> REFUNDED : 退款审核通过且全额退款
+
+CANCELLED --> [*]
+COMPLETED --> [*]
+REFUNDED --> [*]
+
+note right of PENDING_PAYMENT
+  超时时限来自 Nacos 配置
+  order.timeout.minutes
+end note
+
+note bottom of CANCELLED
+  取消后同步释放预占库存；
+  释放失败写入补偿表，
+  由定时任务退避重试
+end note
+
+note bottom of REFUNDED
+  仅全额退款进入此状态；
+  部分退款不改订单状态
+end note
+
+@enduml

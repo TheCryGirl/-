@@ -15,6 +15,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 PATH = sys.argv[1]
+ANCHOR_TEXT = sys.argv[2] if len(sys.argv) > 2 else "1 项目概述与迭代规划"
+SUBTITLE = sys.argv[3] if len(sys.argv) > 3 else "（第一部分  需求规格说明书）"
 doc = Document(PATH)
 body = doc.element.body
 
@@ -62,7 +64,7 @@ def para_format(p, align=None, indent_chars=None, space_before=0,
 # ---------- 1. 找到正文起点，删除其前的所有元素 ----------
 anchor = None
 for p in doc.paragraphs:
-    if p.text.strip().startswith("1 项目概述与迭代规划"):
+    if p.text.strip().startswith(ANCHOR_TEXT):
         anchor = p._p
         break
 if anchor is None:
@@ -100,7 +102,7 @@ cov_para([("", {})], after=0)
 cov_para([("河北工业大学", {"size": 26, "cn": "黑体", "ascii": "SimHei", "bold": True})], after=8)
 cov_para([("软件工程课程实验", {"size": 26, "cn": "黑体", "ascii": "SimHei", "bold": True})], after=22)
 cov_para([("实  验  报  告", {"size": 34, "cn": "黑体", "ascii": "SimHei", "bold": True})], after=12)
-cov_para([("（第一部分  需求规格说明书）", {"size": 13, "cn": "楷体", "ascii": "Times New Roman"})], after=38)
+cov_para([(SUBTITLE, {"size": 13, "cn": "楷体", "ascii": "Times New Roman"})], after=38)
 
 cov_para([("题目：", {"size": 16, "cn": "黑体", "ascii": "SimHei"}),
           ("云原生微服务架构实践——在线商城系统",
