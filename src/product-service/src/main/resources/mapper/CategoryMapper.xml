@@ -7,4 +7,39 @@
         WHERE is_deleted = 0
         ORDER BY sort_no, category_id
     </select>
+
+    <select id="selectById" resultType="com.mall.product.entity.Category">
+        SELECT category_id, parent_id, name, sort_no, is_deleted
+        FROM category
+        WHERE category_id = #{categoryId} AND is_deleted = 0
+    </select>
+
+    <insert id="insert" parameterType="com.mall.product.entity.Category">
+        INSERT INTO category(category_id, parent_id, name, sort_no, is_deleted)
+        VALUES (#{categoryId}, #{parentId}, #{name}, #{sortNo}, 0)
+    </insert>
+
+    <update id="update" parameterType="com.mall.product.entity.Category">
+        UPDATE category
+        SET parent_id = #{parentId}, name = #{name}, sort_no = #{sortNo}
+        WHERE category_id = #{categoryId} AND is_deleted = 0
+    </update>
+
+    <update id="softDelete">
+        UPDATE category
+        SET is_deleted = 1
+        WHERE category_id = #{categoryId} AND is_deleted = 0
+    </update>
+
+    <select id="countProducts" resultType="long">
+        SELECT COUNT(*)
+        FROM product
+        WHERE category_id = #{categoryId} AND is_deleted = 0
+    </select>
+
+    <select id="countChildren" resultType="long">
+        SELECT COUNT(*)
+        FROM category
+        WHERE parent_id = #{categoryId} AND is_deleted = 0
+    </select>
 </mapper>

@@ -85,7 +85,8 @@
                MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock,
                p.created_at
         FROM product p
-        JOIN sku s ON s.product_id = p.product_id
+            JOIN category c ON c.category_id = p.category_id AND c.is_deleted = 0
+            JOIN sku s ON s.product_id = p.product_id
         WHERE <include refid="publicWhere"/>
         GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
                  p.status, p.created_at, p.sales_count
@@ -106,7 +107,8 @@
         FROM (
             SELECT p.product_id
             FROM product p
-            JOIN sku s ON s.product_id = p.product_id
+            JOIN category c ON c.category_id = p.category_id AND c.is_deleted = 0
+        JOIN sku s ON s.product_id = p.product_id
             WHERE <include refid="publicWhere"/>
             GROUP BY p.product_id
             HAVING SUM(s.stock_available) &gt; 0
@@ -170,4 +172,5 @@
         WHERE product_id = #{productId} AND is_deleted = 0
     </update>
 </mapper>
+
 
