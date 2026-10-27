@@ -14,12 +14,44 @@ const loading = ref(true)
 const error = ref('')
 const notice = ref('')
 
+// 分类 id → 名称的映射。商品详情接口只返回 categoryId，
+// 需要另取分类树把 id 翻成名字，否则页面只能显示「未分类」。
+const categoryNames = ref({})
+
+const categoryLabel = computed(() => {
+  const p = product.value
+  if (!p) return ''
+  if (p.categoryName) return p.categoryName
+  return categoryNames.value[p.categoryId] || '未分类'
+})
+
 const cover = computed(() => {
   const raw = product.value?.mainImage || product.value?.image
   if (!raw) return ''
   if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) return raw
   return `/images/${raw}`
 })
+
+/** 拉取分类树，拍平成 id → name 的查表 */
+async function loadCategoryNames() {
+  try {
+    const { data } = await productApi.categories()
+    const payload = unwrapResult(data)
+    const list = Array.isArray(payload) ? payload : payload?.list || []
+    const map = {}
+    const walk = (nodes) => {
+      for (const node of nodes || []) {
+        if (!node) continue
+        if (node.categoryId) map[node.categoryId] = node.name
+        if (node.children?.length) walk(node.children)
+      }
+    }
+    walk(list)
+    categoryNames.value = map
+  } catch {
+    // 分类拿不到不影响主流程，页面退化为显示「未分类」
+  }
+}
 
 async function load() {
   loading.value = true
@@ -119,7 +151,10 @@ async function buyNow() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  loadCategoryNames()
+  load()
+})
 </script>
 
 <template>
@@ -165,7 +200,7 @@ onMounted(load)
 
           <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm">
             <dt class="text-gray-500">分类</dt>
-            <dd class="text-gray-800">{{ product.categoryName || '未分类' }}</dd>
+            <dd class="text-gray-800">{{ categoryLabel }}</dd>
             <dt class="text-gray-500">卖家</dt>
             <dd class="text-gray-800">{{ product.sellerId }}</dd>
           </dl>
