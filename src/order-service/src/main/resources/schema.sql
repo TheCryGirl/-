@@ -74,3 +74,14 @@ CREATE TABLE IF NOT EXISTS order_compensation (
     UNIQUE KEY uk_compensation_order (order_id),
     KEY idx_status_retry (status, next_retry_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='库存释放补偿任务';
+CREATE TABLE IF NOT EXISTS config_audit (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    operator_id VARCHAR(32)  NOT NULL COMMENT '操作人 userId',
+    data_id     VARCHAR(64)  NOT NULL COMMENT '配置 dataId',
+    config_key  VARCHAR(128) NOT NULL COMMENT '配置键',
+    old_value   VARCHAR(256) DEFAULT NULL COMMENT '修改前值',
+    new_value   VARCHAR(256) NOT NULL COMMENT '修改后值',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '修改时间',
+    PRIMARY KEY (id),
+    KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台配置变更留痕';

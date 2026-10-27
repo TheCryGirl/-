@@ -102,7 +102,7 @@ $env:JWT_SECRET  = "至少32位的随机字符串"   # 网关与 user-service �
 - 单元测试未整体跑通，**不宣称全部单测通过**；部分改动以静态检查、接口联调与页面验收为主，前端 `pnpm build` 已单独执行通过
 - Redis 未落地接入：当前运行不依赖 Redis，一致性靠 DB 唯一约束/幂等令牌、条件更新（乐观版本或状态条件）与 `order.compensation` 定时补偿实现；契约中的 Redis 方案属规划
 - Docker Compose 与容器化部署未验收，`src/docker/` 仅作部署规划
-- 管理端「系统配置」页仅保存在浏览器 localStorage，不是配置中心，接入 Nacos 配置中心前不改动真实服务配置
+- ~~管理端「系统配置」页仅保存在浏览器 localStorage~~（已由 #43 解决：配置托管在 Nacos 配置中心，dataId `mall-platform.yml`，保存后推送更新，order-service 无需重启即生效，变更写入 `config_audit` 表）
 - 卖家退款列表尚未按 `sellerId` 过滤，卖家侧会看到全平台退款单
 
 ## 团队协作

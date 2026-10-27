@@ -21,8 +21,18 @@ spring:
       schema-locations: classpath:schema.sql
       encoding: UTF-8
 
+  # 任务 #43：从 Nacos 配置中心导入平台配置，optional 保证配置中心不可用时仍能启动
+  config:
+    import:
+      - optional:nacos:mall-platform.yml
+
   cloud:
     nacos:
+      config:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        file-extension: yml
+        username: ${NACOS_USERNAME:nacos}
+        password: ${NACOS_PASSWORD:nacos}
       discovery:
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:public}

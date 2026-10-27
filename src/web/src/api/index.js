@@ -107,6 +107,12 @@ export const productApi = {
 }
 
 /* ---------------- 购物车 ---------------- */
+export const configApi = {
+  get: () => http.get('/config'),
+  update: (payload) => http.put('/config', payload),
+  history: (limit = 20) => http.get('/config/history', { params: { limit } }),
+}
+
 export const cartApi = {
   get: () => http.get('/cart'),
   add: (payload) => http.post('/cart/items', payload),

@@ -71,6 +71,7 @@ public class OrderService {
     private final UserClient userClient;
     private final ProductClient productClient;
     private final TransactionTemplate transactionTemplate;
+    private final PlatformConfigService platformConfigService;
 
     @Value("${order.timeout.minutes:30}")
     private long timeoutMinutes;
@@ -197,7 +198,7 @@ public class OrderService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expireAt = now.plusMinutes(timeoutMinutes);
+        LocalDateTime expireAt = now.plusMinutes(Math.max(1, platformConfigService.currentLong("order.timeout.minutes")));
         Order order = Order.builder()
                 .orderId(orderId)
                 .orderNo(IdGenerator.orderNo())

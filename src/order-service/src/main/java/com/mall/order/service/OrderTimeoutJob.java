@@ -4,6 +4,7 @@ import com.mall.order.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(name = "order.jobs.enabled", havingValue = "true", matchIfMissing = true)
+@RefreshScope
 public class OrderTimeoutJob {
 
     private final OrderMapper orderMapper;
