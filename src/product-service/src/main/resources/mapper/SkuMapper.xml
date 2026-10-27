@@ -84,6 +84,16 @@
           AND stock_locked &gt;= #{quantity}
     </update>
 
+    <!-- 退款回补：已确认扣减的库存直接加回可售数量（BR-28） -->
+    <update id="refundRestock">
+        UPDATE sku
+        SET stock_available = stock_available + #{quantity},
+            version = version + 1,
+            updated_at = NOW()
+        WHERE sku_id = #{skuId}
+          AND is_deleted = 0
+    </update>
+
     <update id="softDeleteByProductId">
         UPDATE sku
         SET is_deleted = 1, updated_at = NOW()

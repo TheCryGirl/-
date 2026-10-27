@@ -51,4 +51,14 @@ public class StockController {
         internalTokenVerifier.verify(token);
         return Result.success(stockService.confirm(request));
     }
+
+    /** 退款成功后回补库存（BR-28），由 payment-service 调用 */
+    @PostMapping("/refund-restock")
+    public Result<Void> refundRestock(
+            @RequestHeader(value = "X-Internal-Token", required = false) String token,
+            @Valid @RequestBody ConfirmStockRequest request) {
+        internalTokenVerifier.verify(token);
+        stockService.refundRestock(request.getOrderId());
+        return Result.success(null);
+    }
 }

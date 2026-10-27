@@ -27,5 +27,8 @@ public interface SkuMapper {
 
     int confirm(@Param("skuId") String skuId, @Param("quantity") int quantity);
 
+    /** 退款回补：把已扣减的库存加回可售数量（BR-28） */
+    int refundRestock(@Param("skuId") String skuId, @Param("quantity") int quantity);
+
     int softDeleteByProductId(@Param("productId") String productId, @Param("updatedBy") String updatedBy);
 }

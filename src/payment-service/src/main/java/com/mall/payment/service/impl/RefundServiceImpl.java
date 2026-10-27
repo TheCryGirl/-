@@ -1,6 +1,8 @@
 package com.mall.payment.service.impl;
 
 import com.mall.payment.client.OrderClient;
+import com.mall.payment.client.ProductClient;
+import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
@@ -42,6 +44,7 @@ public class RefundServiceImpl implements RefundService {
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
     private final OrderClient orderClient;
+    private final ProductClient productClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -128,6 +131,9 @@ public class RefundServiceImpl implements RefundService {
         RefundResponse response = RefundResponse.from(refundMapper.selectById(refundId));
         if (approved && fullyRefunded && notifyOrder) {
             scheduleOrderRefundedNotification(refund.getOrderId());
+            // 全额退款后回补库存（BR-28）。幂等由 product-service 侧的预占状态机保证：
+            // 只有 CONFIRMED 的预占会被回补并置为 REFUNDED，重复调用不会重复加库存。
+            scheduleStockRestock(refund.getOrderId());
         }
         return response;
     }
@@ -194,6 +200,36 @@ public class RefundServiceImpl implements RefundService {
             });
         } else {
             notifyOrderRefunded(orderId);
+        }
+    }
+
+    /** 事务提交后回补库存；失败只记日志，不阻断退款结果 */
+    private void scheduleStockRestock(String orderId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    notifyStockRestock(orderId);
+                }
+            });
+        } else {
+            notifyStockRestock(orderId);
+        }
+    }
+
+    private void notifyStockRestock(String orderId) {
+        try {
+            StockConfirmRequest request = new StockConfirmRequest(orderId);
+            Result<Void> result = productClient.refundRestock(request);
+            if (result == null || result.getCode() != 0) {
+                log.error("退款回补库存失败, orderId={}, code={}, message={}",
+                        orderId, result == null ? null : result.getCode(),
+                        result == null ? null : result.getMessage());
+            } else {
+                log.info("退款回补库存完成, orderId={}", orderId);
+            }
+        } catch (Exception e) {
+            log.error("退款回补库存异常，需人工补偿, orderId={}", orderId, e);
         }
     }
 
