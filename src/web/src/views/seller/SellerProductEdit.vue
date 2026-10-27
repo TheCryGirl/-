@@ -110,7 +110,10 @@ async function submit() {
         error.value = data?.message || '保存失败'
         return
       }
-      message.value = '商品信息已保存'
+      // 修改商品后后端会把状态重置为待审核（BR-07），需提前告知用户，
+      // 且不再重新拉取详情——此时详情接口会因状态非 ON_SALE 而报错，
+      // 造成「保存成功」与「商品已下架」两条矛盾提示同时出现。
+      message.value = '商品信息已保存，修改后需重新审核上架'
     } else {
       const skuPayload = buildSkus(skus.value)
       if (!skuPayload) {

@@ -94,7 +94,19 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         String path = request.getURI().getPath();
 
         // 1. 白名单直接放行（按方法与路径精确判定）
+        //    但若请求带了令牌，仍然解析并注入身份——否则 /api/products/{id} 这类
+        //    公开接口下，卖家/管理员访问自己待审核的商品时，下游拿不到 userId，
+        //    会被当成匿名访客而拒绝。令牌无效时按匿名处理，不阻断。
         if (isWhiteListed(request.getMethod(), path)) {
+            String whitelistAuth = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            if (whitelistAuth != null && whitelistAuth.startsWith("Bearer ")) {
+                Claims claims = tryParse(whitelistAuth.substring(7), path);
+                if (claims != null) {
+                    return chain.filter(exchange.mutate()
+                            .request(withIdentity(request, claims))
+                            .build());
+                }
+            }
             return chain.filter(exchange);
         }
 
@@ -120,23 +132,43 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
         // 4. 把身份放进请求头，覆盖客户端可能伪造的同名头
         String userId = claims.get("userId", String.class);
-        String role = claims.get("role", String.class);
         if (userId == null || userId.isBlank()) {
             return reject(exchange, ErrorCode.UNAUTHORIZED, "令牌内容不完整");
         }
 
-        ServerHttpRequest mutated = request.mutate()
+        return chain.filter(exchange.mutate().request(withIdentity(request, claims)).build());
+    }
+
+    /** 解析令牌；失败返回 null（白名单场景下按匿名处理，不报错） */
+    private Claims tryParse(String token, String path) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(key)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("白名单请求令牌无效，按匿名处理, path={}, reason={}", path, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 把 userId / role 写进请求头，覆盖客户端可能伪造的同名头 */
+    private ServerHttpRequest withIdentity(ServerHttpRequest request, Claims claims) {
+        String userId = claims.get("userId", String.class);
+        String role = claims.get("role", String.class);
+        return request.mutate()
                 .headers(headers -> {
                     headers.remove(HEADER_USER_ID);
                     headers.remove(HEADER_USER_ROLE);
-                    headers.set(HEADER_USER_ID, userId);
+                    if (userId != null && !userId.isBlank()) {
+                        headers.set(HEADER_USER_ID, userId);
+                    }
                     if (role != null) {
                         headers.set(HEADER_USER_ROLE, role);
                     }
                 })
                 .build();
-
-        return chain.filter(exchange.mutate().request(mutated).build());
     }
 
     private boolean isWhiteListed(HttpMethod method, String path) {
