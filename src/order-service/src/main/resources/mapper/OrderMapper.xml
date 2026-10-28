@@ -142,6 +142,13 @@
     <update id="markInventoryReleased">
         UPDATE `order`
         SET inventory_released = 1, updated_at = NOW()
+        WHERE order_id = #{orderId} AND is_deleted = 0 AND inventory_released = 0
+    </update>
+
+    <!-- 补偿重试前把标记复位，允许多次尝试释放；真正的幂等由 product-service 的预占状态保证 -->
+    <update id="resetInventoryReleased">
+        UPDATE `order`
+        SET inventory_released = 0, updated_at = NOW()
         WHERE order_id = #{orderId} AND is_deleted = 0
     </update>
 
@@ -151,4 +158,3 @@
         WHERE order_id = #{orderId} AND is_deleted = 0
     </update>
 </mapper>
-
