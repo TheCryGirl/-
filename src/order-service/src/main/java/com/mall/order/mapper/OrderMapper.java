@@ -40,7 +40,8 @@ public interface OrderMapper {
     int markRefunded(@Param("orderId") String orderId, @Param("updatedAt") LocalDateTime updatedAt);
 
     int markInventoryReleased(@Param("orderId") String orderId);
+    /** 把 inventory_released 复位为 0，供释放失败后交给补偿任务重试 */
+    int resetInventoryReleased(@Param("orderId") String orderId);
 
     int softDelete(@Param("orderId") String orderId);
 }
-

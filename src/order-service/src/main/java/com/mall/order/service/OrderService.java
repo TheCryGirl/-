@@ -441,6 +441,13 @@ public class OrderService {
     }
 
     public void releaseInventory(String orderId) {
+        // 抢占式：只有把 inventory_released 从 0 改成 1 的调用者才真正释放库存。
+        // 买家取消与超时取消并发时，另一个调用者在这里返回 0，直接退出，避免重复释放。
+        int claimed = orderMapper.markInventoryReleased(orderId);
+        if (claimed == 0) {
+            log.debug("库存已释放或无需释放，跳过, orderId={}", orderId);
+            return;
+        }
         try {
             Result<com.mall.order.client.dto.ReleaseResponseDTO> result =
                     productClient.release(internalToken, new ProductClient.ReleaseRequest(orderId));
@@ -452,8 +459,9 @@ public class OrderService {
                     && result.getCode() != ErrorCode.RESERVATION_NOT_FOUND) {
                 throw new BizException(result.getCode(), result.getMessage());
             }
-            orderMapper.markInventoryReleased(orderId);
         } catch (Exception e) {
+            // 远程释放失败：把标记回滚为 0，交给补偿任务重试。
+            orderMapper.resetInventoryReleased(orderId);
             log.warn("释放库存失败，进入补偿, orderId={}", orderId, e);
             compensationService.enqueue(orderId);
         }
@@ -650,7 +658,6 @@ public class OrderService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-
 
 
 
