@@ -4,16 +4,20 @@ import com.mall.product.common.BizException;
 import com.mall.product.common.ErrorCode;
 import com.mall.product.common.PageResult;
 import com.mall.product.common.Result;
+import com.mall.product.config.InternalTokenVerifier;
 import com.mall.product.dto.request.AuditProductRequest;
 import com.mall.product.dto.request.CreateProductRequest;
 import com.mall.product.dto.request.CreateSkuRequest;
+import com.mall.product.dto.request.SellerVisibilityRequest;
 import com.mall.product.dto.request.UpdateProductRequest;
 import com.mall.product.dto.request.UpdateStatusRequest;
 import com.mall.product.dto.request.UpdateStockRequest;
 import com.mall.product.dto.response.ImageUploadResponse;
+import com.mall.product.dto.response.ProductBriefResponse;
 import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.dto.response.ProductListItem;
 import com.mall.product.dto.response.SkuResponse;
+import com.mall.product.dto.response.VisibilitySyncResponse;
 import com.mall.product.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,12 +33,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @RestController
 @RequestMapping({"/products", "/api/products"})
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductService productService;
+    private final InternalTokenVerifier internalTokenVerifier;
 
     /**
      * 商品列表。带 status 参数时仅对管理员生效（商品审核页按状态筛选），
@@ -52,6 +59,26 @@ public class ProductController {
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(value = "X-User-Role", required = false) String role) {
         return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, status, role, page, size));
+    }
+
+    /**
+     * 批量取商品简要信息（#52）。收藏夹与足迹展示用，不按状态过滤，
+     * 失效商品也要能返回给前端置灰。
+     */
+    @GetMapping("/batch")
+    public Result<List<ProductBriefResponse>> batch(@RequestParam(required = false) String ids) {
+        return Result.success(productService.batch(ids));
+    }
+
+    /**
+     * 店铺停用 / 恢复后同步该卖家商品的可见性（#49），仅内部服务调用。
+     */
+    @PostMapping("/internal/seller-visibility")
+    public Result<VisibilitySyncResponse> syncSellerVisibility(
+            @RequestHeader(value = "X-Internal-Token", required = false) String token,
+            @Valid @RequestBody SellerVisibilityRequest request) {
+        internalTokenVerifier.verify(token);
+        return Result.success(productService.updateSellerVisibility(request.getSellerId(), request.getVisible()));
     }
 
     @GetMapping("/mine")

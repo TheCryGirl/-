@@ -171,6 +171,31 @@
         SET sales_count = sales_count + #{quantity}, updated_at = NOW()
         WHERE product_id = #{productId} AND is_deleted = 0
     </update>
+
+    <select id="selectBriefByIds" resultType="com.mall.product.dto.response.ProductBriefResponse">
+        SELECT p.product_id, p.seller_id, p.title, p.main_image, p.category_id, p.status,
+               MIN(s.price) AS price
+        FROM product p
+        LEFT JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE p.is_deleted = 0
+          AND p.product_id IN
+        <foreach collection="productIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY p.product_id, p.seller_id, p.title, p.main_image, p.category_id, p.status
+    </select>
+
+    <update id="suspendBySellerId">
+        UPDATE product
+        SET status = 'SUSPENDED', updated_at = NOW(), updated_by = #{updatedBy}
+        WHERE seller_id = #{sellerId} AND status = 'ON_SALE' AND is_deleted = 0
+    </update>
+
+    <update id="resumeBySellerId">
+        UPDATE product
+        SET status = 'ON_SALE', updated_at = NOW(), updated_by = #{updatedBy}
+        WHERE seller_id = #{sellerId} AND status = 'SUSPENDED' AND is_deleted = 0
+    </update>
 </mapper>
 
 

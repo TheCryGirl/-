@@ -34,6 +34,12 @@ spring:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
 
+  servlet:
+    multipart:
+      # 商品图片上传：与 ProductService 的 5MB 校验保持一致
+      max-file-size: 5MB
+      max-request-size: 10MB
+
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.mall.product.entity
@@ -45,6 +51,10 @@ product:
   internal-token: ${INTERNAL_TOKEN:}
   reservation:
     scan-interval-ms: 60000
+
+services:
+  # 审核与卖家上架前查店铺营业状态（#49）
+  user-url: ${USER_SERVICE_URL:}
 
 management:
   endpoints:

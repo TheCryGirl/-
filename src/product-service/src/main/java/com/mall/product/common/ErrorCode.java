@@ -17,6 +17,7 @@ public final class ErrorCode {
     public static final int STOCK_INSUFFICIENT = 30003;
     public static final int RESERVATION_NOT_FOUND = 30004;
     public static final int SPEC_CONFLICT = 30005;
+    public static final int SHOP_SUSPENDED = 30006;
 
     private ErrorCode() {
     }
