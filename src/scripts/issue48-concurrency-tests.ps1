@@ -35,6 +35,6 @@ foreach ($case in $cases) {
 
 Write-Host ''
 $results | Format-Table -AutoSize
-if (($results | Where-Object Result -eq 'FAIL').Count -gt 0) {
-    exit 1
+if (@($results | Where-Object Result -eq 'FAIL').Length -gt 0) {
+    [Environment]::Exit(1)
 }
