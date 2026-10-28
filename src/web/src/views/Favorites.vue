@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { favoriteApi, isOk, unwrapResult } from '../api'
+import { formatTime } from '../utils/format'
 
 const router = useRouter()
 
@@ -121,7 +122,7 @@ onMounted(load)
             <p class="text-sm text-gray-800 line-clamp-2">{{ item.title }}</p>
             <p class="text-red-600 font-medium text-sm">¥{{ formatPrice(item.price) }}</p>
             <div class="flex items-center justify-between text-xs text-gray-400 pt-1">
-              <span>{{ item.createdAt || '' }}</span>
+              <span>{{ formatTime(item.createdAt) }}</span>
               <button class="text-red-500 hover:underline" @click.stop="remove(item)">
                 取消收藏
               </button>

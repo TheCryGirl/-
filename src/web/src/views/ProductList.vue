@@ -109,9 +109,9 @@ async function load(resetPage = true) {
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     if (categoryId.value) params.categoryId = categoryId.value
     if (priceRange.value.min !== '' && priceRange.value.min !== null)
-      params.minPrice = Number(priceRange.value.min) * 100
+      params.minPrice = Math.round(Number(priceRange.value.min) * 100)
     if (priceRange.value.max !== '' && priceRange.value.max !== null)
-      params.maxPrice = Number(priceRange.value.max) * 100
+      params.maxPrice = Math.round(Number(priceRange.value.max) * 100)
 
     const { data } = await productApi.list(params)
     const payload = data?.data ?? data

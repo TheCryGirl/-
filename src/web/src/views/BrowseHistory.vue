@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { historyApi, isOk, unwrapResult } from '../api'
+import { formatTime } from '../utils/format'
 
 const router = useRouter()
 
@@ -149,7 +150,7 @@ onMounted(load)
           </div>
 
           <div class="text-right text-xs text-gray-400 whitespace-nowrap space-y-1">
-            <p>{{ item.visitedAt || '' }}</p>
+            <p>{{ formatTime(item.visitedAt) }}</p>
             <button class="text-red-500 hover:underline" @click.stop="remove(item)">删除</button>
           </div>
         </li>

@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { isOk, shopApi, unwrapResult } from '../../api'
+import { formatTime } from '../../utils/format'
 
 const shops = ref([])
 const page = ref(1)
@@ -68,10 +69,6 @@ async function toggleStatus(shop) {
   } finally {
     operating.value = ''
   }
-}
-
-function formatTime(t) {
-  return t || '—'
 }
 
 onMounted(load)
