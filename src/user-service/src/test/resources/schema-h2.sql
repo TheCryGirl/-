@@ -20,6 +20,22 @@ CREATE TABLE IF NOT EXISTS `user` (
     CONSTRAINT uk_nickname UNIQUE (nickname)
 );
 
+CREATE TABLE IF NOT EXISTS shop (
+    shop_id        VARCHAR(32)  NOT NULL,
+    seller_id      VARCHAR(32)  NOT NULL,
+    name           VARCHAR(64)  NOT NULL,
+    logo           VARCHAR(255) DEFAULT NULL,
+    description    VARCHAR(255) DEFAULT NULL,
+    contact_phone  VARCHAR(20)  DEFAULT NULL,
+    contact_wechat VARCHAR(64)  DEFAULT NULL,
+    status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted     TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (shop_id),
+    CONSTRAINT uk_shop_seller UNIQUE (seller_id)
+);
+
 CREATE TABLE IF NOT EXISTS address (
     address_id  VARCHAR(32)  NOT NULL,
     user_id     VARCHAR(32)  NOT NULL,
@@ -34,4 +50,22 @@ CREATE TABLE IF NOT EXISTS address (
     updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted  TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (address_id)
+);
+
+CREATE TABLE IF NOT EXISTS favorite (
+    favorite_id VARCHAR(32) NOT NULL,
+    user_id     VARCHAR(32) NOT NULL,
+    product_id  VARCHAR(32) NOT NULL,
+    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (favorite_id),
+    CONSTRAINT uk_favorite_user_product UNIQUE (user_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS browse_history (
+    history_id VARCHAR(32) NOT NULL,
+    user_id    VARCHAR(32) NOT NULL,
+    product_id VARCHAR(32) NOT NULL,
+    visited_at TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (history_id),
+    CONSTRAINT uk_history_user_product UNIQUE (user_id, product_id)
 );

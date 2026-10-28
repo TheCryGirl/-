@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.ShopMapper">
+
+    <sql id="shopColumns">
+        shop_id, seller_id, name, logo, description, contact_phone, contact_wechat,
+        status, created_at, updated_at, is_deleted
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO shop (shop_id, seller_id, name, logo, description, contact_phone, contact_wechat,
+                          status, created_at, updated_at, is_deleted)
+        VALUES (#{shopId}, #{sellerId}, #{name}, #{logo}, #{description}, #{contactPhone},
+                #{contactWechat}, #{status}, #{createdAt}, #{updatedAt}, #{isDeleted})
+    </insert>
+
+    <update id="updateInfo">
+        UPDATE shop
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="logo != null">logo = #{logo},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="contactWechat != null">contact_wechat = #{contactWechat},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE shop
+        SET status = #{status},
+            updated_at = NOW()
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </update>
+
+    <select id="selectById" resultType="com.mall.user.entity.Shop">
+        SELECT <include refid="shopColumns"/>
+        FROM shop
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectBySellerId" resultType="com.mall.user.entity.Shop">
+        SELECT <include refid="shopColumns"/>
+        FROM shop
+        WHERE seller_id = #{sellerId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectPage" resultType="com.mall.user.entity.Shop">
+        SELECT <include refid="shopColumns"/>
+        FROM shop
+        WHERE is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') OR seller_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM shop
+        WHERE is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (name LIKE CONCAT('%', #{keyword}, '%') OR seller_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+</mapper>

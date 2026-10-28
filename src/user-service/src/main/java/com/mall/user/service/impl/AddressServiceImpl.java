@@ -38,6 +38,10 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public AddressResponse createAddress(String userId, AddressRequest request) {
+        List<Address> existing = addressMapper.selectByUserId(userId);
+        // 第一条地址自动成为默认，避免下单页出现“没有默认地址”的情况
+        boolean isDefault = existing.isEmpty() || Boolean.TRUE.equals(request.getDefaultAddress());
+
         Address address = new Address();
         address.setAddressId(IdGenerator.addressId());
         address.setUserId(userId);
@@ -47,12 +51,12 @@ public class AddressServiceImpl implements AddressService {
         address.setCity(request.getCity());
         address.setDistrict(request.getDistrict());
         address.setDetail(request.getDetail());
-        address.setIsDefault(Boolean.TRUE.equals(request.getDefaultAddress()));
+        address.setIsDefault(isDefault);
         address.setCreatedAt(LocalDateTime.now());
         address.setUpdatedAt(LocalDateTime.now());
         address.setIsDeleted(Boolean.FALSE);
 
-        if (Boolean.TRUE.equals(address.getIsDefault())) {
+        if (isDefault) {
             addressMapper.clearDefaultByUserId(userId);
         }
         addressMapper.insert(address);
@@ -80,6 +84,7 @@ public class AddressServiceImpl implements AddressService {
             addressMapper.clearDefaultByUserId(userId);
             address.setIsDefault(Boolean.TRUE);
         }
+        // 默认地址不允许通过编辑取消，换默认请调设置默认接口，保证列表里始终有且只有一条默认
         addressMapper.updateById(address);
         return toResponse(address);
     }
@@ -91,7 +96,15 @@ public class AddressServiceImpl implements AddressService {
         if (address == null || !address.getUserId().equals(userId)) {
             throw new BizException(ErrorCode.ADDRESS_NOT_FOUND, "地址不存在");
         }
+        boolean wasDefault = Boolean.TRUE.equals(address.getIsDefault());
         addressMapper.deleteById(addressId);
+        if (wasDefault) {
+            // 删掉默认地址后自动提升一条（列表已按 is_default、created_at 排好），保证始终有默认
+            List<Address> remaining = addressMapper.selectByUserId(userId);
+            if (!remaining.isEmpty()) {
+                addressMapper.setDefaultById(remaining.get(0).getAddressId());
+            }
+        }
     }
 
     @Override
@@ -115,6 +128,7 @@ public class AddressServiceImpl implements AddressService {
         response.setDistrict(address.getDistrict());
         response.setDetail(address.getDetail());
         response.setIsDefault(address.getIsDefault());
+        response.setDefaultAddress(address.getIsDefault());
         response.setCreatedAt(address.getCreatedAt());
         return response;
     }

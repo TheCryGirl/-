@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.FavoriteMapper">
+
+    <insert id="insert">
+        INSERT INTO favorite (favorite_id, user_id, product_id, created_at)
+        VALUES (#{favoriteId}, #{userId}, #{productId}, #{createdAt})
+    </insert>
+
+    <delete id="deleteByUserAndProduct">
+        DELETE FROM favorite
+        WHERE user_id = #{userId}
+          AND product_id = #{productId}
+    </delete>
+
+    <select id="selectByUserAndProduct" resultType="com.mall.user.entity.Favorite">
+        SELECT favorite_id, user_id, product_id, created_at
+        FROM favorite
+        WHERE user_id = #{userId}
+          AND product_id = #{productId}
+    </select>
+
+    <select id="selectPage" resultType="com.mall.user.entity.Favorite">
+        SELECT favorite_id, user_id, product_id, created_at
+        FROM favorite
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByUserId" resultType="long">
+        SELECT COUNT(*)
+        FROM favorite
+        WHERE user_id = #{userId}
+    </select>
+</mapper>

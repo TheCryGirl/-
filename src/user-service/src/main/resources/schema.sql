@@ -22,6 +22,23 @@ CREATE TABLE IF NOT EXISTS `user` (
     KEY idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
+-- 店铺资料与营业状态（#49）。一个卖家一个店铺，seller_id 唯一
+CREATE TABLE IF NOT EXISTS shop (
+    shop_id        VARCHAR(32)  NOT NULL COMMENT '店铺ID',
+    seller_id      VARCHAR(32)  NOT NULL COMMENT '所属卖家用户ID',
+    name           VARCHAR(64)  NOT NULL COMMENT '店铺名称',
+    logo           VARCHAR(255) DEFAULT NULL COMMENT '店铺头像URL',
+    description    VARCHAR(255) DEFAULT NULL COMMENT '店铺简介',
+    contact_phone  VARCHAR(20)  DEFAULT NULL COMMENT '联系电话',
+    contact_wechat VARCHAR(64)  DEFAULT NULL COMMENT '在线联系方式（微信/旺旺）',
+    status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE' COMMENT '营业状态：ACTIVE正常/SUSPENDED已停用',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    is_deleted     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (shop_id),
+    UNIQUE KEY uk_shop_seller (seller_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='卖家店铺表';
+
 CREATE TABLE IF NOT EXISTS address (
     address_id  VARCHAR(32)  NOT NULL COMMENT '地址ID',
     user_id     VARCHAR(32)  NOT NULL COMMENT '所属用户ID',
@@ -38,3 +55,25 @@ CREATE TABLE IF NOT EXISTS address (
     PRIMARY KEY (address_id),
     KEY idx_user_id (user_id, is_deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收货地址表';
+
+-- 收藏夹（#52）。同一用户同一商品只有一条，重复收藏靠唯一索引保证幂等
+CREATE TABLE IF NOT EXISTS favorite (
+    favorite_id VARCHAR(32) NOT NULL COMMENT '收藏ID',
+    user_id     VARCHAR(32) NOT NULL COMMENT '收藏人用户ID',
+    product_id  VARCHAR(32) NOT NULL COMMENT '商品ID（不跨库外键，展示时调 product 接口）',
+    created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
+    PRIMARY KEY (favorite_id),
+    UNIQUE KEY uk_favorite_user_product (user_id, product_id),
+    KEY idx_favorite_user_time (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品收藏表';
+
+-- 浏览足迹（#52）。同一商品只保留最后一次浏览时间，实现去重
+CREATE TABLE IF NOT EXISTS browse_history (
+    history_id VARCHAR(32) NOT NULL COMMENT '足迹ID',
+    user_id    VARCHAR(32) NOT NULL COMMENT '用户ID',
+    product_id VARCHAR(32) NOT NULL COMMENT '商品ID',
+    visited_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近一次浏览时间',
+    PRIMARY KEY (history_id),
+    UNIQUE KEY uk_history_user_product (user_id, product_id),
+    KEY idx_history_user_time (user_id, visited_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品浏览足迹表';
