@@ -9,6 +9,7 @@ import com.mall.order.client.dto.CartItemDTO;
 import com.mall.order.client.dto.ProductDetailDTO;
 import com.mall.order.client.dto.ReserveItemDTO;
 import com.mall.order.client.dto.ReserveStockRequestDTO;
+import com.mall.order.client.dto.ShopBriefDTO;
 import com.mall.order.client.dto.SkuDTO;
 import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
@@ -157,6 +158,9 @@ public class OrderService {
         for (CartItemDTO cartItem : selectedItems) {
             ProductDetailDTO product = productCache.computeIfAbsent(cartItem.getProductId(),
                     productId -> callProduct(productId));
+            if ("SUSPENDED".equalsIgnoreCase(product.getStatus())) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，商品暂不可购买: " + product.getTitle());
+            }
             if (!"ON_SALE".equalsIgnoreCase(product.getStatus())) {
                 throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品已下架: " + product.getTitle());
             }
@@ -175,6 +179,10 @@ public class OrderService {
             }
             if (sellerId == null) {
                 sellerId = product.getSellerId();
+                // 商品状态同步可能失败，下单前再向用户服务确认一次店铺营业状态（#49）
+                if (!shopActive(sellerId)) {
+                    throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
+                }
             } else if (!sellerId.equals(product.getSellerId())) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "一次只能结算同一卖家的商品");
             }
@@ -489,6 +497,23 @@ public class OrderService {
             throw e;
         } catch (Exception e) {
             throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "cart-service 调用失败", e);
+        }
+    }
+
+    /**
+     * 店铺是否在营业（#49）。用户服务不可用时按正常营业处理，
+     * 正常路径下的停用已经通过商品状态 SUSPENDED 拦住。
+     */
+    private boolean shopActive(String sellerId) {
+        try {
+            Result<ShopBriefDTO> result = userClient.shopBySeller(sellerId);
+            if (result == null || result.getCode() != ErrorCode.SUCCESS || result.getData() == null) {
+                return true;
+            }
+            return !"SUSPENDED".equalsIgnoreCase(result.getData().getStatus());
+        } catch (Exception e) {
+            log.warn("查询店铺营业状态失败，按正常营业处理, sellerId={}", sellerId, e);
+            return true;
         }
     }
 

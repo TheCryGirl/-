@@ -7,5 +7,7 @@ public enum ProductStatus {
     PENDING,
     ON_SALE,
     OFF_SHELF,
-    REJECTED
+    REJECTED,
+    /** 店铺被停用，商品暂时不可购买 */
+    SUSPENDED
 }
