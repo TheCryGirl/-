@@ -28,8 +28,13 @@ async function load() {
     const { data } = await addressApi.list(auth.user.userId)
     const payload = unwrapResult(data)
     addresses.value = Array.isArray(payload) ? payload : []
-    const def = addresses.value.find((a) => a.isDefault)
-    if (def) selectedAddressId.value = def.addressId
+    // 默认地址自动选中；后端保证至少有一条默认，没有时再退回第一条（#51）
+    const def = addresses.value.find((a) => isDefaultAddress(a))
+    if (def) {
+      selectedAddressId.value = def.addressId
+    } else if (addresses.value.length) {
+      selectedAddressId.value = addresses.value[0].addressId
+    }
   } catch (err) {
     error.value = err.response?.data?.message || err.message || '加载失败'
   }
@@ -71,6 +76,11 @@ function formatPrice(cents) {
   return (cents / 100).toFixed(2)
 }
 
+/** 后端同时输出 isDefault 与 defaultAddress，两个名字都兼容 */
+function isDefaultAddress(addr) {
+  return Boolean(addr.defaultAddress ?? addr.isDefault)
+}
+
 onMounted(load)
 </script>
 
@@ -99,7 +109,7 @@ onMounted(load)
           <div class="text-sm">
             <p class="font-medium text-gray-900">
               {{ addr.receiver }} {{ addr.phone }}
-              <span v-if="addr.isDefault" class="ml-2 text-xs text-blue-600 border border-blue-600 px-1 rounded">默认</span>
+              <span v-if="isDefaultAddress(addr)" class="ml-2 text-xs text-blue-600 border border-blue-600 px-1 rounded">默认</span>
             </p>
             <p class="text-gray-500">
               {{ addr.province }} {{ addr.city }} {{ addr.district }} {{ addr.detail }}

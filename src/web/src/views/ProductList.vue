@@ -1,15 +1,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { productApi } from '../api'
 import ProductCard from '../components/ProductCard.vue'
 
+const route = useRoute()
 const router = useRouter()
 
 const products = ref([])
 const categories = ref([])
 const loading = ref(false)
 const error = ref('')
+const filterError = ref('')
 
 const keyword = ref('')
 const categoryId = ref('')
@@ -27,16 +29,89 @@ const sortOptions = [
   { value: 'price_desc', label: '价格从高到低' },
 ]
 
+/** 当前生效的筛选条件，空结果时告诉用户到底筛了什么（#50） */
+const activeFilters = computed(() => {
+  const list = []
+  if (keyword.value.trim()) list.push(`关键词「${keyword.value.trim()}」`)
+  if (categoryId.value) list.push(`分类「${categoryName(categoryId.value)}」`)
+  if (priceRange.value.min !== '' && priceRange.value.min !== null)
+    list.push(`最低价 ¥${priceRange.value.min}`)
+  if (priceRange.value.max !== '' && priceRange.value.max !== null)
+    list.push(`最高价 ¥${priceRange.value.max}`)
+  return list
+})
+
+function categoryName(id) {
+  return categories.value.find((c) => c.categoryId === id)?.name || id
+}
+
+/** 分类下拉按后端返回的层级顺序展示，子分类缩进（#50） */
+function categoryLabel(category) {
+  return category.parentId ? `　└ ${category.name}` : category.name
+}
+
+/** 筛选条件写回地址栏，刷新、前进后退与分享链接都能还原（#50） */
+function syncQuery() {
+  const query = {}
+  if (keyword.value.trim()) query.keyword = keyword.value.trim()
+  if (categoryId.value) query.categoryId = categoryId.value
+  if (sort.value !== 'default') query.sort = sort.value
+  if (priceRange.value.min !== '' && priceRange.value.min !== null)
+    query.minPrice = String(priceRange.value.min)
+  if (priceRange.value.max !== '' && priceRange.value.max !== null)
+    query.maxPrice = String(priceRange.value.max)
+  if (page.value > 1) query.page = String(page.value)
+  router.replace({ name: 'products', query })
+}
+
+function readQuery() {
+  keyword.value = typeof route.query.keyword === 'string' ? route.query.keyword : ''
+  categoryId.value = typeof route.query.categoryId === 'string' ? route.query.categoryId : ''
+  sort.value = sortOptions.some((o) => o.value === route.query.sort)
+    ? route.query.sort
+    : 'default'
+  priceRange.value = {
+    min: route.query.minPrice ?? '',
+    max: route.query.maxPrice ?? '',
+  }
+  const queryPage = Number(route.query.page)
+  page.value = Number.isFinite(queryPage) && queryPage > 0 ? queryPage : 1
+}
+
+function validatePrice() {
+  const min =
+    priceRange.value.min === '' || priceRange.value.min === null
+      ? null
+      : Number(priceRange.value.min)
+  const max =
+    priceRange.value.max === '' || priceRange.value.max === null
+      ? null
+      : Number(priceRange.value.max)
+  if ((min !== null && (Number.isNaN(min) || min < 0)) || (max !== null && (Number.isNaN(max) || max < 0))) {
+    filterError.value = '价格必须是不小于 0 的数字'
+    return false
+  }
+  if (min !== null && max !== null && min > max) {
+    filterError.value = '最低价不能高于最高价'
+    return false
+  }
+  filterError.value = ''
+  return true
+}
+
 async function load(resetPage = true) {
   if (resetPage) page.value = 1
+  if (!validatePrice()) return
   loading.value = true
   error.value = ''
   try {
     const params = { page: page.value, size: size.value, sort: sort.value }
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     if (categoryId.value) params.categoryId = categoryId.value
-    if (priceRange.value.min) params.minPrice = priceRange.value.min * 100
-    if (priceRange.value.max) params.maxPrice = priceRange.value.max * 100
+    if (priceRange.value.min !== '' && priceRange.value.min !== null)
+      params.minPrice = Number(priceRange.value.min) * 100
+    if (priceRange.value.max !== '' && priceRange.value.max !== null)
+      params.maxPrice = Number(priceRange.value.max) * 100
 
     const { data } = await productApi.list(params)
     const payload = data?.data ?? data
@@ -60,12 +135,25 @@ async function loadCategories() {
   }
 }
 
+/** 筛选条件变化后：回第一页、重新查询、同步地址栏 */
+function applyFilters() {
+  load(true)
+  syncQuery()
+}
+
+function goPage(target) {
+  page.value = Math.min(totalPages.value, Math.max(1, target))
+  load(false)
+  syncQuery()
+}
+
 function resetFilters() {
   keyword.value = ''
   categoryId.value = ''
   sort.value = 'default'
   priceRange.value = { min: '', max: '' }
-  load()
+  filterError.value = ''
+  applyFilters()
 }
 
 function openDetail(product) {
@@ -75,14 +163,16 @@ function openDetail(product) {
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
 let searchTimer = null
-watch(keyword, () => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => load(), 400)
-})
 
 onMounted(() => {
+  readQuery()
+  // 先按地址栏恢复条件再监听输入，避免初始化时把 ?page=2 重置回第一页
+  watch(keyword, () => {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => applyFilters(), 400)
+  })
   loadCategories()
-  load()
+  load(false)
 })
 
 onBeforeUnmount(() => {
@@ -104,17 +194,17 @@ onBeforeUnmount(() => {
         <select
           v-model="categoryId"
           class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          @change="load()"
+          @change="applyFilters"
         >
           <option value="">全部分类</option>
           <option v-for="c in categories" :key="c.categoryId" :value="c.categoryId">
-            {{ c.name }}
+            {{ categoryLabel(c) }}
           </option>
         </select>
         <select
           v-model="sort"
           class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          @change="load()"
+          @change="applyFilters"
         >
           <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
             {{ opt.label }}
@@ -141,7 +231,7 @@ onBeforeUnmount(() => {
         />
         <button
           class="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-          @click="load()"
+          @click="applyFilters"
         >
           查询
         </button>
@@ -152,6 +242,8 @@ onBeforeUnmount(() => {
           重置
         </button>
       </div>
+
+      <p v-if="filterError" class="text-sm text-red-600">{{ filterError }}</p>
     </section>
 
     <!-- 结果 -->
@@ -167,11 +259,21 @@ onBeforeUnmount(() => {
 
       <div v-else-if="error" class="py-16 text-center text-red-500 text-sm">
         {{ error }}
-        <button class="ml-2 text-blue-600 underline" @click="load">重试</button>
+        <button class="ml-2 text-blue-600 underline" @click="load()">重试</button>
       </div>
 
-      <div v-else-if="!products.length" class="py-16 text-center text-gray-400 text-sm">
-        没有找到符合条件的商品
+      <div v-else-if="!products.length" class="py-16 text-center text-gray-400 text-sm space-y-3">
+        <p class="text-gray-600">没有找到符合条件的商品</p>
+        <p v-if="activeFilters.length" class="text-xs text-gray-500">
+          当前筛选：{{ activeFilters.join('、') }}
+        </p>
+        <p class="text-xs text-gray-400">可以试着换个关键词，或者放宽价格区间</p>
+        <button
+          class="px-4 py-2 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50"
+          @click="resetFilters"
+        >
+          清空筛选条件
+        </button>
       </div>
 
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -188,7 +290,7 @@ onBeforeUnmount(() => {
         <button
           class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
           :disabled="page === 1"
-          @click="page--; load(false)"
+          @click="goPage(page - 1)"
         >
           上一页
         </button>
@@ -196,7 +298,7 @@ onBeforeUnmount(() => {
         <button
           class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
           :disabled="page === totalPages"
-          @click="page++; load(false)"
+          @click="goPage(page + 1)"
         >
           下一页
         </button>

@@ -52,6 +52,18 @@ const routes = [
     meta: { title: '个人中心', requiresAuth: true },
   },
   {
+    path: '/favorites',
+    name: 'favorites',
+    component: () => import('../views/Favorites.vue'),
+    meta: { title: '我的收藏', requiresAuth: true },
+  },
+  {
+    path: '/history',
+    name: 'browse-history',
+    component: () => import('../views/BrowseHistory.vue'),
+    meta: { title: '浏览足迹', requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('../views/Login.vue'),
@@ -89,6 +101,12 @@ const routes = [
     meta: { title: '待发货', requiresAuth: true, role: 'SELLER' },
   },
   {
+    path: '/seller/shop',
+    name: 'seller-shop',
+    component: () => import('../views/seller/ShopProfile.vue'),
+    meta: { title: '店铺资料', requiresAuth: true, role: 'SELLER' },
+  },
+  {
     path: '/seller/refunds',
     name: 'seller-refunds',
     component: () => import('../views/seller/SellerRefunds.vue'),
@@ -106,6 +124,12 @@ const routes = [
     name: 'admin-products',
     component: () => import('../views/admin/AdminProducts.vue'),
     meta: { title: '商品审核', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
+    path: '/admin/shops',
+    name: 'admin-shops',
+    component: () => import('../views/admin/AdminShops.vue'),
+    meta: { title: '店铺管理', requiresAuth: true, role: 'ADMIN' },
   },
   {
     path: '/admin/after-sales',

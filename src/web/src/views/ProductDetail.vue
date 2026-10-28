@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, isOk, productApi, unwrapResult } from '../api'
+import { cartApi, favoriteApi, historyApi, isOk, productApi, unwrapResult } from '../api'
 import { isLoggedIn } from '../stores/auth'
 
 const route = useRoute()
@@ -13,6 +13,8 @@ const quantity = ref(1)
 const loading = ref(true)
 const error = ref('')
 const notice = ref('')
+const favorited = ref(false)
+const favoriteBusy = ref(false)
 
 // 分类 id → 名称的映射。商品详情接口只返回 categoryId，
 // 需要另取分类树把 id 翻成名字，否则页面只能显示「未分类」。
@@ -67,6 +69,9 @@ async function load() {
     if (product.value?.skus?.length) {
       selectedSku.value = product.value.skus[0]
     }
+    // 收藏状态与浏览足迹都是登录后的附加能力，失败不影响商品展示
+    loadFavoriteState()
+    recordHistory()
   } catch (err) {
     error.value = err.response?.status === 404 ? '商品不存在或已下架' : '加载失败，请稍后重试'
   } finally {
@@ -94,6 +99,44 @@ function ensureLogin() {
     return false
   }
   return true
+}
+
+async function toggleFavorite() {
+  if (!ensureLogin()) return
+  favoriteBusy.value = true
+  notice.value = ''
+  try {
+    const { data } = favorited.value
+      ? await favoriteApi.remove(route.params.id)
+      : await favoriteApi.add(route.params.id)
+    if (!isOk(data)) {
+      notice.value = data?.message || '收藏操作失败'
+      return
+    }
+    favorited.value = !favorited.value
+    notice.value = favorited.value ? '已加入收藏' : '已取消收藏'
+  } catch (err) {
+    notice.value = err.response?.data?.message || '收藏操作失败'
+  } finally {
+    favoriteBusy.value = false
+  }
+}
+
+async function loadFavoriteState() {
+  if (!isLoggedIn.value) return
+  try {
+    const { data } = await favoriteApi.status(route.params.id)
+    const payload = unwrapResult(data)
+    favorited.value = Boolean(payload?.favorited)
+  } catch {
+    // 收藏状态取不到不影响浏览
+  }
+}
+
+function recordHistory() {
+  if (!isLoggedIn.value) return
+  // 足迹只用于展示，失败不打断浏览
+  historyApi.record(route.params.id).catch(() => {})
 }
 
 async function addToCart() {
@@ -204,6 +247,17 @@ onMounted(() => {
             <dt class="text-gray-500">卖家</dt>
             <dd class="text-gray-800">{{ product.sellerId }}</dd>
           </dl>
+
+          <div>
+            <button
+              class="px-3 py-1.5 rounded-md text-sm border transition-colors disabled:opacity-40"
+              :class="favorited ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-300 text-gray-600 hover:bg-gray-50'"
+              :disabled="favoriteBusy"
+              @click="toggleFavorite"
+            >
+              {{ favorited ? '已收藏' : '收藏' }}
+            </button>
+          </div>
 
           <div v-if="product.skus?.length" class="space-y-2">
             <span class="text-sm text-gray-600">规格</span>

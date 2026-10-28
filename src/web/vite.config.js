@@ -17,6 +17,11 @@ export default defineConfig({
         target: 'http://localhost:9000',
         changeOrigin: true,
       },
+      // 用户头像与商品图片同一套静态映射方案（#51）
+      '/avatars': {
+        target: 'http://localhost:9000',
+        changeOrigin: true,
+      },
     },
   },
 })
