@@ -28,8 +28,17 @@ public class AddressServiceImpl implements AddressService {
     private final AddressMapper addressMapper;
 
     @Override
+    @Transactional
     public List<AddressResponse> listAddresses(String userId) {
         List<Address> addresses = addressMapper.selectByUserId(userId);
+        // 历史数据可能一条默认都没有，取最早一条补上，保证下单页始终能自动选中
+        if (!addresses.isEmpty()
+                && addresses.stream().noneMatch(address -> Boolean.TRUE.equals(address.getIsDefault()))) {
+            Address first = addresses.get(0);
+            addressMapper.setDefaultById(first.getAddressId());
+            first.setIsDefault(Boolean.TRUE);
+            log.info("补齐默认收货地址, userId={}, addressId={}", userId, first.getAddressId());
+        }
         return addresses.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());

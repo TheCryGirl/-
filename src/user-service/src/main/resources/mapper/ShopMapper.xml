@@ -14,16 +14,15 @@
                 #{contactWechat}, #{status}, #{createdAt}, #{updatedAt}, #{isDeleted})
     </insert>
 
+    <!-- 卖家保存资料：全部字段整体覆盖，空值即清空（传 null 也能把旧值去掉） -->
     <update id="updateInfo">
         UPDATE shop
-        <set>
-            <if test="name != null">name = #{name},</if>
-            <if test="logo != null">logo = #{logo},</if>
-            <if test="description != null">description = #{description},</if>
-            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
-            <if test="contactWechat != null">contact_wechat = #{contactWechat},</if>
-            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
-        </set>
+        SET name = #{name},
+            logo = #{logo},
+            description = #{description},
+            contact_phone = #{contactPhone},
+            contact_wechat = #{contactWechat},
+            updated_at = #{updatedAt}
         WHERE shop_id = #{shopId}
           AND is_deleted = 0
     </update>

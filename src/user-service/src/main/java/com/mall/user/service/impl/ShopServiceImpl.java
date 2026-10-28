@@ -87,6 +87,14 @@ public class ShopServiceImpl implements ShopService {
             throw new BizException(ErrorCode.SHOP_NOT_FOUND, "店铺不存在");
         }
         if (shop.getStatus() == target) {
+            // 状态没变化也补同步一次：之前同步失败或人工改过库时能自愈，同步本身是幂等的，
+            // 这一步失败只记日志，不改变本次返回结果
+            try {
+                syncVisibility(shop.getSellerId(), target == ShopStatus.ACTIVE);
+            } catch (RuntimeException e) {
+                log.warn("店铺状态未变化，补同步商品可见性失败, shopId={}, sellerId={}",
+                        shopId, shop.getSellerId(), e);
+            }
             return toResponse(shop);
         }
 
