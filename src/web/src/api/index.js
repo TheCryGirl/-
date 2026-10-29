@@ -191,6 +191,18 @@ export const paymentApi = {
     http.put(`/payments/after-sales/${ticketId}/reship`, payload),
 }
 
+/* ---------------- 商品评价（#57） ---------------- */
+export const evaluationApi = {
+  create: (orderId, payload) => http.post(`/orders/${orderId}/evaluations`, payload),
+  byOrder: (orderId) => http.get(`/orders/${orderId}/evaluations`),
+  byProduct: (productId, params) =>
+    http.get(`/evaluations/products/${productId}`, { params }),
+  productStats: (productId) => http.get(`/evaluations/products/${productId}/stats`),
+  adminList: (params) => http.get('/evaluations', { params }),
+  hide: (evaluationId) => http.put(`/evaluations/${evaluationId}/hide`),
+  show: (evaluationId) => http.put(`/evaluations/${evaluationId}/show`),
+}
+
 /* ---------------- 操作审计（#58） ---------------- */
 export const auditApi = {
   list: (params) => http.get('/audit-logs', { params }),

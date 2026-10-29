@@ -180,6 +180,12 @@ const routes = [
       meta: { title: '系统配置', requiresAuth: true, role: 'ADMIN' },
     },
   {
+    path: '/admin/evaluations',
+    name: 'admin-evaluations',
+    component: () => import('../views/admin/AdminEvaluations.vue'),
+    meta: { title: '评价管理', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
     path: '/admin/audit-logs',
     name: 'admin-audit-logs',
     component: () => import('../views/admin/AdminAuditLogs.vue'),

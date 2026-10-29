@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.OrderEvaluationMapper">
+
+    <resultMap id="EvaluationMap" type="com.mall.order.entity.OrderEvaluation">
+        <id property="id" column="id"/>
+        <result property="evaluationId" column="evaluation_id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="buyerId" column="buyer_id"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="rating" column="rating"/>
+        <result property="content" column="content"/>
+        <result property="images" column="images"/>
+        <result property="anonymous" column="anonymous"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, evaluation_id, order_id, buyer_id, seller_id, rating, content, images,
+        anonymous, status, created_at, updated_at
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.order.entity.OrderEvaluation">
+        INSERT INTO order_evaluation(evaluation_id, order_id, buyer_id, seller_id, rating, content,
+                                     images, anonymous, status, created_at, updated_at)
+        VALUES (#{evaluationId}, #{orderId}, #{buyerId}, #{sellerId}, #{rating}, #{content},
+                #{images}, #{anonymous}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="selectByOrderId" resultMap="EvaluationMap">
+        SELECT <include refid="columns"/>
+        FROM order_evaluation
+        WHERE order_id = #{orderId}
+    </select>
+
+    <select id="selectById" resultMap="EvaluationMap">
+        SELECT <include refid="columns"/>
+        FROM order_evaluation
+        WHERE evaluation_id = #{evaluationId}
+    </select>
+
+    <select id="selectByProduct" resultMap="EvaluationMap">
+        SELECT <include refid="columns"/>
+        FROM order_evaluation
+        WHERE status = 'VISIBLE'
+          AND order_id IN (SELECT order_id FROM order_item WHERE product_id = #{productId} AND is_deleted = 0)
+        ORDER BY id DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countByProduct" resultType="long">
+        SELECT COUNT(*)
+        FROM order_evaluation
+        WHERE status = 'VISIBLE'
+          AND order_id IN (SELECT order_id FROM order_item WHERE product_id = #{productId} AND is_deleted = 0)
+    </select>
+
+    <select id="selectProductStats" resultType="com.mall.order.dto.response.EvaluationStatsResponse">
+        SELECT COUNT(*) AS total, COALESCE(AVG(rating), 0) AS average
+        FROM order_evaluation
+        WHERE status = 'VISIBLE'
+          AND order_id IN (SELECT order_id FROM order_item WHERE product_id = #{productId} AND is_deleted = 0)
+    </select>
+
+    <select id="selectAdminPage" resultMap="EvaluationMap">
+        SELECT <include refid="columns"/>
+        FROM order_evaluation
+        <where>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="productId != null and productId != ''">
+                AND order_id IN (SELECT order_id FROM order_item WHERE product_id = #{productId} AND is_deleted = 0)
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countAdmin" resultType="long">
+        SELECT COUNT(*)
+        FROM order_evaluation
+        <where>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="productId != null and productId != ''">
+                AND order_id IN (SELECT order_id FROM order_item WHERE product_id = #{productId} AND is_deleted = 0)
+            </if>
+        </where>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE order_evaluation
+        SET status = #{status}, updated_at = CURRENT_TIMESTAMP
+        WHERE evaluation_id = #{evaluationId}
+    </update>
+</mapper>

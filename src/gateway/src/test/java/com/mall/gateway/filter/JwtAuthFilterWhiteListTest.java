@@ -106,4 +106,14 @@ class JwtAuthFilterWhiteListTest {
         assertTrue(white(HttpMethod.OPTIONS, "/api/orders"));
         assertTrue(white(HttpMethod.OPTIONS, "/api/anything"));
     }
+
+    @Test
+    @DisplayName("商品评价展示可匿名 GET，评价管理与审计日志必须登录")
+    void evaluationAndAuditRules() throws Exception {
+        assertTrue(white(HttpMethod.GET, "/api/evaluations/products/P1"));
+        assertTrue(white(HttpMethod.GET, "/api/evaluations/products/P1/stats"));
+        assertFalse(white(HttpMethod.GET, "/api/evaluations"));
+        assertFalse(white(HttpMethod.PUT, "/api/evaluations/E1/hide"));
+        assertFalse(white(HttpMethod.GET, "/api/audit-logs"));
+    }
 }

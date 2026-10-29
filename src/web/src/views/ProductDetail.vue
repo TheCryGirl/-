@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, favoriteApi, historyApi, isOk, productApi, unwrapResult } from '../api'
+import { cartApi, evaluationApi, favoriteApi, historyApi, isOk, productApi, unwrapResult } from '../api'
 import { isLoggedIn } from '../stores/auth'
 
 const route = useRoute()
@@ -15,6 +15,14 @@ const error = ref('')
 const notice = ref('')
 const favorited = ref(false)
 const favoriteBusy = ref(false)
+
+// 商品评价（#57）：公开列表 + 平均分统计
+const evalStats = ref({ total: 0, average: 0 })
+const evalList = ref([])
+const evalTotal = ref(0)
+const evalPage = ref(1)
+const evalSize = 5
+const evalLoading = ref(false)
 
 // 分类 id → 名称的映射。商品详情接口只返回 categoryId，
 // 需要另取分类树把 id 翻成名字，否则页面只能显示「未分类」。
@@ -53,6 +61,34 @@ async function loadCategoryNames() {
   } catch {
     // 分类拿不到不影响主流程，页面退化为显示「未分类」
   }
+}
+
+async function loadEvaluations() {
+  evalLoading.value = true
+  try {
+    const [statsRes, listRes] = await Promise.all([
+      evaluationApi.productStats(route.params.id),
+      evaluationApi.byProduct(route.params.id, { page: evalPage.value, size: evalSize }),
+    ])
+    evalStats.value = unwrapResult(statsRes.data) || { total: 0, average: 0 }
+    const payload = unwrapResult(listRes.data)
+    evalList.value = payload?.list || []
+    evalTotal.value = payload?.total || 0
+  } catch {
+    // 评价加载失败不影响商品主信息展示
+  } finally {
+    evalLoading.value = false
+  }
+}
+
+function stars(n) {
+  const value = Math.max(0, Math.min(5, Math.round(n || 0)))
+  return '★'.repeat(value) + '☆'.repeat(5 - value)
+}
+
+function changeEvalPage(delta) {
+  evalPage.value = Math.max(1, evalPage.value + delta)
+  loadEvaluations()
 }
 
 async function load() {
@@ -197,6 +233,7 @@ async function buyNow() {
 onMounted(() => {
   loadCategoryNames()
   load()
+  loadEvaluations()
 })
 </script>
 
@@ -325,6 +362,64 @@ onMounted(() => {
           <p v-if="notice" class="text-sm rounded-md px-3 py-2" :class="notice.includes('失败') ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50'">
             {{ notice }}
           </p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold text-gray-900">
+            商品评价
+            <span class="text-sm font-normal text-gray-400">（{{ evalStats.total || 0 }}）</span>
+          </h2>
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-amber-500 tracking-wide">{{ stars(evalStats.average) }}</span>
+            <span class="text-gray-500">{{ Number(evalStats.average || 0).toFixed(1) }} 分</span>
+          </div>
+        </div>
+
+        <p v-if="evalLoading" class="py-6 text-center text-gray-400 text-sm">加载评价…</p>
+        <p v-else-if="!evalList.length" class="py-6 text-center text-gray-400 text-sm">
+          还没有评价，购买并确认收货后可以评价晒图
+        </p>
+
+        <div v-else class="divide-y divide-gray-100">
+          <div v-for="ev in evalList" :key="ev.evaluationId" class="py-3 space-y-2">
+            <div class="flex items-center gap-3 text-sm">
+              <span class="text-gray-700 font-medium">{{ ev.buyerLabel }}</span>
+              <span class="text-amber-500 tracking-wide">{{ stars(ev.rating) }}</span>
+              <span class="text-xs text-gray-400">{{ ev.createdAt || '—' }}</span>
+            </div>
+            <p v-if="ev.content" class="text-sm text-gray-700 whitespace-pre-line">{{ ev.content }}</p>
+            <div v-if="ev.images?.length" class="flex flex-wrap gap-2">
+              <img
+                v-for="(img, i) in ev.images"
+                :key="i"
+                :src="img"
+                class="w-24 h-24 object-cover rounded border border-gray-200"
+                alt="买家晒图"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div v-if="evalTotal > evalSize" class="flex items-center justify-center gap-2">
+          <button
+            class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
+            :disabled="evalPage === 1"
+            @click="changeEvalPage(-1)"
+          >
+            上一页
+          </button>
+          <span class="text-sm text-gray-500">
+            {{ evalPage }} / {{ Math.ceil(evalTotal / evalSize) }}
+          </span>
+          <button
+            class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
+            :disabled="evalPage * evalSize >= evalTotal"
+            @click="changeEvalPage(1)"
+          >
+            下一页
+          </button>
         </div>
       </div>
     </div>

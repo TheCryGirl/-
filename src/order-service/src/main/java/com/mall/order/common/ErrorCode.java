@@ -16,6 +16,8 @@ public final class ErrorCode {
     public static final int IDEMPOTENCY_CONFLICT = 50002;
     public static final int ORDER_STATE_INVALID = 50003;
     public static final int ORDER_TIMEOUT = 50004;
+    public static final int EVALUATION_EXISTS = 50005;
+    public static final int EVALUATION_NOT_FOUND = 50006;
 
     // 订单服务转发 product-service 的业务码时使用
     public static final int PRODUCT_NOT_FOUND = 30001;

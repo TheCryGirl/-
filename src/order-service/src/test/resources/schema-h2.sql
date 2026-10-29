@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS order_evaluation;
 DROP TABLE IF EXISTS order_compensation;
 DROP TABLE IF EXISTS order_idempotency;
 DROP TABLE IF EXISTS order_item;
@@ -70,6 +71,24 @@ CREATE TABLE order_compensation (
     updated_at    TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_compensation_order UNIQUE (order_id)
+);
+
+CREATE TABLE order_evaluation (
+    id            BIGINT AUTO_INCREMENT NOT NULL,
+    evaluation_id VARCHAR(32) NOT NULL,
+    order_id      VARCHAR(32) NOT NULL,
+    buyer_id      VARCHAR(32) NOT NULL,
+    seller_id     VARCHAR(32) NOT NULL,
+    rating        TINYINT NOT NULL,
+    content       VARCHAR(500),
+    images        VARCHAR(1024),
+    anonymous     TINYINT NOT NULL DEFAULT 0,
+    status        VARCHAR(16) NOT NULL DEFAULT 'VISIBLE',
+    created_at    TIMESTAMP NOT NULL,
+    updated_at    TIMESTAMP NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_evaluation_id UNIQUE (evaluation_id),
+    CONSTRAINT uk_evaluation_order UNIQUE (order_id)
 );
 
 CREATE TABLE audit_log (
