@@ -21,6 +21,18 @@ public final class IdGenerator {
         return "A" + randomHex(24);
     }
 
+    public static String shopId() {
+        return "SH" + randomHex(22);
+    }
+
+    public static String favoriteId() {
+        return "F" + randomHex(24);
+    }
+
+    public static String historyId() {
+        return "H" + randomHex(24);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

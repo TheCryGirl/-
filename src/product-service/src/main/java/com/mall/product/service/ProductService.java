@@ -1,10 +1,13 @@
 package com.mall.product.service;
 
+import com.mall.product.client.ShopClient;
+import com.mall.product.client.dto.ShopBriefDTO;
 import com.mall.product.common.BizException;
 import com.mall.product.common.ErrorCode;
 import com.mall.product.common.IdGenerator;
 import com.mall.product.common.PageResult;
 import com.mall.product.common.ProductStatus;
+import com.mall.product.common.Result;
 import com.mall.product.dto.request.AuditProductRequest;
 import com.mall.product.dto.request.CreateCategoryRequest;
 import com.mall.product.dto.request.CreateProductRequest;
@@ -15,9 +18,11 @@ import com.mall.product.dto.request.UpdateStatusRequest;
 import com.mall.product.dto.request.UpdateStockRequest;
 import com.mall.product.dto.response.CategoryResponse;
 import com.mall.product.dto.response.ImageUploadResponse;
+import com.mall.product.dto.response.ProductBriefResponse;
 import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.dto.response.ProductListItem;
 import com.mall.product.dto.response.SkuResponse;
+import com.mall.product.dto.response.VisibilitySyncResponse;
 import com.mall.product.entity.Category;
 import com.mall.product.entity.Product;
 import com.mall.product.entity.Sku;
@@ -25,6 +30,7 @@ import com.mall.product.mapper.CategoryMapper;
 import com.mall.product.mapper.ProductMapper;
 import com.mall.product.mapper.SkuMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -38,22 +44,29 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProductService {
 
     private static final Set<String> SORT_WHITELIST = Set.of("default", "newest", "price_asc", "price_desc", "sales_desc");
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp", "gif");
+    private static final int MAX_BATCH_SIZE = 100;
 
     private final ProductMapper productMapper;
     private final SkuMapper skuMapper;
     private final CategoryMapper categoryMapper;
+    private final ShopClient shopClient;
 
     @Value("${product.upload-dir:uploads}")
     private String uploadDir;
@@ -138,9 +151,14 @@ public class ProductService {
         if (target != ProductStatus.ON_SALE && target != ProductStatus.OFF_SHELF) {
             throw new BizException(ErrorCode.PARAM_INVALID, "卖家只能上架或下架商品");
         }
-        if (target == ProductStatus.ON_SALE
-                && (product.getStatus() == ProductStatus.PENDING || product.getStatus() == ProductStatus.REJECTED)) {
-            throw new BizException(ErrorCode.FORBIDDEN, "商品尚未审核通过，不能上架");
+        if (target == ProductStatus.ON_SALE) {
+            if (product.getStatus() == ProductStatus.PENDING || product.getStatus() == ProductStatus.REJECTED) {
+                throw new BizException(ErrorCode.FORBIDDEN, "商品尚未审核通过，不能上架");
+            }
+            // 店铺被停用时卖家不能自行把商品放回在售（#49）
+            if (!shopActive(sellerId)) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已被停用，暂不能上架商品");
+            }
         }
         productMapper.updateStatus(productId, target, sellerId);
         return detailForView(productId, sellerId, "SELLER");
@@ -152,8 +170,13 @@ public class ProductService {
         if (product == null) {
             throw new BizException(ErrorCode.PRODUCT_NOT_FOUND, "商品不存在");
         }
-        ProductStatus target = Boolean.TRUE.equals(request.getApproved())
-                ? ProductStatus.ON_SALE : ProductStatus.REJECTED;
+        ProductStatus target;
+        if (Boolean.TRUE.equals(request.getApproved())) {
+            // 店铺停用期间审核通过不能直接上架，先挂起，恢复营业时由同步接口改回在售
+            target = shopActive(product.getSellerId()) ? ProductStatus.ON_SALE : ProductStatus.SUSPENDED;
+        } else {
+            target = ProductStatus.REJECTED;
+        }
         productMapper.updateStatus(productId, target, adminId);
         return detailForView(productId, adminId, "ADMIN");
     }
@@ -287,8 +310,114 @@ public class ProductService {
         return toSkuResponse(skuMapper.selectById(skuId));
     }
 
+    /**
+     * 分类列表（#50）。顶级分类按 sort_no 排序，子分类紧跟在自己的父分类后面，
+     * 前端按返回顺序渲染即为层级顺序；结构保持扁平，兼容已有调用方。
+     */
     public List<Category> categories() {
-        return categoryMapper.selectAll();
+        List<Category> all = categoryMapper.selectAll();
+        Map<String, List<Category>> children = new LinkedHashMap<>();
+        for (Category category : all) {
+            if (isRootCategory(category)) {
+                continue;
+            }
+            children.computeIfAbsent(category.getParentId(), key -> new ArrayList<>()).add(category);
+        }
+        List<Category> ordered = new ArrayList<>(all.size());
+        Set<String> added = new HashSet<>();
+        for (Category category : all) {
+            if (!isRootCategory(category)) {
+                continue;
+            }
+            ordered.add(category);
+            added.add(category.getCategoryId());
+            for (Category child : children.getOrDefault(category.getCategoryId(), List.of())) {
+                ordered.add(child);
+                added.add(child.getCategoryId());
+            }
+        }
+        // 父分类已删除的孤儿分类追加到末尾，避免前端下拉丢选项
+        for (Category category : all) {
+            if (!added.contains(category.getCategoryId())) {
+                ordered.add(category);
+            }
+        }
+        return ordered;
+    }
+
+    /**
+     * 批量取商品简要信息（#52）。收藏夹与足迹的展示字段都从里取，user-service 不跨库读商品表。
+     * 不按状态过滤：失效商品也要展示，由调用方根据 status 置灰并标注原因。
+     */
+    public List<ProductBriefResponse> batch(String ids) {
+        List<String> productIds = parseProductIds(ids);
+        if (productIds.isEmpty()) {
+            return List.of();
+        }
+        List<ProductBriefResponse> products = productMapper.selectBriefByIds(productIds);
+        // 没有 SKU 的商品给 0，前端按“暂无报价”处理
+        products.forEach(product -> {
+            if (product.getPrice() == null) {
+                product.setPrice(0L);
+            }
+        });
+        return products;
+    }
+
+    /**
+     * 同步卖家商品可见性（#49），由 user-service 在管理员停用 / 恢复店铺后调用。
+     */
+    @Transactional
+    public VisibilitySyncResponse updateSellerVisibility(String sellerId, boolean visible) {
+        requireUser(sellerId);
+        int affected = visible
+                ? productMapper.resumeBySellerId(sellerId, sellerId)
+                : productMapper.suspendBySellerId(sellerId, sellerId);
+        log.info("同步卖家商品可见性, sellerId={}, visible={}, affected={}", sellerId, visible, affected);
+        return new VisibilitySyncResponse(sellerId, visible, affected);
+    }
+
+    private List<String> parseProductIds(String ids) {
+        if (ids == null || ids.isBlank()) {
+            return List.of();
+        }
+        Set<String> unique = new LinkedHashSet<>();
+        for (String part : ids.split(",")) {
+            String id = part.trim();
+            if (id.isEmpty()) {
+                continue;
+            }
+            unique.add(id);
+            if (unique.size() >= MAX_BATCH_SIZE) {
+                break;
+            }
+        }
+        return new ArrayList<>(unique);
+    }
+
+    private static boolean isRootCategory(Category category) {
+        return category.getParentId() == null || category.getParentId().isBlank()
+                || "0".equals(category.getParentId());
+    }
+
+    /**
+     * 店铺是否在营业。
+     *
+     * <p>用户服务不可用或查不到店铺时按“正常营业”处理，避免商品服务单机调试时审核链路整体不可用；
+     * 真正的停用由 {@link #updateSellerVisibility} 同步兜底。
+     */
+    private boolean shopActive(String sellerId) {
+        try {
+            Result<ShopBriefDTO> result = shopClient.getBySeller(sellerId);
+            if (result == null || result.getCode() != ErrorCode.SUCCESS || result.getData() == null) {
+                return true;
+            }
+            return !"SUSPENDED".equalsIgnoreCase(result.getData().getStatus());
+        } catch (Exception e) {
+            // 店铺服务不可用时按正常营业放行，避免单服务调试或集成测试整体不可用
+            log.warn("查询店铺营业状态失败，按正常营业处理, sellerId={}", sellerId, e);
+            return true;
+        }
     }
 
     @Transactional
@@ -412,6 +541,9 @@ public class ProductService {
         boolean admin = "ADMIN".equalsIgnoreCase(role);
         boolean owner = viewerId != null && viewerId.equals(product.getSellerId());
         if (product.getStatus() != ProductStatus.ON_SALE && !admin && !owner) {
+            if (product.getStatus() == ProductStatus.SUSPENDED) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，商品暂不可购买");
+            }
             throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品已下架或尚未审核通过");
         }
         if (!admin && !owner && categoryMapper.selectById(product.getCategoryId()) == null) {
@@ -424,10 +556,19 @@ public class ProductService {
         response.setSubtitle(product.getSubtitle());
         response.setMainImage(product.getMainImage());
         response.setCategoryId(product.getCategoryId());
+        response.setCategoryName(categoryName(product.getCategoryId()));
         response.setStatus(product.getStatus());
         response.setPrice(skus.stream().mapToLong(Sku::getPrice).min().orElse(0L));
         response.setSkus(skus.stream().map(this::toSkuResponse).toList());
         return response;
+    }
+
+    private String categoryName(String categoryId) {
+        if (categoryId == null || categoryId.isBlank()) {
+            return null;
+        }
+        Category category = categoryMapper.selectById(categoryId);
+        return category == null ? null : category.getName();
     }
 
     private SkuResponse toSkuResponse(Sku sku) {

@@ -15,6 +15,7 @@ const navItems = [
 
 const sellerItems = [
   { name: 'seller-products', label: '商品管理' },
+  { name: 'seller-shop', label: '店铺资料' },
   { name: 'seller-shipments', label: '待发货' },
   { name: 'seller-refunds', label: '退款审核' },
 ]
@@ -23,7 +24,8 @@ const adminItems = [
   { name: 'admin-users', label: '用户管理' },
   { name: 'admin-shops', label: '店铺管理' },
   { name: 'admin-products', label: '商品审核' },
-  { name: 'admin-refunds', label: '退款复核' },
+    { name: 'admin-refunds', label: '退款复核' },
+    { name: 'admin-shops', label: '店铺管理' },
   { name: 'admin-after-sales', label: '售后仲裁' },
   { name: 'admin-finance', label: '资金对账' },
   { name: 'admin-risk', label: '基础风控' },
@@ -137,6 +139,18 @@ function goLogin() {
               class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
             >
               我的订单
+            </RouterLink>
+            <RouterLink
+              :to="{ name: 'favorites' }"
+              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              我的收藏
+            </RouterLink>
+            <RouterLink
+              :to="{ name: 'browse-history' }"
+              class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              浏览足迹
             </RouterLink>
             <button
               class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"

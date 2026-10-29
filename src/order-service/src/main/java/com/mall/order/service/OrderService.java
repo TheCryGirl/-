@@ -9,6 +9,7 @@ import com.mall.order.client.dto.CartItemDTO;
 import com.mall.order.client.dto.ProductDetailDTO;
 import com.mall.order.client.dto.ReserveItemDTO;
 import com.mall.order.client.dto.ReserveStockRequestDTO;
+import com.mall.order.client.dto.ShopBriefDTO;
 import com.mall.order.client.dto.SkuDTO;
 import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
@@ -157,6 +158,9 @@ public class OrderService {
         for (CartItemDTO cartItem : selectedItems) {
             ProductDetailDTO product = productCache.computeIfAbsent(cartItem.getProductId(),
                     productId -> callProduct(productId));
+            if ("SUSPENDED".equalsIgnoreCase(product.getStatus())) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，商品暂不可购买: " + product.getTitle());
+            }
             if (!"ON_SALE".equalsIgnoreCase(product.getStatus())) {
                 throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品已下架: " + product.getTitle());
             }
@@ -175,6 +179,10 @@ public class OrderService {
             }
             if (sellerId == null) {
                 sellerId = product.getSellerId();
+                // 商品状态同步可能失败，下单前再向用户服务确认一次店铺营业状态（#49）
+                if (!shopActive(sellerId)) {
+                    throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
+                }
             } else if (!sellerId.equals(product.getSellerId())) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "一次只能结算同一卖家的商品");
             }
@@ -263,13 +271,22 @@ public class OrderService {
         Order order = existing.getOrderId() == null ? null : orderMapper.selectById(existing.getOrderId());
         if (order == null) {
             if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                // 另一个并发请求正在创建订单，不能删除它的幂等键。
+                // 另一个并发请求正在创建订单：短暂轮询等它落库，再按同一结果返回。
+                // 幂等的语义是「同一幂等键返回同一结果」，直接抛错会让并发调用方收到失败，
+                // 与幂等语义不符，因此这里等待而不是拒绝。
+                order = awaitOrderCreated(existing);
+                if (order != null) {
+                    return createResponse(order);
+                }
                 throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
             }
             idempotencyMapper.deleteByKey(existing.getIdemKey());
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "上次下单未完成，请重新提交");
         }
-        if (existing.getStatus() == IdempotencyStatus.SUCCESS) {
+        // 等待期间首个请求可能已完成（幂等键置为 SUCCESS），需要重读最新状态再决定是否补做预占，
+        // 否则会对同一订单重复调用库存预占，导致库存被扣两次。
+        OrderIdempotency latestState = idempotencyMapper.selectByKey(existing.getIdemKey());
+        if (latestState != null && latestState.getStatus() == IdempotencyStatus.SUCCESS) {
             return createResponse(order);
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
@@ -297,6 +314,37 @@ public class OrderService {
         }
         idempotencyMapper.markSuccess(existing.getIdemKey(), order.getOrderId(), LocalDateTime.now());
         return createResponse(order);
+    }
+
+    /**
+     * 并发下单时等待首个请求把订单落库，最多等 3 秒。
+     * 超时返回 null，由调用方转成「处理中」提示。
+     */
+    private Order awaitOrderCreated(OrderIdempotency existing) {
+        long deadline = System.currentTimeMillis() + 3000L;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            OrderIdempotency latest = idempotencyMapper.selectByKey(existing.getIdemKey());
+            if (latest == null) {
+                return null;
+            }
+            if (latest.getOrderId() != null) {
+                Order order = orderMapper.selectById(latest.getOrderId());
+                if (order != null) {
+                    return order;
+                }
+            }
+            // 首个请求已失败并释放幂等键，交给调用方走重试分支
+            if (latest.getStatus() != IdempotencyStatus.PROCESSING) {
+                return null;
+            }
+        }
+        return null;
     }
 
     public PageResult<OrderListItem> list(String userId, String role, String status, int page, int size) {
@@ -492,6 +540,23 @@ public class OrderService {
         }
     }
 
+    /**
+     * 店铺是否在营业（#49）。用户服务不可用时按正常营业处理，
+     * 正常路径下的停用已经通过商品状态 SUSPENDED 拦住。
+     */
+    private boolean shopActive(String sellerId) {
+        try {
+            Result<ShopBriefDTO> result = userClient.shopBySeller(sellerId);
+            if (result == null || result.getCode() != ErrorCode.SUCCESS || result.getData() == null) {
+                return true;
+            }
+            return !"SUSPENDED".equalsIgnoreCase(result.getData().getStatus());
+        } catch (Exception e) {
+            log.warn("查询店铺营业状态失败，按正常营业处理, sellerId={}", sellerId, e);
+            return true;
+        }
+    }
+
     private AddressDTO findAddress(String buyerId, String addressId) {
         try {
             Result<List<AddressDTO>> result = userClient.addresses(buyerId, buyerId);
@@ -658,6 +723,3 @@ public class OrderService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-
-
-

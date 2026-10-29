@@ -9,6 +9,7 @@ public final class ErrorCode {
     public static final int PARAM_INVALID = 10001;
     public static final int UNAUTHORIZED = 10002;
     public static final int FORBIDDEN = 10003;
+    public static final int SERVICE_UNAVAILABLE = 10005;
 
     public static final int ACCOUNT_OR_PASSWORD_ERROR = 20001;
     public static final int ACCOUNT_EXISTS = 20002;
@@ -16,6 +17,8 @@ public final class ErrorCode {
     public static final int ACCOUNT_FROZEN = 20004;
     public static final int USER_NOT_FOUND = 20005;
     public static final int ADDRESS_NOT_FOUND = 20006;
+    public static final int SHOP_NOT_FOUND = 20007;
+    public static final int FAVORITE_NOT_FOUND = 20008;
 
     private ErrorCode() {
     }

@@ -249,7 +249,9 @@ public class CartServiceImpl implements CartService {
         response.setMainImage(product.getMainImage());
         if (product.getStatus() != ProductStatus.ON_SALE) {
             response.setInvalid(true);
-            response.setInvalidReason("商品已下架");
+            // 店铺被停用与商品自身下架对用户是两件事，提示要分开（#49）
+            response.setInvalidReason(product.getStatus() == ProductStatus.SUSPENDED
+                    ? "店铺已停用" : "商品已下架");
         }
 
         SkuDTO sku = findSku(product, cartItem.getSkuId());
@@ -319,7 +321,9 @@ public class CartServiceImpl implements CartService {
 
     private SkuDTO requireOnSaleSku(ProductDetailDTO product, String skuId) {
         if (product.getStatus() != ProductStatus.ON_SALE) {
-            throw new BizException(ErrorCode.PRODUCT_OFF_SHELF, "商品已下架或尚未审核通过");
+            throw new BizException(ErrorCode.PRODUCT_OFF_SHELF,
+                    product.getStatus() == ProductStatus.SUSPENDED
+                            ? "店铺已停用，暂不可购买" : "商品已下架或尚未审核通过");
         }
         SkuDTO sku = findSku(product, skuId);
         if (sku == null) {

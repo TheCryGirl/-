@@ -5,14 +5,17 @@ import com.mall.user.common.ErrorCode;
 import com.mall.user.common.Result;
 import com.mall.user.dto.request.*;
 import com.mall.user.dto.response.AddressResponse;
+import com.mall.user.dto.response.AvatarUploadResponse;
 import com.mall.user.dto.response.LoginResponse;
 import com.mall.user.dto.response.PageResponse;
 import com.mall.user.dto.response.UserResponse;
 import com.mall.user.service.AddressService;
+import com.mall.user.service.AvatarStorageService;
 import com.mall.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,7 @@ public class UserController {
 
     private final UserService userService;
     private final AddressService addressService;
+    private final AvatarStorageService avatarStorageService;
 
     @PostMapping("/register")
     public Result<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
@@ -57,6 +61,23 @@ public class UserController {
             @RequestHeader("X-User-Id") String userId,
             @Valid @RequestBody UpdateProfileRequest request) {
         return Result.success(userService.updateProfile(userId, request));
+    }
+
+    /**
+     * 上传头像（#51）。
+     *
+     * <p>文件落到本地目录并静态映射为 {@code /avatars/**}，与商品图片同一套方案；
+     * 落盘成功后直接把路径写回用户档案，前端拿到返回值即可刷新展示。
+     */
+    @PostMapping("/avatar")
+    public Result<AvatarUploadResponse> uploadAvatar(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestParam("file") MultipartFile file) {
+        AvatarUploadResponse uploaded = avatarStorageService.store(file);
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setAvatar(uploaded.getAvatar());
+        userService.updateProfile(userId, request);
+        return Result.success(uploaded);
     }
 
     @GetMapping

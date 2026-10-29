@@ -7,6 +7,7 @@ const profile = reactive({ nickname: '', phone: '', avatar: '' })
 const profileLoading = ref(false)
 const profileMessage = ref('')
 const profileError = ref('')
+const avatarUploading = ref(false)
 
 const addresses = ref([])
 const addressLoading = ref(false)
@@ -71,6 +72,37 @@ async function saveProfile() {
   }
 }
 
+async function uploadAvatar(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) {
+    profileError.value = '头像不能超过 5MB'
+    return
+  }
+  avatarUploading.value = true
+  profileMessage.value = ''
+  profileError.value = ''
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await userApi.uploadAvatar(formData)
+    if (!isOk(res.data)) {
+      profileError.value = res.data?.message || '头像上传失败'
+      return
+    }
+    const uploaded = unwrapResult(res.data)
+    profile.avatar = uploaded?.avatar || ''
+    // 后端已把路径写回档案，重新拉取一次保证内存登录态与库一致
+    await loadProfile()
+    profileMessage.value = '头像已更新'
+  } catch (err) {
+    profileError.value = err.response?.data?.message || err.message || '头像上传失败'
+  } finally {
+    avatarUploading.value = false
+    event.target.value = ''
+  }
+}
+
 async function loadAddresses() {
   const userId = auth.user?.userId
   if (!userId) {
@@ -112,7 +144,7 @@ function openEdit(addr) {
   form.city = addr.city || ''
   form.district = addr.district || ''
   form.detail = addr.detail || ''
-  form.defaultAddress = Boolean(addr.isDefault)
+  form.defaultAddress = Boolean(addr.defaultAddress ?? addr.isDefault)
   formVisible.value = true
 }
 
@@ -216,15 +248,44 @@ onMounted(() => {
             placeholder="选填"
           />
         </label>
-        <label class="text-sm text-gray-600 sm:col-span-2">
-          头像地址
+        <div class="text-sm text-gray-600 sm:col-span-2">
+          头像
+          <div class="mt-1 flex items-center gap-3">
+            <img
+              v-if="profile.avatar"
+              :src="profile.avatar"
+              alt="头像"
+              class="w-14 h-14 rounded-full object-cover border border-gray-200"
+            />
+            <div
+              v-else
+              class="w-14 h-14 rounded-full bg-gray-100 text-xs text-gray-400 flex items-center justify-center"
+            >
+              未设置
+            </div>
+            <label
+              class="px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-50"
+            >
+              {{ avatarUploading ? '上传中…' : '上传头像' }}
+              <input
+                type="file"
+                accept="image/*"
+                class="hidden"
+                :disabled="avatarUploading"
+                @change="uploadAvatar"
+              />
+            </label>
+            <button v-if="profile.avatar" class="text-xs text-red-500" @click="profile.avatar = ''">
+              移除
+            </button>
+          </div>
           <input
             v-model="profile.avatar"
             maxlength="255"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="选填，图片 URL"
+            class="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="也可以直接填写图片地址"
           />
-        </label>
+        </div>
       </div>
 
       <div class="flex justify-end">
@@ -264,7 +325,7 @@ onMounted(() => {
             <p class="font-medium text-gray-900">
               {{ addr.receiver }} {{ addr.phone }}
               <span
-                v-if="addr.isDefault"
+                v-if="addr.defaultAddress ?? addr.isDefault"
                 class="ml-2 text-xs text-blue-600 border border-blue-600 px-1 rounded"
               >
                 默认
@@ -276,7 +337,7 @@ onMounted(() => {
           </div>
           <div class="flex items-center gap-3 text-sm whitespace-nowrap">
             <button
-              v-if="!addr.isDefault"
+              v-if="!(addr.defaultAddress ?? addr.isDefault)"
               class="text-gray-500 hover:text-blue-600"
               @click="setDefault(addr)"
             >

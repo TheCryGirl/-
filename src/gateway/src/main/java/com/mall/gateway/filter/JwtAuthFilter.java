@@ -68,13 +68,14 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private static final List<String> PUBLIC_GET = List.of(
             "/api/categories/**",
             "/images/**",
+            "/avatars/**",
             "/actuator/**"
     );
 
     private static final Pattern PRODUCT_DETAIL_PATH = Pattern.compile("^/api/products/([^/]+)$");
 
     /** /api/products/{x} 中属于功能路径而非商品 ID 的保留字 */
-    private static final Set<String> PRODUCT_RESERVED_SEGMENTS = Set.of("mine", "skus", "images");
+    private static final Set<String> PRODUCT_RESERVED_SEGMENTS = Set.of("mine", "skus", "images", "batch", "internal");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 

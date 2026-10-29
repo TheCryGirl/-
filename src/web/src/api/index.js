@@ -76,6 +76,10 @@ export const userApi = {
   list: (params) => http.get('/users', { params }),
   updateStatus: (userId, payload) => http.put(`/users/${userId}/status`, payload),
   updateRole: (userId, role) => http.put(`/users/${userId}/role`, { role }),
+  uploadAvatar: (formData) =>
+    http.post('/users/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 }
 
 /* ---------------- 收货地址 ---------------- */
@@ -85,6 +89,30 @@ export const addressApi = {
   update: (addressId, payload) => http.put(`/users/addresses/${addressId}`, payload),
   remove: (addressId) => http.delete(`/users/addresses/${addressId}`),
   setDefault: (addressId) => http.put(`/users/addresses/${addressId}/default`),
+}
+
+/* ---------------- 店铺（#49） ---------------- */
+export const shopApi = {
+  mine: () => http.get('/shops/mine'),
+  updateMine: (payload) => http.put('/shops/mine', payload),
+  list: (params) => http.get('/shops', { params }),
+  updateStatus: (shopId, status) => http.put(`/shops/${shopId}/status`, { status }),
+  bySeller: (sellerId) => http.get(`/shops/seller/${sellerId}`),
+}
+
+/* ---------------- 收藏与浏览足迹（#52） ---------------- */
+export const favoriteApi = {
+  add: (productId) => http.post('/favorites', { productId }),
+  remove: (productId) => http.delete(`/favorites/${productId}`),
+  list: (params) => http.get('/favorites', { params }),
+  status: (productId) => http.get('/favorites/status', { params: { productId } }),
+}
+
+export const historyApi = {
+  record: (productId) => http.post('/history', { productId }),
+  recent: (limit = 20) => http.get('/history', { params: { limit } }),
+  remove: (productId) => http.delete(`/history/${productId}`),
+  clear: () => http.delete('/history'),
 }
 
 /* ---------------- 商品 ---------------- */

@@ -20,10 +20,15 @@ spring:
         - id: user-service
           uri: lb://user-service
           predicates:
-            - Path=/api/users/**
+            - Path=/api/users/**,/api/shops/**,/api/favorites/**,/api/history/**
           filters:
             # 契约 1.2：下游服务路径不带 /api 前缀
             - StripPrefix=1
+        - id: user-avatars
+          uri: lb://user-service
+          predicates:
+            - Path=/avatars/**
+          # 头像静态资源与 user-service 的映射路径一致，不加 StripPrefix
         - id: product-service
           uri: lb://product-service
           predicates:

@@ -22,6 +22,8 @@ public final class ErrorCode {
     public static final int PRODUCT_OFF_SHELF = 30002;
     public static final int STOCK_INSUFFICIENT = 30003;
     public static final int RESERVATION_NOT_FOUND = 30004;
+    // 商品所属店铺被管理员停用（#49）
+    public static final int SHOP_SUSPENDED = 30006;
 
     private ErrorCode() {
     }

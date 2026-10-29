@@ -26,6 +26,10 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
+services:
+  # 测试不启动 user-service，指向不可达地址让 shopActive 走“按正常营业放行”分支
+  user-url: http://127.0.0.1:1
+
 product:
   upload-dir: target/test-uploads
   internal-token: ""

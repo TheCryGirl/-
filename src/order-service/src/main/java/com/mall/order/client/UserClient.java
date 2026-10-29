@@ -1,6 +1,7 @@
 package com.mall.order.client;
 
 import com.mall.order.client.dto.AddressDTO;
+import com.mall.order.client.dto.ShopBriefDTO;
 import com.mall.order.common.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,4 +22,8 @@ public interface UserClient {
     @GetMapping("/users/{userId}/addresses")
     Result<List<AddressDTO>> addresses(@PathVariable("userId") String userId,
                                       @RequestHeader("X-User-Id") String currentUserId);
+
+    /** 卖家店铺营业状态，供下单前校验（#49） */
+    @GetMapping("/shops/seller/{sellerId}")
+    Result<ShopBriefDTO> shopBySeller(@PathVariable("sellerId") String sellerId);
 }
