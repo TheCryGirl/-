@@ -29,6 +29,11 @@ mybatis:
 services:
   # 测试不启动 user-service，指向不可达地址让 shopActive 走“按正常营业放行”分支
   user-url: http://127.0.0.1:1
+  # 测试不启动 order-service，审计上报关闭（#58）
+  order-url: http://127.0.0.1:1
+
+audit:
+  enabled: false
 
 product:
   upload-dir: target/test-uploads

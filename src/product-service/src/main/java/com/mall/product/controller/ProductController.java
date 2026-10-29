@@ -18,6 +18,7 @@ import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.dto.response.ProductListItem;
 import com.mall.product.dto.response.SkuResponse;
 import com.mall.product.dto.response.VisibilitySyncResponse;
+import com.mall.product.service.AuditLogPublisher;
 import com.mall.product.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class ProductController {
 
     private final ProductService productService;
     private final InternalTokenVerifier internalTokenVerifier;
+    private final AuditLogPublisher auditLogPublisher;
 
     /**
      * 商品列表。带 status 参数时仅对管理员生效（商品审核页按状态筛选），
@@ -130,7 +132,10 @@ public class ProductController {
         if (!"ADMIN".equalsIgnoreCase(role)) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权限审核商品");
         }
-        return Result.success(productService.audit(productId, adminId, request));
+        ProductDetailResponse audited = productService.audit(productId, adminId, request);
+        auditLogPublisher.publish(adminId, role, "PRODUCT_AUDIT", "PRODUCT", productId,
+                (Boolean.TRUE.equals(request.getApproved()) ? "审核通过" : "审核驳回") + suffix(request.getRemark()));
+        return Result.success(audited);
     }
 
     @DeleteMapping("/{productId}")
@@ -160,5 +165,9 @@ public class ProductController {
     @PostMapping("/images")
     public Result<ImageUploadResponse> uploadImage(@RequestParam("file") MultipartFile file) {
         return Result.success(productService.uploadImage(file));
+    }
+
+    private static String suffix(String remark) {
+        return remark == null || remark.isBlank() ? "" : "：" + remark;
     }
 }

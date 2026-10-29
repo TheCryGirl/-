@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS order_compensation;
 DROP TABLE IF EXISTS order_idempotency;
 DROP TABLE IF EXISTS order_item;
@@ -69,4 +70,19 @@ CREATE TABLE order_compensation (
     updated_at    TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_compensation_order UNIQUE (order_id)
+);
+
+CREATE TABLE audit_log (
+    id            BIGINT AUTO_INCREMENT NOT NULL,
+    audit_id      VARCHAR(32) NOT NULL,
+    operator_id   VARCHAR(32) NOT NULL,
+    operator_role VARCHAR(16),
+    action        VARCHAR(32) NOT NULL,
+    target_type   VARCHAR(32),
+    target_id     VARCHAR(64),
+    detail        VARCHAR(1000),
+    result        VARCHAR(16) NOT NULL DEFAULT 'SUCCESS',
+    created_at    TIMESTAMP NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_audit_id UNIQUE (audit_id)
 );

@@ -28,6 +28,11 @@ mybatis:
 services:
   # 测试不启动 product-service，指向不可达地址，避免 Feign 需要服务发现
   product-url: http://127.0.0.1:1
+  # 测试不启动 order-service，审计上报关闭（#58）
+  order-url: http://127.0.0.1:1
+
+audit:
+  enabled: false
 
 jwt:
   secret: test-secret-please-change-in-production-0123456789

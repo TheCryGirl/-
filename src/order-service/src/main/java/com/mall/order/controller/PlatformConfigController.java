@@ -4,8 +4,11 @@ import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
 import com.mall.order.common.Result;
 import com.mall.order.entity.ConfigAudit;
+import com.mall.order.service.AuditLogService;
+import com.mall.order.service.NacosConfigService;
 import com.mall.order.service.PlatformConfigService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,12 +25,14 @@ import java.util.Map;
  *
  * <p>身份由网关注入，这里只做角色判定；网关路由 /api/config/** 转发到 /config/**。
  */
+@Slf4j
 @RestController
 @RequestMapping({"/config", "/api/config"})
 @RequiredArgsConstructor
 public class PlatformConfigController {
 
     private final PlatformConfigService platformConfigService;
+    private final AuditLogService auditLogService;
 
     @GetMapping
     public Result<Map<String, Object>> get(
@@ -47,7 +52,14 @@ public class PlatformConfigController {
         if (operatorId == null || operatorId.isBlank()) {
             throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
         }
-        return Result.success(platformConfigService.update(changes, operatorId));
+        Map<String, String> updated = platformConfigService.update(changes, operatorId);
+        try {
+            auditLogService.record(operatorId, role, "CONFIG_UPDATE", "CONFIG",
+                    NacosConfigService.DATA_ID, "修改配置项：" + String.join(",", changes.keySet()));
+        } catch (Exception e) {
+            log.warn("写入配置审计失败, operator={}, keys={}", operatorId, changes.keySet(), e);
+        }
+        return Result.success(updated);
     }
 
     @GetMapping("/history")

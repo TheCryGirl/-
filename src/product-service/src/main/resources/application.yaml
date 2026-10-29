@@ -55,6 +55,12 @@ product:
 services:
   # 审核与卖家上架前查店铺营业状态（#49）
   user-url: ${USER_SERVICE_URL:}
+  # 操作审计上报到 order-service（#58）
+  order-url: ${ORDER_SERVICE_URL:}
+
+# 操作审计上报开关（#58）；审计中心不可用时只记 warn，不影响业务
+audit:
+  enabled: ${AUDIT_ENABLED:true}
 
 management:
   endpoints:

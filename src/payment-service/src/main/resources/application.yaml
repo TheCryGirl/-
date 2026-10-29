@@ -56,6 +56,10 @@ services:
   order-url: ${ORDER_SERVICE_URL:}
   product-url: ${PRODUCT_SERVICE_URL:}
 
+# 操作审计上报开关（#58）；审计中心不可用时只记 warn，不影响业务
+audit:
+  enabled: ${AUDIT_ENABLED:true}
+
 management:
   endpoints:
     web:

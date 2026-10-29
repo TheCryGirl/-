@@ -33,6 +33,7 @@ const adminItems = [
   { name: 'admin-finance', label: '资金对账' },
   { name: 'admin-risk', label: '基础风控' },
   { name: 'admin-config', label: '系统配置' },
+  { name: 'admin-audit-logs', label: '审计日志' },
 ]
 
 const visibleNav = computed(() =>

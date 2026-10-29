@@ -179,6 +179,12 @@ const routes = [
       component: () => import('../views/admin/AdminConfig.vue'),
       meta: { title: '系统配置', requiresAuth: true, role: 'ADMIN' },
     },
+  {
+    path: '/admin/audit-logs',
+    name: 'admin-audit-logs',
+    component: () => import('../views/admin/AdminAuditLogs.vue'),
+    meta: { title: '审计日志', requiresAuth: true, role: 'ADMIN' },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/products' },
 ]
 

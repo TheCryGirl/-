@@ -58,6 +58,12 @@ spring:
             - Path=/api/config/**
           filters:
             - StripPrefix=1
+        - id: order-audit-logs
+          uri: lb://order-service
+          predicates:
+            - Path=/api/audit-logs/**
+          filters:
+            - StripPrefix=1
         - id: payment-service
           uri: lb://payment-service
           predicates:
