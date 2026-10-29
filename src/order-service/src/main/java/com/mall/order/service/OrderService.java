@@ -271,13 +271,22 @@ public class OrderService {
         Order order = existing.getOrderId() == null ? null : orderMapper.selectById(existing.getOrderId());
         if (order == null) {
             if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                // 另一个并发请求正在创建订单，不能删除它的幂等键。
+                // 另一个并发请求正在创建订单：短暂轮询等它落库，再按同一结果返回。
+                // 幂等的语义是「同一幂等键返回同一结果」，直接抛错会让并发调用方收到失败，
+                // 与幂等语义不符，因此这里等待而不是拒绝。
+                order = awaitOrderCreated(existing);
+                if (order != null) {
+                    return createResponse(order);
+                }
                 throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
             }
             idempotencyMapper.deleteByKey(existing.getIdemKey());
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "上次下单未完成，请重新提交");
         }
-        if (existing.getStatus() == IdempotencyStatus.SUCCESS) {
+        // 等待期间首个请求可能已完成（幂等键置为 SUCCESS），需要重读最新状态再决定是否补做预占，
+        // 否则会对同一订单重复调用库存预占，导致库存被扣两次。
+        OrderIdempotency latestState = idempotencyMapper.selectByKey(existing.getIdemKey());
+        if (latestState != null && latestState.getStatus() == IdempotencyStatus.SUCCESS) {
             return createResponse(order);
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
@@ -305,6 +314,37 @@ public class OrderService {
         }
         idempotencyMapper.markSuccess(existing.getIdemKey(), order.getOrderId(), LocalDateTime.now());
         return createResponse(order);
+    }
+
+    /**
+     * 并发下单时等待首个请求把订单落库，最多等 3 秒。
+     * 超时返回 null，由调用方转成「处理中」提示。
+     */
+    private Order awaitOrderCreated(OrderIdempotency existing) {
+        long deadline = System.currentTimeMillis() + 3000L;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            OrderIdempotency latest = idempotencyMapper.selectByKey(existing.getIdemKey());
+            if (latest == null) {
+                return null;
+            }
+            if (latest.getOrderId() != null) {
+                Order order = orderMapper.selectById(latest.getOrderId());
+                if (order != null) {
+                    return order;
+                }
+            }
+            // 首个请求已失败并释放幂等键，交给调用方走重试分支
+            if (latest.getStatus() != IdempotencyStatus.PROCESSING) {
+                return null;
+            }
+        }
+        return null;
     }
 
     public PageResult<OrderListItem> list(String userId, String role, String status, int page, int size) {
@@ -683,6 +723,3 @@ public class OrderService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }
-
-
-
