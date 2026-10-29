@@ -1,0 +1,35 @@
+# #44 验证用端口覆盖：宿主已有 Nacos(8848)/MySQL(3306)/六服务(9000~9005)，
+# 为避免冲突，容器映射到 1xxxx 段。容器之间仍用容器名+原端口通信，不受影响。
+services:
+  nacos:
+    ports: !override
+      - "18848:8848"
+      - "19848:9848"
+
+  mysql:
+    ports: !override
+      - "13306:3306"
+
+  gateway:
+    ports: !override
+      - "19000:9000"
+
+  user-service:
+    ports: !override
+      - "19001:9001"
+
+  product-service:
+    ports: !override
+      - "19002:9002"
+
+  cart-service:
+    ports: !override
+      - "19003:9003"
+
+  order-service:
+    ports: !override
+      - "19004:9004"
+
+  payment-service:
+    ports: !override
+      - "19005:9005"
