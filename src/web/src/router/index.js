@@ -46,6 +46,12 @@ const routes = [
     meta: { title: '订单详情', requiresAuth: true },
   },
   {
+    path: '/after-sales',
+    name: 'after-sales',
+    component: () => import('../views/AfterSales.vue'),
+    meta: { title: '我的售后', requiresAuth: true },
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: () => import('../views/Profile.vue'),
@@ -111,6 +117,12 @@ const routes = [
     name: 'seller-refunds',
     component: () => import('../views/seller/SellerRefunds.vue'),
     meta: { title: '退款审核', requiresAuth: true, role: 'SELLER' },
+  },
+  {
+    path: '/seller/after-sales',
+    name: 'seller-after-sales',
+    component: () => import('../views/seller/SellerAfterSales.vue'),
+    meta: { title: '售后处理', requiresAuth: true, role: 'SELLER' },
   },
   // 管理中心（管理员）
   {

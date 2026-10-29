@@ -50,6 +50,7 @@ class PaymentCreationIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");
         jdbcTemplate.update("DELETE FROM payment");
@@ -69,6 +70,7 @@ class PaymentCreationIntegrationTest {
         assertEquals(PaymentStatus.PENDING, saved.getStatus());
         assertEquals(0L, saved.getRefundedAmount());
         assertEquals(BUYER_ID, saved.getBuyerId());
+        assertEquals("S10001", saved.getSellerId());
         assertEquals(1, count("payment"));
         verify(orderClient, times(1)).getOrder(ORDER_ID, BUYER_ID);
         verifyNoInteractions(productClient);
@@ -148,6 +150,7 @@ class PaymentCreationIntegrationTest {
         order.setOrderNo("2026102012345678901");
         order.setStatus(status);
         order.setBuyerId(buyerId);
+        order.setSellerId("S10001");
         order.setPayAmount(payAmount);
         return order;
     }

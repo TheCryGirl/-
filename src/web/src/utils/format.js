@@ -8,3 +8,8 @@ export function formatTime(value) {
   if (!value) return '—'
   return String(value).replace('T', ' ').slice(0, 16)
 }
+
+/** 金额以分为单位，页面展示为元。 */
+export function formatPrice(cents) {
+  return ((cents || 0) / 100).toFixed(2)
+}

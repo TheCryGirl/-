@@ -11,6 +11,7 @@ const navItems = [
   { name: 'products', label: '商品市场' },
   { name: 'cart', label: '购物车', auth: true },
   { name: 'orders', label: '我的订单', auth: true },
+  { name: 'after-sales', label: '我的售后', auth: true, buyerOnly: true },
 ]
 
 const sellerItems = [
@@ -18,6 +19,7 @@ const sellerItems = [
   { name: 'seller-shop', label: '店铺资料' },
   { name: 'seller-shipments', label: '待发货' },
   { name: 'seller-refunds', label: '退款审核' },
+  { name: 'seller-after-sales', label: '售后处理' },
 ]
 
 const adminItems = [
@@ -27,12 +29,19 @@ const adminItems = [
     { name: 'admin-refunds', label: '退款复核' },
     { name: 'admin-shops', label: '店铺管理' },
   { name: 'admin-after-sales', label: '售后仲裁' },
+  { name: 'seller-after-sales', label: '售后处理' },
   { name: 'admin-finance', label: '资金对账' },
   { name: 'admin-risk', label: '基础风控' },
   { name: 'admin-config', label: '系统配置' },
 ]
 
-const visibleNav = computed(() => navItems.filter((n) => !n.auth || isLoggedIn.value))
+const visibleNav = computed(() =>
+  navItems.filter((n) => {
+    if (n.auth && !isLoggedIn.value) return false
+    if (n.buyerOnly && (isSeller.value || isAdmin.value)) return false
+    return true
+  }),
+)
 const userName = computed(() => auth.user?.nickname || auth.user?.account || '')
 
 function isActive(item) {

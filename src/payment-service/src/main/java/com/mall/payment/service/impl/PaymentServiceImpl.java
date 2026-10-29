@@ -65,6 +65,9 @@ public class PaymentServiceImpl implements PaymentService {
         if (!buyerId.equals(order.getBuyerId())) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权支付该订单");
         }
+        if (order.getSellerId() == null || order.getSellerId().isBlank()) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "订单卖家信息缺失");
+        }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
             throw new BizException(ErrorCode.PARAM_INVALID, "订单当前状态不可支付");
         }
@@ -77,6 +80,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPayNo(IdGenerator.payNo());
         payment.setOrderId(order.getOrderId());
         payment.setBuyerId(buyerId);
+        payment.setSellerId(order.getSellerId());
         payment.setChannel(request.getChannel());
         payment.setAmount(order.getPayAmount());
         payment.setRefundedAmount(0L);
@@ -87,8 +91,8 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setIsDeleted(false);
 
         Payment saved = paymentTxService.insertIfAbsent(payment);
-        log.info("支付单创建成功, paymentId={}, orderId={}, amount={}",
-                saved.getPaymentId(), saved.getOrderId(), saved.getAmount());
+        log.info("支付单创建成功, paymentId={}, orderId={}, sellerId={}, amount={}",
+                saved.getPaymentId(), saved.getOrderId(), saved.getSellerId(), saved.getAmount());
         return toCreateResponse(saved);
     }
 

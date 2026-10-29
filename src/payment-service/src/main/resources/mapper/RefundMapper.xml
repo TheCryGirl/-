@@ -4,17 +4,17 @@
 <mapper namespace="com.mall.payment.mapper.RefundMapper">
 
     <sql id="columns">
-        refund_id, payment_id, order_id, buyer_id, amount, reason, status,
+        refund_id, payment_id, order_id, buyer_id, seller_id, amount, reason, status,
         audited_by, audit_remark, audited_at, created_at, updated_at,
         created_by, updated_by, is_deleted
     </sql>
 
     <insert id="insert" parameterType="com.mall.payment.entity.Refund">
         INSERT INTO refund (
-            refund_id, payment_id, order_id, buyer_id, amount, reason, status,
+            refund_id, payment_id, order_id, buyer_id, seller_id, amount, reason, status,
             audited_by, audit_remark, audited_at, created_by, updated_by, is_deleted
         ) VALUES (
-            #{refundId}, #{paymentId}, #{orderId}, #{buyerId}, #{amount},
+            #{refundId}, #{paymentId}, #{orderId}, #{buyerId}, #{sellerId,jdbcType=VARCHAR}, #{amount},
             #{reason,jdbcType=VARCHAR}, #{status}, #{auditedBy,jdbcType=VARCHAR},
             #{auditRemark,jdbcType=VARCHAR}, #{auditedAt,jdbcType=TIMESTAMP},
             #{createdBy}, #{updatedBy}, 0
@@ -36,6 +36,9 @@
         <if test="buyerId != null and buyerId != ''">
             AND buyer_id = #{buyerId}
         </if>
+        <if test="sellerId != null and sellerId != ''">
+            AND seller_id = #{sellerId}
+        </if>
     </sql>
 
     <select id="selectPage" resultType="com.mall.payment.entity.Refund">
@@ -51,6 +54,24 @@
         FROM refund
         <include refid="pageWhere"/>
     </select>
+
+    <select id="selectMissingSellerId" resultType="com.mall.payment.entity.Refund">
+        SELECT <include refid="columns"/>
+        FROM refund
+        WHERE is_deleted = 0
+          AND (seller_id IS NULL OR seller_id = '')
+        ORDER BY created_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="updateSellerId">
+        UPDATE refund
+        SET seller_id = #{sellerId},
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND is_deleted = 0
+          AND (seller_id IS NULL OR seller_id = '')
+    </update>
 
     <update id="updateAudit">
         UPDATE refund

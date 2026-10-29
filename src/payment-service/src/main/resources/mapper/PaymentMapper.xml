@@ -4,7 +4,7 @@
 <mapper namespace="com.mall.payment.mapper.PaymentMapper">
 
     <sql id="columns">
-        payment_id, pay_no, order_id, buyer_id, channel, amount, refunded_amount,
+        payment_id, pay_no, order_id, buyer_id, seller_id, channel, amount, refunded_amount,
         status, idempotency_key, paid_at, created_at, updated_at, created_by,
         updated_by, is_deleted
     </sql>
@@ -51,11 +51,11 @@
 
     <insert id="insert" parameterType="com.mall.payment.entity.Payment">
         INSERT INTO payment (
-            payment_id, pay_no, order_id, buyer_id, channel, amount,
+            payment_id, pay_no, order_id, buyer_id, seller_id, channel, amount,
             refunded_amount, status, idempotency_key, paid_at,
             created_by, updated_by, is_deleted
         ) VALUES (
-            #{paymentId}, #{payNo}, #{orderId}, #{buyerId}, #{channel}, #{amount},
+            #{paymentId}, #{payNo}, #{orderId}, #{buyerId}, #{sellerId}, #{channel}, #{amount},
             #{refundedAmount}, #{status}, #{idempotencyKey,jdbcType=VARCHAR},
             #{paidAt,jdbcType=TIMESTAMP}, #{createdBy}, #{updatedBy}, 0
         )

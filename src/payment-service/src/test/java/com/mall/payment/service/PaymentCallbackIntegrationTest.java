@@ -60,6 +60,7 @@ class PaymentCallbackIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");
         jdbcTemplate.update("DELETE FROM payment");
@@ -175,6 +176,27 @@ class PaymentCallbackIntegrationTest {
         verify(orderClient, never()).markPaid(ORDER_ID);
         verify(orderClient, never()).markRefunded(ORDER_ID);
         verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
+    }
+
+    @Test
+    void tenDuplicateCallbacksOnlyProcessOnce() {
+        stubNormalOrder();
+
+        for (int i = 0; i < 10; i++) {
+            CallbackResult result = callbackService.process(callback("T-TEN-DUP", AMOUNT));
+            assertTrue(result.isSuccess());
+            if (i == 0) {
+                assertTrue(result.isNewlyPaid());
+            } else {
+                assertTrue(result.isDuplicate());
+            }
+        }
+
+        assertEquals(1, count("payment_callback"));
+        assertEquals("SUCCESS", paymentStatus());
+        assertEquals(0, count("refund"));
+        verify(orderClient, times(1)).markPaid(ORDER_ID);
+        verify(productClient, times(1)).confirmStock(any(StockConfirmRequest.class));
     }
 
     @Test

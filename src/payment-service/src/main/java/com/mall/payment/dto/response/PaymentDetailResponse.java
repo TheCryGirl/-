@@ -19,6 +19,7 @@ public class PaymentDetailResponse {
     private String payNo;
     private String orderId;
     private String buyerId;
+    private String sellerId;
     private PaymentChannel channel;
     private Long amount;
     private Long refundedAmount;
@@ -32,6 +33,7 @@ public class PaymentDetailResponse {
                 .payNo(payment.getPayNo())
                 .orderId(payment.getOrderId())
                 .buyerId(payment.getBuyerId())
+                .sellerId(payment.getSellerId())
                 .channel(payment.getChannel())
                 .amount(payment.getAmount())
                 .refundedAmount(payment.getRefundedAmount())

@@ -15,6 +15,8 @@ public final class ErrorCode {
     public static final int SIGN_VERIFY_FAILED = 60002;
     public static final int AMOUNT_MISMATCH = 60003;
     public static final int REFUND_EXCEEDS_PAID = 60004;
+    public static final int AFTER_SALE_NOT_FOUND = 60005;
+    public static final int AFTER_SALE_STATE_INVALID = 60006;
 
     private ErrorCode() {
     }

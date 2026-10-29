@@ -16,6 +16,7 @@ public class Payment {
     private String payNo;
     private String orderId;
     private String buyerId;
+    private String sellerId;
     private PaymentChannel channel;
     private Long amount;
     private Long refundedAmount;

@@ -15,6 +15,7 @@ public class Refund {
     private String paymentId;
     private String orderId;
     private String buyerId;
+    private String sellerId;
     private Long amount;
     private String reason;
     private RefundStatus status;

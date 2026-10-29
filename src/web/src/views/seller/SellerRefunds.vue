@@ -64,7 +64,7 @@ onMounted(load)
     <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
     <p v-if="message" class="text-sm text-green-600">{{ message }}</p>
 
-    <!-- 按退款单号审核：契约目前只提供审核接口，没有卖家退款列表接口 -->
+    <!-- 列表由后端按当前卖家过滤；也可按退款单号直接审核 -->
     <section class="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
       <h2 class="text-sm font-medium text-gray-700">按退款单号审核</h2>
       <div class="flex flex-wrap items-center gap-2">
@@ -89,7 +89,7 @@ onMounted(load)
         </button>
       </div>
       <p class="text-xs text-gray-400">
-        列表来自 GET /api/payments/refunds?status=PENDING；也可以直接输入退款单号审核。
+        列表由后端按当前登录卖家过滤，仅展示本店退款单；也可以直接输入退款单号审核。
       </p>
     </section>
 
