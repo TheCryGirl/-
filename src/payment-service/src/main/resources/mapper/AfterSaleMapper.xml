@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.AfterSaleMapper">
+
+    <sql id="columns">
+        ticket_id, order_id, payment_id, buyer_id, seller_id, after_sale_type,
+        amount, reason, status, refund_id, return_tracking_no, exchange_tracking_no,
+        audit_remark, audited_by, audited_at, buyer_shipped_at, seller_shipped_at,
+        idempotency_key, active_flag, created_at, updated_at, created_by, updated_by,
+        is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.AfterSaleTicket">
+        INSERT INTO after_sale_ticket (
+            ticket_id, order_id, payment_id, buyer_id, seller_id, after_sale_type,
+            amount, reason, status, refund_id, return_tracking_no, exchange_tracking_no,
+            audit_remark, audited_by, audited_at, buyer_shipped_at, seller_shipped_at,
+            idempotency_key, active_flag, created_by, updated_by, is_deleted
+        ) VALUES (
+            #{ticketId}, #{orderId}, #{paymentId}, #{buyerId}, #{sellerId},
+            #{afterSaleType}, #{amount}, #{reason,jdbcType=VARCHAR}, #{status},
+            #{refundId,jdbcType=VARCHAR}, #{returnTrackingNo,jdbcType=VARCHAR},
+            #{exchangeTrackingNo,jdbcType=VARCHAR}, #{auditRemark,jdbcType=VARCHAR},
+            #{auditedBy,jdbcType=VARCHAR}, #{auditedAt,jdbcType=TIMESTAMP},
+            #{buyerShippedAt,jdbcType=TIMESTAMP}, #{sellerShippedAt,jdbcType=TIMESTAMP},
+            #{idempotencyKey}, 1, #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.AfterSaleTicket">
+        SELECT <include refid="columns"/>
+        FROM after_sale_ticket
+        WHERE ticket_id = #{ticketId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectByIdempotencyKey" resultType="com.mall.payment.entity.AfterSaleTicket">
+        SELECT <include refid="columns"/>
+        FROM after_sale_ticket
+        WHERE idempotency_key = #{idempotencyKey}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectActiveByOrderId" resultType="com.mall.payment.entity.AfterSaleTicket">
+        SELECT <include refid="columns"/>
+        FROM after_sale_ticket
+        WHERE order_id = #{orderId}
+          AND active_flag = 1
+          AND is_deleted = 0
+        ORDER BY created_at DESC, ticket_id DESC
+        LIMIT 1
+    </select>
+
+    <sql id="pageWhere">
+        WHERE is_deleted = 0
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="afterSaleType != null">
+            AND after_sale_type = #{afterSaleType}
+        </if>
+        <if test="orderId != null and orderId != ''">
+            AND order_id = #{orderId}
+        </if>
+        <if test="buyerId != null and buyerId != ''">
+            AND buyer_id = #{buyerId}
+        </if>
+        <if test="sellerId != null and sellerId != ''">
+            AND seller_id = #{sellerId}
+        </if>
+    </sql>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.AfterSaleTicket">
+        SELECT <include refid="columns"/>
+        FROM after_sale_ticket
+        <include refid="pageWhere"/>
+        ORDER BY created_at DESC, ticket_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM after_sale_ticket
+        <include refid="pageWhere"/>
+    </select>
+
+    <update id="markApproved">
+        UPDATE after_sale_ticket
+        SET status = 'APPROVED',
+            audited_by = #{auditedBy},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            audited_at = #{now},
+            updated_by = #{auditedBy},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'PENDING'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markRejected">
+        UPDATE after_sale_ticket
+        SET status = 'REJECTED',
+            active_flag = NULL,
+            audited_by = #{auditedBy},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            audited_at = #{now},
+            updated_by = #{auditedBy},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'PENDING'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markBuyerShipped">
+        UPDATE after_sale_ticket
+        SET status = 'BUYER_SHIPPED',
+            return_tracking_no = #{trackingNo},
+            buyer_shipped_at = #{now},
+            updated_by = #{buyerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'APPROVED'
+          AND after_sale_type IN ('RETURN_REFUND', 'EXCHANGE')
+          AND buyer_id = #{buyerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markSellerReceived">
+        UPDATE after_sale_ticket
+        SET status = 'SELLER_RECEIVED',
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{sellerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'BUYER_SHIPPED'
+          AND after_sale_type = 'RETURN_REFUND'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markRefundOnlyRefunded">
+        UPDATE after_sale_ticket
+        SET status = 'REFUNDED',
+            active_flag = NULL,
+            refund_id = #{refundId},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{sellerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'APPROVED'
+          AND after_sale_type = 'REFUND_ONLY'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markReturnRefunded">
+        UPDATE after_sale_ticket
+        SET status = 'REFUNDED',
+            active_flag = NULL,
+            refund_id = #{refundId},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{sellerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'SELLER_RECEIVED'
+          AND after_sale_type = 'RETURN_REFUND'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markExchangeCompleted">
+        UPDATE after_sale_ticket
+        SET status = 'COMPLETED',
+            active_flag = NULL,
+            exchange_tracking_no = #{trackingNo},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            seller_shipped_at = #{now},
+            updated_by = #{sellerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'BUYER_SHIPPED'
+          AND after_sale_type = 'EXCHANGE'
+          AND seller_id = #{sellerId}
+          AND is_deleted = 0
+    </update>
+</mapper>

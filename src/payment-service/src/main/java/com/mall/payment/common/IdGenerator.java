@@ -28,6 +28,10 @@ public final class IdGenerator {
         return "REF" + randomHex(20);
     }
 
+    public static String afterSaleTicketId() {
+        return "AS" + randomHex(20);
+    }
+
     public static String mockTradeNo() {
         return "MOCK" + LocalDateTime.now().format(TIME_FORMATTER) + randomDigits(8);
     }

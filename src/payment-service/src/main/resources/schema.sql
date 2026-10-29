@@ -67,3 +67,38 @@ CREATE TABLE IF NOT EXISTS refund (
     KEY idx_buyer_status_created (buyer_id, status, created_at),
     KEY idx_seller_status_created (seller_id, status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单';
+
+CREATE TABLE IF NOT EXISTS after_sale_ticket (
+    ticket_id             VARCHAR(32)  NOT NULL COMMENT '售后单ID',
+    order_id              VARCHAR(32)  NOT NULL COMMENT '订单ID',
+    payment_id            VARCHAR(32)  NOT NULL COMMENT '支付单ID',
+    buyer_id              VARCHAR(32)  NOT NULL COMMENT '买家ID',
+    seller_id             VARCHAR(32)  NOT NULL COMMENT '卖家ID',
+    after_sale_type       VARCHAR(24)  NOT NULL COMMENT '售后类型：REFUND_ONLY/RETURN_REFUND/EXCHANGE',
+    amount                BIGINT       NOT NULL DEFAULT 0 COMMENT '申请退款金额，换货为0',
+    reason                VARCHAR(255) DEFAULT NULL COMMENT '售后原因',
+    status                VARCHAR(24)  NOT NULL COMMENT 'PENDING/APPROVED/BUYER_SHIPPED/SELLER_RECEIVED/REFUNDED/COMPLETED/REJECTED',
+    refund_id             VARCHAR(32)  DEFAULT NULL COMMENT '退款单ID（退款类型执行后写入）',
+    return_tracking_no    VARCHAR(64)  DEFAULT NULL COMMENT '买家退货物流单号',
+    exchange_tracking_no  VARCHAR(64)  DEFAULT NULL COMMENT '卖家换货重发物流单号',
+    audit_remark          VARCHAR(255) DEFAULT NULL COMMENT '最新审核/处理备注',
+    audited_by            VARCHAR(32)  DEFAULT NULL COMMENT '审核人',
+    audited_at            DATETIME     DEFAULT NULL COMMENT '审核时间',
+    buyer_shipped_at      DATETIME     DEFAULT NULL COMMENT '买家退货时间',
+    seller_shipped_at     DATETIME     DEFAULT NULL COMMENT '卖家换货重发时间',
+    idempotency_key       VARCHAR(64)  NOT NULL COMMENT '创建幂等键',
+    active_flag           TINYINT(1)   DEFAULT 1 COMMENT '进行中标记：1进行中，NULL已结束',
+    created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_by            VARCHAR(32)  DEFAULT NULL COMMENT '创建人',
+    updated_by            VARCHAR(32)  DEFAULT NULL COMMENT '更新人',
+    is_deleted            TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (ticket_id),
+    UNIQUE KEY uk_ticket_idem (idempotency_key),
+    -- 同一订单同时只允许一条进行中的售后单；结束后 active_flag 置 NULL
+    UNIQUE KEY uk_order_active (order_id, active_flag),
+    KEY idx_buyer_created (buyer_id, created_at),
+    KEY idx_seller_status_created (seller_id, status, created_at),
+    KEY idx_status_created (status, created_at),
+    KEY idx_payment_id (payment_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后单';

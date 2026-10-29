@@ -50,6 +50,18 @@ public class RefundServiceImpl implements RefundService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public RefundResponse createRefund(String buyerId, String paymentId, RefundRequest request) {
+        return createRefundInternal(buyerId, paymentId, request, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public RefundResponse createRefund(String buyerId, String paymentId, RefundRequest request,
+                                       String sellerIdOverride) {
+        return createRefundInternal(buyerId, paymentId, request, sellerIdOverride);
+    }
+
+    private RefundResponse createRefundInternal(String buyerId, String paymentId,
+                                                RefundRequest request, String sellerIdOverride) {
         Payment payment = paymentMapper.selectById(paymentId);
         if (payment == null) {
             throw new BizException(ErrorCode.PAYMENT_NOT_FOUND, "支付单不存在");
@@ -81,7 +93,9 @@ public class RefundServiceImpl implements RefundService {
         refund.setPaymentId(paymentId);
         refund.setOrderId(payment.getOrderId());
         refund.setBuyerId(buyerId);
-        refund.setSellerId(payment.getSellerId());
+        String sellerId = sellerIdOverride != null && !sellerIdOverride.isBlank()
+                ? sellerIdOverride : payment.getSellerId();
+        refund.setSellerId(sellerId);
         refund.setAmount(request.getAmount());
         refund.setReason(request.getReason());
         refund.setStatus(RefundStatus.PENDING);

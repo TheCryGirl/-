@@ -43,6 +43,7 @@ class PaymentPathIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");
         jdbcTemplate.update("DELETE FROM payment");
@@ -97,6 +98,60 @@ class PaymentPathIntegrationTest {
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(10003));
+    }
+
+    @Test
+    void afterSaleEndpointsAreRoleFiltered() throws Exception {
+        insertAfterSaleTicket();
+
+        mockMvc.perform(get("/api/payments/after-sales")
+                        .header("X-User-Id", BUYER_ID)
+                        .header("X-User-Role", "BUYER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        mockMvc.perform(get("/api/payments/after-sales")
+                        .header("X-User-Id", "SELLER01")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        mockMvc.perform(get("/api/payments/after-sales")
+                        .header("X-User-Id", "SELLER99")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        mockMvc.perform(get("/api/payments/after-sales")
+                        .header("X-User-Id", "ADMIN01")
+                        .header("X-User-Role", "ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1));
+
+        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001")
+                        .header("X-User-Id", "SELLER99")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(10003));
+
+        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001")
+                        .header("X-User-Id", "SELLER01")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.ticketId").value("ASTEST0000000000001"));
+    }
+
+    private void insertAfterSaleTicket() {
+        jdbcTemplate.update("""
+                INSERT INTO after_sale_ticket (
+                    ticket_id, order_id, payment_id, buyer_id, seller_id, after_sale_type,
+                    amount, reason, status, idempotency_key, active_flag,
+                    created_by, updated_by, is_deleted
+                ) VALUES ('ASTEST0000000000001', 'O50009', ?, ?, 'SELLER01', 'REFUND_ONLY',
+                          5000, '路径测试', 'PENDING', 'after-sale-path-key', 1, ?, ?, 0)
+                """, PAYMENT_ID, BUYER_ID, BUYER_ID, BUYER_ID);
     }
 
     @Test
