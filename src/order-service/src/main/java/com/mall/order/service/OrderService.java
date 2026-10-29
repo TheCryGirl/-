@@ -249,7 +249,7 @@ public class OrderService {
 
         for (String cartItemId : cartItemIds) {
             try {
-                Result<Void> result = cartClient.deleteItem(buyerId, cartItemId);
+                Result<Void> result = cartClient.deleteItem(internalToken, buyerId, cartItemId);
                 if (result != null && result.getCode() != ErrorCode.SUCCESS) {
                     log.warn("清理购物车失败, cartItemId={}, code={}", cartItemId, result.getCode());
                 }
@@ -531,7 +531,7 @@ public class OrderService {
 
     private CartDTO callCart(String buyerId) {
         try {
-            Result<CartDTO> result = cartClient.getCart(buyerId);
+            Result<CartDTO> result = cartClient.getCart(internalToken, buyerId);
             return unwrap(result, "cart-service");
         } catch (BizException e) {
             throw e;
