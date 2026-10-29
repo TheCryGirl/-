@@ -18,10 +18,18 @@ public interface RefundMapper {
 
     List<Refund> selectPage(@Param("status") RefundStatus status,
                             @Param("buyerId") String buyerId,
+                            @Param("sellerId") String sellerId,
                             @Param("offset") int offset,
                             @Param("size") int size);
 
-    long count(@Param("status") RefundStatus status, @Param("buyerId") String buyerId);
+    long count(@Param("status") RefundStatus status,
+               @Param("buyerId") String buyerId,
+               @Param("sellerId") String sellerId);
+
+    /** 历史退款没有 seller_id 时，由支付服务反查订单归属后补齐。 */
+    List<Refund> selectMissingSellerId(@Param("limit") int limit);
+
+    int updateSellerId(@Param("refundId") String refundId, @Param("sellerId") String sellerId);
 
     /**
      * 只允许把待审核的退款单改成最终状态，防止重复审核。

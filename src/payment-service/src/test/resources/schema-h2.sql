@@ -7,6 +7,7 @@ CREATE TABLE payment (
     pay_no           VARCHAR(32)  NOT NULL,
     order_id         VARCHAR(32)  NOT NULL,
     buyer_id         VARCHAR(32)  NOT NULL,
+    seller_id        VARCHAR(32)  DEFAULT NULL,
     channel          VARCHAR(16)  NOT NULL,
     amount           BIGINT       NOT NULL,
     refunded_amount  BIGINT       NOT NULL DEFAULT 0,
@@ -43,6 +44,7 @@ CREATE TABLE refund (
     payment_id      VARCHAR(32)  NOT NULL,
     order_id        VARCHAR(32)  NOT NULL,
     buyer_id        VARCHAR(32)  NOT NULL,
+    seller_id       VARCHAR(32)  DEFAULT NULL,
     amount          BIGINT       NOT NULL,
     reason          VARCHAR(255) DEFAULT NULL,
     status          VARCHAR(16)  NOT NULL,
@@ -59,3 +61,4 @@ CREATE TABLE refund (
 
 CREATE INDEX idx_refund_status_created ON refund (status, created_at);
 CREATE INDEX idx_refund_buyer_status_created ON refund (buyer_id, status, created_at);
+CREATE INDEX idx_refund_seller_status_created ON refund (seller_id, status, created_at);

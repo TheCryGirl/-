@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS payment (
     pay_no           VARCHAR(32)  NOT NULL COMMENT '支付单号',
     order_id         VARCHAR(32)  NOT NULL COMMENT '订单ID',
     buyer_id         VARCHAR(32)  NOT NULL COMMENT '买家ID',
+    seller_id        VARCHAR(32)  DEFAULT NULL COMMENT '卖家ID快照',
     channel          VARCHAR(16)  NOT NULL COMMENT '支付渠道：ALIPAY/WECHAT/MOCK',
     amount           BIGINT       NOT NULL COMMENT '应付金额，单位分',
     refunded_amount  BIGINT       NOT NULL DEFAULT 0 COMMENT '累计已退金额，单位分',
@@ -23,7 +24,8 @@ CREATE TABLE IF NOT EXISTS payment (
     -- 同一订单同一状态只允许一条，保证并发下至多一个待支付单（BR-21）
     UNIQUE KEY uk_order_status (order_id, status),
     KEY idx_buyer_created (buyer_id, created_at),
-    KEY idx_order_created (order_id, created_at)
+    KEY idx_order_created (order_id, created_at),
+    KEY idx_seller_created (seller_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付单';
 
 CREATE TABLE IF NOT EXISTS payment_callback (
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS refund (
     payment_id      VARCHAR(32)  NOT NULL COMMENT '支付单ID',
     order_id        VARCHAR(32)  NOT NULL COMMENT '订单ID',
     buyer_id        VARCHAR(32)  NOT NULL COMMENT '买家ID',
+    seller_id       VARCHAR(32)  DEFAULT NULL COMMENT '卖家ID快照',
     amount          BIGINT       NOT NULL COMMENT '退款金额，单位分',
     reason          VARCHAR(255) DEFAULT NULL COMMENT '退款原因',
     status          VARCHAR(16)  NOT NULL COMMENT '退款状态：PENDING/REJECTED/SUCCESS/FAILED',
@@ -61,5 +64,6 @@ CREATE TABLE IF NOT EXISTS refund (
     PRIMARY KEY (refund_id),
     KEY idx_payment_created (payment_id, created_at),
     KEY idx_status_created (status, created_at),
-    KEY idx_buyer_status_created (buyer_id, status, created_at)
+    KEY idx_buyer_status_created (buyer_id, status, created_at),
+    KEY idx_seller_status_created (seller_id, status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款单';

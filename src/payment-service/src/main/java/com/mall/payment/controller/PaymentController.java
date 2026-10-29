@@ -106,6 +106,14 @@ public class PaymentController {
             throw new BizException(ErrorCode.FORBIDDEN, "无权限审核退款");
         }
         return Result.success(refundService.auditRefund(
-                refundId, request.getApproved(), auditorId, request.getRemark()));
+                refundId, request.getApproved(), auditorId, role, request.getRemark()));
+    }
+
+    @GetMapping("/refunds/{refundId}")
+    public Result<RefundResponse> getRefund(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @PathVariable("refundId") String refundId) {
+        return Result.success(refundService.getRefund(userId, role, refundId));
     }
 }

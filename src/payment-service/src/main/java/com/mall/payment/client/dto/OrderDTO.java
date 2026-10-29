@@ -13,5 +13,6 @@ public class OrderDTO {
     private String orderNo;
     private OrderStatus status;
     private String buyerId;
+    private String sellerId;
     private Long payAmount;
 }

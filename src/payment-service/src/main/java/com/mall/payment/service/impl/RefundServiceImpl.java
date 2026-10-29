@@ -2,6 +2,7 @@ package com.mall.payment.service.impl;
 
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
+import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
@@ -80,6 +81,7 @@ public class RefundServiceImpl implements RefundService {
         refund.setPaymentId(paymentId);
         refund.setOrderId(payment.getOrderId());
         refund.setBuyerId(buyerId);
+        refund.setSellerId(payment.getSellerId());
         refund.setAmount(request.getAmount());
         refund.setReason(request.getReason());
         refund.setStatus(RefundStatus.PENDING);
@@ -145,19 +147,63 @@ public class RefundServiceImpl implements RefundService {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         RefundStatus refundStatus = parseStatus(status);
 
-        boolean reviewer = "SELLER".equalsIgnoreCase(role) || "ADMIN".equalsIgnoreCase(role);
-        String buyerFilter = reviewer ? null : userId;
-        if (!reviewer && (buyerFilter == null || buyerFilter.isBlank())) {
-            throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+        boolean admin = "ADMIN".equalsIgnoreCase(role);
+        boolean seller = "SELLER".equalsIgnoreCase(role);
+        String buyerFilter = null;
+        String sellerFilter = null;
+        if (seller) {
+            if (userId == null || userId.isBlank()) {
+                throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+            }
+            sellerFilter = userId;
+            // 历史退款没有 seller_id，先按 order_id 反查订单归属；失败不阻塞列表
+            backfillMissingSellerIds();
+        } else if (!admin) {
+            if (userId == null || userId.isBlank()) {
+                throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+            }
+            buyerFilter = userId;
         }
 
-        long total = refundMapper.count(refundStatus, buyerFilter);
+        long total = refundMapper.count(refundStatus, buyerFilter, sellerFilter);
         List<RefundResponse> list = refundMapper
-                .selectPage(refundStatus, buyerFilter, (safePage - 1) * safeSize, safeSize)
+                .selectPage(refundStatus, buyerFilter, sellerFilter, (safePage - 1) * safeSize, safeSize)
                 .stream()
                 .map(RefundResponse::from)
                 .toList();
         return PageResult.of(list, total, safePage, safeSize);
+    }
+
+    @Override
+    public RefundResponse getRefund(String userId, String role, String refundId) {
+        Refund refund = refundMapper.selectById(refundId);
+        if (refund == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "退款单不存在");
+        }
+        if ("SELLER".equalsIgnoreCase(role) && refund.getSellerId() == null) {
+            String sellerId = resolveSellerId(refund);
+            if (sellerId != null) {
+                refundMapper.updateSellerId(refund.getRefundId(), sellerId);
+                refund = refundMapper.selectById(refundId);
+            }
+        }
+        checkRefundAccess(refund, userId, role);
+        return RefundResponse.from(refund);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public RefundResponse auditRefund(String refundId, boolean approved, String auditedBy,
+                                      String role, String remark) {
+        Refund refund = refundMapper.selectById(refundId);
+        if (refund == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "退款单不存在");
+        }
+        if (!"ADMIN".equalsIgnoreCase(role)
+                && (!"SELLER".equalsIgnoreCase(role) || !auditedBy.equals(refund.getSellerId()))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权审核该退款单");
+        }
+        return doAudit(refundId, approved, auditedBy, remark, true);
     }
 
     @Override
@@ -245,6 +291,53 @@ public class RefundServiceImpl implements RefundService {
             }
         } catch (Exception e) {
             log.error("通知订单退款完成异常，需人工补偿, orderId={}", orderId, e);
+        }
+    }
+
+    private void backfillMissingSellerIds() {
+        List<Refund> missing = refundMapper.selectMissingSellerId(50);
+        for (Refund refund : missing) {
+            String sellerId = resolveSellerId(refund);
+            if (sellerId != null && !sellerId.isBlank()) {
+                refundMapper.updateSellerId(refund.getRefundId(), sellerId);
+            }
+        }
+    }
+
+    private String resolveSellerId(Refund refund) {
+        try {
+            Result<OrderDTO> result = orderClient.getOrder(refund.getOrderId(), refund.getBuyerId());
+            if (result == null || result.getCode() != 0 || result.getData() == null) {
+                log.warn("补齐退款卖家信息失败, refundId={}, orderId={}, code={}",
+                        refund.getRefundId(), refund.getOrderId(), result == null ? null : result.getCode());
+                return null;
+            }
+            String sellerId = result.getData().getSellerId();
+            if (sellerId == null || sellerId.isBlank()) {
+                log.warn("订单缺少卖家信息, refundId={}, orderId={}",
+                        refund.getRefundId(), refund.getOrderId());
+                return null;
+            }
+            return sellerId;
+        } catch (Exception e) {
+            log.warn("反查订单卖家失败, refundId={}, orderId={}",
+                    refund.getRefundId(), refund.getOrderId(), e);
+            return null;
+        }
+    }
+
+    private void checkRefundAccess(Refund refund, String userId, String role) {
+        if ("ADMIN".equalsIgnoreCase(role)) {
+            return;
+        }
+        if ("SELLER".equalsIgnoreCase(role)) {
+            if (!userId.equals(refund.getSellerId())) {
+                throw new BizException(ErrorCode.FORBIDDEN, "无权查看该退款单");
+            }
+            return;
+        }
+        if (!userId.equals(refund.getBuyerId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该退款单");
         }
     }
 

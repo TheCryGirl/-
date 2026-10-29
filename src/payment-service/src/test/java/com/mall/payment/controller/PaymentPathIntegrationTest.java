@@ -83,6 +83,20 @@ class PaymentPathIntegrationTest {
                         .header("X-User-Role", "BUYER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(0));
+
+        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID)
+                        .header("X-User-Id", "SELLER01")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.refundId").value(REFUND_ID))
+                .andExpect(jsonPath("$.data.sellerId").value("SELLER01"));
+
+        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID)
+                        .header("X-User-Id", "SELLER99")
+                        .header("X-User-Role", "SELLER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(10003));
     }
 
     @Test
@@ -103,9 +117,9 @@ class PaymentPathIntegrationTest {
     private void insertPayment() {
         jdbcTemplate.update("""
                 INSERT INTO payment (
-                    payment_id, pay_no, order_id, buyer_id, channel, amount,
+                    payment_id, pay_no, order_id, buyer_id, seller_id, channel, amount,
                     refunded_amount, status, paid_at, created_by, updated_by, is_deleted
-                ) VALUES (?, 'P20261020000009', 'O50009', ?, 'MOCK', 11800, 5000,
+                ) VALUES (?, 'P20261020000009', 'O50009', ?, 'SELLER01', 'MOCK', 11800, 5000,
                           'SUCCESS', CURRENT_TIMESTAMP, ?, ?, 0)
                 """, PAYMENT_ID, BUYER_ID, BUYER_ID, BUYER_ID);
     }
@@ -113,9 +127,9 @@ class PaymentPathIntegrationTest {
     private void insertRefund() {
         jdbcTemplate.update("""
                 INSERT INTO refund (
-                    refund_id, payment_id, order_id, buyer_id, amount, reason,
+                    refund_id, payment_id, order_id, buyer_id, seller_id, amount, reason,
                     status, created_by, updated_by, is_deleted
-                ) VALUES (?, ?, 'O50009', ?, 5000, '路径测试', 'PENDING', ?, ?, 0)
+                ) VALUES (?, ?, 'O50009', ?, 'SELLER01', 5000, '路径测试', 'PENDING', ?, ?, 0)
                 """, REFUND_ID, PAYMENT_ID, BUYER_ID, BUYER_ID, BUYER_ID);
     }
 
@@ -125,6 +139,7 @@ class PaymentPathIntegrationTest {
         order.setOrderNo("2026102012345678901");
         order.setStatus(OrderStatus.PENDING_PAYMENT);
         order.setBuyerId(BUYER_ID);
+        order.setSellerId("S10001");
         order.setPayAmount(11800L);
         return order;
     }
