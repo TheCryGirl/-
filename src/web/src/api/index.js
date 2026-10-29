@@ -172,6 +172,23 @@ export const paymentApi = {
   refund: (paymentId, payload) => http.post(`/payments/${paymentId}/refund`, payload),
   auditRefund: (refundId, payload) => http.put(`/payments/refunds/${refundId}/audit`, payload),
   refunds: (params) => http.get('/payments/refunds', { params }),
+  refundDetail: (refundId) => http.get(`/payments/refunds/${refundId}`),
+
+  /* ---- 售后中心 ---- */
+  afterSales: (params) => http.get('/payments/after-sales', { params }),
+  afterSaleDetail: (ticketId) => http.get(`/payments/after-sales/${ticketId}`),
+  createAfterSale: (payload, idempotencyKey) =>
+    http.post('/payments/after-sales', payload, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }),
+  auditAfterSale: (ticketId, payload) =>
+    http.put(`/payments/after-sales/${ticketId}/audit`, payload),
+  shipAfterSaleReturn: (ticketId, payload) =>
+    http.put(`/payments/after-sales/${ticketId}/return-shipment`, payload),
+  receiveAfterSaleReturn: (ticketId, payload) =>
+    http.put(`/payments/after-sales/${ticketId}/receive`, payload),
+  reshipAfterSale: (ticketId, payload) =>
+    http.put(`/payments/after-sales/${ticketId}/reship`, payload),
 }
 
 export { http, extractData, extractList }
