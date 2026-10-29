@@ -10,6 +10,7 @@ import com.mall.user.dto.response.LoginResponse;
 import com.mall.user.dto.response.PageResponse;
 import com.mall.user.dto.response.UserResponse;
 import com.mall.user.service.AddressService;
+import com.mall.user.service.AuditLogPublisher;
 import com.mall.user.service.AvatarStorageService;
 import com.mall.user.service.UserService;
 import jakarta.validation.Valid;
@@ -33,6 +34,7 @@ public class UserController {
     private final UserService userService;
     private final AddressService addressService;
     private final AvatarStorageService avatarStorageService;
+    private final AuditLogPublisher auditLogPublisher;
 
     @PostMapping("/register")
     public Result<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
@@ -105,6 +107,8 @@ public class UserController {
             throw new BizException(ErrorCode.FORBIDDEN, "无权限执行该操作");
         }
         userService.updateStatus(operatorId, targetUserId, request);
+        auditLogPublisher.publish(operatorId, role, "USER_STATUS", "USER", targetUserId,
+                "状态变更为 " + request.getStatus());
         return Result.success(null);
     }
 
@@ -118,6 +122,8 @@ public class UserController {
             throw new BizException(ErrorCode.FORBIDDEN, "无权限执行该操作");
         }
         userService.updateRole(operatorId, targetUserId, request);
+        auditLogPublisher.publish(operatorId, role, "USER_ROLE", "USER", targetUserId,
+                "角色变更为 " + request.getRole());
         return Result.success(null);
     }
 

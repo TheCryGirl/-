@@ -60,6 +60,12 @@ user:
 services:
   # 收藏夹 / 足迹需要商品标题与价格；店铺停用需要同步商品可见性
   product-url: ${PRODUCT_SERVICE_URL:}
+  # 操作审计上报到 order-service（#58）
+  order-url: ${ORDER_SERVICE_URL:}
+
+# 操作审计上报开关（#58）；审计中心不可用时只记 warn，不影响业务
+audit:
+  enabled: ${AUDIT_ENABLED:true}
 
 # JWT 签名密钥：必须从环境变量读取，禁止在配置里写死。
 # 未设置时留空，JwtUtil 会直接启动失败，避免带着弱默认密钥上线。

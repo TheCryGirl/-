@@ -85,3 +85,20 @@ CREATE TABLE IF NOT EXISTS config_audit (
     PRIMARY KEY (id),
     KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台配置变更留痕';
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    audit_id      VARCHAR(32)  NOT NULL COMMENT '审计记录ID',
+    operator_id   VARCHAR(32)  NOT NULL COMMENT '操作人 userId',
+    operator_role VARCHAR(16)  DEFAULT NULL COMMENT '操作人角色',
+    action        VARCHAR(32)  NOT NULL COMMENT '操作类型',
+    target_type   VARCHAR(32)  DEFAULT NULL COMMENT '对象类型',
+    target_id     VARCHAR(64)  DEFAULT NULL COMMENT '对象ID',
+    detail        VARCHAR(1000) DEFAULT NULL COMMENT '操作说明',
+    result        VARCHAR(16)  NOT NULL DEFAULT 'SUCCESS' COMMENT 'SUCCESS/FAIL',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_audit_id (audit_id),
+    KEY idx_audit_operator (operator_id, created_at),
+    KEY idx_audit_action (action, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台关键操作审计日志';

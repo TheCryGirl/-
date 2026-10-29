@@ -11,6 +11,7 @@ import com.mall.payment.dto.request.RefundRequest;
 import com.mall.payment.dto.response.CreatePaymentResponse;
 import com.mall.payment.dto.response.PaymentDetailResponse;
 import com.mall.payment.dto.response.RefundResponse;
+import com.mall.payment.service.AuditLogPublisher;
 import com.mall.payment.service.CallbackResult;
 import com.mall.payment.service.PaymentCallbackService;
 import com.mall.payment.service.PaymentService;
@@ -44,6 +45,7 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final PaymentCallbackService paymentCallbackService;
     private final RefundService refundService;
+    private final AuditLogPublisher auditLogPublisher;
 
     @PostMapping
     public Result<CreatePaymentResponse> create(
@@ -105,8 +107,11 @@ public class PaymentController {
         if (!ROLE_SELLER.equals(role) && !ROLE_ADMIN.equals(role)) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权限审核退款");
         }
-        return Result.success(refundService.auditRefund(
-                refundId, request.getApproved(), auditorId, role, request.getRemark()));
+        RefundResponse refund = refundService.auditRefund(
+                refundId, request.getApproved(), auditorId, role, request.getRemark());
+        auditLogPublisher.publish(auditorId, role, "REFUND_AUDIT", "REFUND", refundId,
+                (Boolean.TRUE.equals(request.getApproved()) ? "通过退款" : "驳回退款") + suffix(request.getRemark()));
+        return Result.success(refund);
     }
 
     @GetMapping("/refunds/{refundId}")
@@ -115,5 +120,9 @@ public class PaymentController {
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @PathVariable("refundId") String refundId) {
         return Result.success(refundService.getRefund(userId, role, refundId));
+    }
+
+    private static String suffix(String remark) {
+        return remark == null || remark.isBlank() ? "" : "：" + remark;
     }
 }

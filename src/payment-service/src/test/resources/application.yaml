@@ -43,6 +43,10 @@ services:
   order-url: http://127.0.0.1:1
   product-url: http://127.0.0.1:1
 
+# 测试不启动 order-service，审计上报关闭（#58）
+audit:
+  enabled: false
+
 logging:
   level:
     com.mall.payment: info

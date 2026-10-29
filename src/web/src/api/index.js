@@ -191,5 +191,10 @@ export const paymentApi = {
     http.put(`/payments/after-sales/${ticketId}/reship`, payload),
 }
 
+/* ---------------- 操作审计（#58） ---------------- */
+export const auditApi = {
+  list: (params) => http.get('/audit-logs', { params }),
+}
+
 export { http, extractData, extractList }
 export default http
