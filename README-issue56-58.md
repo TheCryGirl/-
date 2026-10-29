@@ -341,3 +341,42 @@ npm run build
 - 审计上报是 best-effort：审计中心不可用时该条日志会丢失（设计取舍，优先保证业务可用），仅记录 warn 日志。
 - 审计管理页为只读 + 筛选；审计日志不提供删除/导出接口。
 - 前端仅完成构建验证，端到端浏览器联调未执行。
+
+---
+
+## 十、推送与合并注意事项（给执行者）
+
+> 三个分支均已完成本地提交，**尚未推送远端**。以下步骤需人工执行。
+
+1. **推送三个分支**（顺序不限，一次推完）：
+
+   ```bash
+   git push -u origin feature/56-cart-internal-token
+   git push -u origin feature/58-audit-log
+   git push -u origin feature/57-order-evaluation
+   ```
+
+2. **建 PR，base 按叠层指向上一个分支**，这样每个 PR 只显示自己那个 Issue 的 diff：
+
+   | PR | head 分支 | base 分支 |
+   | --- | --- | --- |
+   | #56 | `feature/56-cart-internal-token` | `main` |
+   | #58 | `feature/58-audit-log` | `feature/56-cart-internal-token` |
+   | #57 | `feature/57-order-evaluation` | `feature/58-audit-log` |
+
+   #56 合入 main 后，GitHub 会自动把 #58 的 base 改到 main，依此类推。若团队要求所有 PR 一律 base `main`，则只先建 #56 的 PR，合并后再建 #58，最后建 #57。
+
+3. **合并顺序必须为 #56 → #58 → #57**（原因见第七节：`EvaluationService` 依赖 #58 的 `AuditLogService`），请组长按此顺序合并。
+
+4. **禁止对已推送分支 rebase / force push**：PR 期间若 main 有新提交，等组长正常合并即可，不要 rebase 后强推。
+
+5. **合并完成后收尾**：
+
+   ```bash
+   git checkout main && git pull
+   git branch -d feature/56-cart-internal-token feature/58-audit-log feature/57-order-evaluation
+   ```
+
+6. **提交身份**：本仓库未配置 git 身份，提交时通过 `git -c user.name=... -c user.email=...` 单次传入，未修改任何 git config。
+
+7. **改动边界**：本次未修改 `docs/`、`reports/` 与仓库根 `README.md`（团队规范仅组长可改）；本文档是仓库根目录新增的 `README-issue56-58.md`。
