@@ -67,6 +67,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
      */
     private static final List<String> PUBLIC_GET = List.of(
             "/api/categories/**",
+            "/api/evaluations/products/**",
             "/images/**",
             "/avatars/**",
             "/actuator/**"

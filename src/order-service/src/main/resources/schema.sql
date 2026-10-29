@@ -86,6 +86,25 @@ CREATE TABLE IF NOT EXISTS config_audit (
     KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台配置变更留痕';
 
+CREATE TABLE IF NOT EXISTS order_evaluation (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    evaluation_id VARCHAR(32)  NOT NULL COMMENT '评价ID',
+    order_id      VARCHAR(32)  NOT NULL COMMENT '订单ID，一单一评',
+    buyer_id      VARCHAR(32)  NOT NULL COMMENT '买家ID',
+    seller_id     VARCHAR(32)  NOT NULL COMMENT '卖家ID',
+    rating        TINYINT      NOT NULL COMMENT '评分 1~5 星',
+    content       VARCHAR(500) DEFAULT NULL COMMENT '评价文字',
+    images        VARCHAR(1024) DEFAULT NULL COMMENT '晒图地址，逗号分隔，最多3张',
+    anonymous     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否匿名：0否 1是',
+    status        VARCHAR(16)  NOT NULL DEFAULT 'VISIBLE' COMMENT 'VISIBLE/HIDDEN',
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评价时间',
+    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_evaluation_id (evaluation_id),
+    UNIQUE KEY uk_evaluation_order (order_id),
+    KEY idx_evaluation_status (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单评价';
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
     audit_id      VARCHAR(32)  NOT NULL COMMENT '审计记录ID',
