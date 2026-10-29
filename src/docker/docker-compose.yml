@@ -1,14 +1,16 @@
 # 在线商城 - 本地一键启动
 #
 # 用法：
-#   docker compose up -d          启动全部
-#   docker compose up -d nacos mysql redis   只启动基础设施
-#   docker compose logs -f gateway           看某个服务的日志
-#   docker compose down           停止并移除容器
+#   docker compose up -d --build    打包并启动全部
+#   docker compose up -d nacos mysql   只启动基础设施
+#   docker compose logs -f gateway     看某个服务的日志
+#   docker compose down                停止并移除容器
 #
 # 说明：
-#   各微服务的镜像需要先用 `mvn package` 打包，再把 jar 放进对应目录。
-#   若只想跑基础设施（Nacos / MySQL / Redis），把最后几个服务块注释掉即可。
+#   业务服务直接用 eclipse-temurin 跑 jar，不写 Dockerfile。
+#   每个服务挂载 `../<服务>/target/<服务>-1.0.0-SNAPSHOT.jar` 为 `/app/app.jar`，
+#   因此启动前必须先在该服务目录执行 `mvn -DskipTests package`，否则会报找不到 jar。
+#   本项目当前不使用 Redis，未编排 redis 服务。
 
 services:
   # ---------------- 基础设施 ----------------
@@ -51,7 +53,8 @@ services:
       - --default-time-zone=+08:00
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      # 相对本文件所在目录（src/docker/），因此是 ./init-db.sql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-123456}"]
       interval: 10s
@@ -60,24 +63,9 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: mall-redis
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-}"]
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
   # ---------------- 微服务 ----------------
   # 下面每个服务都依赖基础设施就绪后才启动。
-  # 镜像用 eclipse-temurin 直接跑 jar，省去给每个服务写 Dockerfile。
+  # 服务间内部调用统一带 X-Internal-Token，INTERNAL_TOKEN 必须全栈一致，否则内部接口返回 10003。
 
   gateway:
     image: eclipse-temurin:17-jre-alpine
@@ -89,7 +77,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
       TZ: Asia/Shanghai
     volumes:
-      - ../gateway/target:/app
+      - ../gateway/target/gateway-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     ports:
       - "9000:9000"
     depends_on:
@@ -107,9 +95,13 @@ services:
       DB_HOST: mysql
       DB_PASSWORD: ${DB_PASSWORD:-123456}
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
+      AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       TZ: Asia/Shanghai
     volumes:
-      - ../user-service/target:/app
+      - ../user-service/target/user-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
+      - user-uploads:/app/uploads
     ports:
       - "9001:9001"
     depends_on:
@@ -128,9 +120,12 @@ services:
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
       DB_PASSWORD: ${DB_PASSWORD:-123456}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
+      AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       TZ: Asia/Shanghai
     volumes:
-      - ../product-service/target:/app
+      - ../product-service/target/product-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
       - product-uploads:/app/uploads
     ports:
       - "9002:9002"
@@ -150,10 +145,10 @@ services:
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
       DB_PASSWORD: ${DB_PASSWORD:-123456}
-      REDIS_HOST: redis
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
       TZ: Asia/Shanghai
     volumes:
-      - ../cart-service/target:/app
+      - ../cart-service/target/cart-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     ports:
       - "9003:9003"
     depends_on:
@@ -172,19 +167,17 @@ services:
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
       DB_PASSWORD: ${DB_PASSWORD:-123456}
-      REDIS_HOST: redis
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
       ORDER_TIMEOUT_MINUTES: ${ORDER_TIMEOUT_MINUTES:-30}
       TZ: Asia/Shanghai
     volumes:
-      - ../order-service/target:/app
+      - ../order-service/target/order-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     ports:
       - "9004:9004"
     depends_on:
       nacos:
         condition: service_healthy
       mysql:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -197,10 +190,13 @@ services:
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
       DB_PASSWORD: ${DB_PASSWORD:-123456}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
       MOCK_SECRET: ${MOCK_SECRET:-mock-pay-secret}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
+      AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       TZ: Asia/Shanghai
     volumes:
-      - ../payment-service/target:/app
+      - ../payment-service/target/payment-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     ports:
       - "9005:9005"
     depends_on:
@@ -214,5 +210,5 @@ volumes:
   nacos-data:
   nacos-logs:
   mysql-data:
-  redis-data:
   product-uploads:
+  user-uploads:

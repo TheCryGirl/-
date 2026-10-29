@@ -12,9 +12,12 @@ CREATE DATABASE IF NOT EXISTS mall_cart    DEFAULT CHARACTER SET utf8mb4 COLLATE
 CREATE DATABASE IF NOT EXISTS mall_order   DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS mall_payment DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- 开发期允许 root 从任意主机连接（仅限本地开发，生产环境不要这么做）
--- MySQL 的 root 用户默认只允许 localhost，容器内其他服务连不上时放开这里。
--- 如需收紧，删除下面两行并给各服务单独建账号。
-ALTER USER 'root'@'%' IDENTIFIED BY '123456';
+-- 关于 root 账号：
+--   官方镜像在首次启动时会用 MYSQL_ROOT_PASSWORD 建好 root@'%'，口令与 compose 中的
+--   ${DB_PASSWORD} 一致，容器内其他服务可直接连上。
+--   这里不再执行 ALTER USER ... IDENTIFIED BY '...'——那会把口令固定成写死的值，
+--   覆盖 MYSQL_ROOT_PASSWORD，导致 DB_PASSWORD 设成别的值时各服务连不上。
+--
+-- 仅授予权限（幂等，不涉及口令）：
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
