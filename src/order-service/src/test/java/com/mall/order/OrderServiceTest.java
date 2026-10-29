@@ -124,8 +124,8 @@ class OrderServiceTest {
         sku.setStockAvailable(10);
         product.setSkus(List.of(sku));
 
-        when(cartClient.getCart(anyString())).thenReturn(Result.success(cart));
-        when(cartClient.deleteItem(anyString(), anyString())).thenReturn(Result.success());
+        when(cartClient.getCart(anyString(), anyString())).thenReturn(Result.success(cart));
+        when(cartClient.deleteItem(anyString(), anyString(), anyString())).thenReturn(Result.success());
         when(userClient.addresses(anyString(), anyString())).thenReturn(Result.success(List.of(address)));
         when(productClient.getProduct(anyString())).thenReturn(Result.success(product));
         when(productClient.reserve(anyString(), any(ReserveStockRequestDTO.class)))
