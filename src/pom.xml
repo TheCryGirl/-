@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  项目聚合构建入口（仅聚合，不作为各模块的 parent）。
+
+  各服务模块沿用 spring-boot-starter-parent 作为 parent，因此本文件只声明
+  <modules>，不设置 <parent>、不复制 dependencyManagement，避免与各模块
+  既有依赖版本产生双份来源。
+
+  用法（在 src 目录下）：
+    mvn -B test            全量回归（六个服务 + 网关）
+    mvn -B -pl order-service test   只跑单个模块
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.mall</groupId>
+    <artifactId>mall-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>mall-parent</name>
+    <description>在线商城微服务项目聚合构建入口</description>
+
+    <!-- campusEasy 是另一套与本项目无关的 SSM 练习工程，不纳入构建 -->
+    <modules>
+        <module>gateway</module>
+        <module>user-service</module>
+        <module>product-service</module>
+        <module>cart-service</module>
+        <module>order-service</module>
+        <module>payment-service</module>
+    </modules>
+</project>
