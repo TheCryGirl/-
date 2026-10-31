@@ -98,6 +98,11 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
       AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
+      # 初始管理员：注册接口只创建 BUYER，没有管理员就无法审核商品、开通卖家角色，
+      # 一键部署后系统实际上不可用。这两个变量不配置时 AdminBootstrap 会跳过，
+      # 不会写入任何默认口令。
+      ADMIN_BOOTSTRAP_ACCOUNT: ${ADMIN_BOOTSTRAP_ACCOUNT:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
       TZ: Asia/Shanghai
     volumes:
       - ../user-service/target/user-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
