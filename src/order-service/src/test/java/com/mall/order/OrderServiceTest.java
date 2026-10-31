@@ -167,7 +167,9 @@ class OrderServiceTest {
                 .isEqualTo(ErrorCode.STOCK_INSUFFICIENT);
 
         assertThat(count("SELECT COUNT(*) FROM `order` WHERE is_deleted = 1")).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM order_idempotency")).isZero();
+        // 预占失败后幂等记录不再删除，而是退回 FAILED 保留下来：
+        // 既让同一幂等键可以重试，又保留 request_hash 以便拒绝「同 key 不同请求」。
+        assertThat(count("SELECT COUNT(*) FROM order_idempotency WHERE status = 'FAILED'")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM order_compensation")).isEqualTo(1);
     }
 

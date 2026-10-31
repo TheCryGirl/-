@@ -26,6 +26,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -98,6 +99,7 @@ public class StockService {
         // TreeMap 按 skuId 升序，固定加锁顺序，降低死锁概率。
         for (Map.Entry<String, Integer> entry : items.entrySet()) {
             reservationMapper.insertItem(StockReservationItem.builder()
+                    .id(itemId(reservationId, entry.getKey()))
                     .reservationId(reservationId)
                     .skuId(entry.getKey())
                     .quantity(entry.getValue())
@@ -110,6 +112,22 @@ public class StockService {
             responses.add(new ReserveItemResponse(entry.getKey(), entry.getValue()));
         }
         return new ReserveStockResponse(reservationId, responses);
+    }
+
+    /**
+     * 明细主键由「预占单 ID + SKU ID」确定性派生（64 位 FNV-1a 哈希）。
+     *
+     * <p>不用自增列是因为 H2（MODE=MySQL）的自增序列在并发事务回滚后会复用号段，
+     * 高并发预占时产生重复主键并抛出唯一约束冲突（#74 回归时暴露）。
+     * 明细的业务唯一键本就是 (reservation_id, sku_id)，用它派生主键天然唯一。
+     */
+    private static long itemId(String reservationId, String skuId) {
+        long hash = 0xcbf29ce484222325L;
+        for (byte b : (reservationId + '|' + skuId).getBytes(StandardCharsets.UTF_8)) {
+            hash ^= (b & 0xff);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
     }
 
     public ReleaseResponse release(ReleaseStockRequest request) {

@@ -37,4 +37,37 @@
     <delete id="deleteStale">
         DELETE FROM order_idempotency WHERE status = 'PROCESSING' AND created_at &lt; #{cutoff}
     </delete>
+
+    <!-- 抢占执行权：判断与更新在同一条 SQL 内完成，由数据库保证原子性 -->
+    <update id="claimReserving">
+        UPDATE order_idempotency
+        SET status = 'RESERVING', updated_at = #{updatedAt}
+        WHERE idem_key = #{idemKey} AND status IN ('PROCESSING', 'FAILED')
+    </update>
+
+    <update id="markSuccessIfReserving">
+        UPDATE order_idempotency
+        SET status = 'SUCCESS', order_id = #{orderId}, updated_at = #{updatedAt}
+        WHERE idem_key = #{idemKey} AND status = 'RESERVING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE order_idempotency
+        SET status = 'FAILED', updated_at = #{updatedAt}
+        WHERE idem_key = #{idemKey} AND status = 'RESERVING'
+    </update>
+
+    <select id="selectStaleReservingKey" resultType="java.lang.String">
+        SELECT idem_key
+        FROM order_idempotency
+        WHERE status = 'RESERVING' AND updated_at &lt; #{cutoff}
+        ORDER BY updated_at
+        LIMIT 100
+    </select>
+
+    <update id="resetStaleReserving">
+        UPDATE order_idempotency
+        SET status = 'FAILED', updated_at = #{updatedAt}
+        WHERE idem_key = #{idemKey} AND status = 'RESERVING' AND updated_at &lt; #{cutoff}
+    </update>
 </mapper>

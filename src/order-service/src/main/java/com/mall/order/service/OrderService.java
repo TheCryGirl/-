@@ -63,6 +63,12 @@ public class OrderService {
 
     private static final int MAX_CART_ITEMS = 50;
 
+    /**
+     * 幂等记录停留在 RESERVING 的容忍时长，超过即视为持有者已失效并回收执行权。
+     * 正常预占在本项目实测中为毫秒级，60 秒足够容纳 GC 抖动与瞬时慢查询。
+     */
+    private static final long RESERVING_TIMEOUT_SECONDS = 60L;
+
     private final OrderMapper orderMapper;
     private final OrderItemMapper orderItemMapper;
     private final IdempotencyMapper idempotencyMapper;
@@ -98,12 +104,14 @@ public class OrderService {
         String orderId = IdGenerator.orderId();
         LocalDateTime now = LocalDateTime.now();
         try {
+            // 直接以 RESERVING 入库：插入成功即表示本次调用取得了库存预占的执行权，
+            // 后续 order 事务插入与 reserve 调用都在这份执行权之下，不会与 resume() 路径重叠。
             idempotencyMapper.insert(OrderIdempotency.builder()
                     .idemKey(key)
                     .buyerId(buyerId)
                     .requestHash(requestHash)
                     .orderId(orderId)
-                    .status(IdempotencyStatus.PROCESSING)
+                    .status(IdempotencyStatus.RESERVING)
                     .createdAt(now)
                     .updatedAt(now)
                     .build());
@@ -118,8 +126,8 @@ public class OrderService {
         try {
             return createFresh(orderId, key, buyerId, addressId, cartItemIds);
         } catch (RuntimeException e) {
-            // 首次尝试失败时释放幂等键，允许用户用同一个 key 重试。
-            idempotencyMapper.deleteByKey(key);
+            // 首次尝试失败时退回执行权并释放幂等键，允许用户用同一个 key 重试。
+            idempotencyMapper.markFailed(key, LocalDateTime.now());
             throw e;
         }
     }
@@ -236,14 +244,14 @@ public class OrderService {
                 .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
                 .toList();
         try {
-            callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems));
+            reserveUnderOwnership(key, orderId, expireAt, reserveItems);
         } catch (BizException e) {
             // 若预占请求超时但下游稍后提交，补偿任务会继续尝试释放。
             compensationService.enqueue(orderId);
             // 契约要求预占失败删除订单主记录与明细。这里使用逻辑删除。
             orderMapper.softDelete(orderId);
             orderItemMapper.softDeleteByOrderId(orderId);
-            idempotencyMapper.deleteByKey(key);
+            idempotencyMapper.markFailed(key, LocalDateTime.now());
             throw e;
         }
 
@@ -258,9 +266,42 @@ public class OrderService {
             }
         }
 
-        idempotencyMapper.markSuccess(key, orderId, LocalDateTime.now());
         return new CreateOrderResponse(orderId, order.getOrderNo(), order.getPayAmount(),
                 TimeUtils.format(expireAt));
+    }
+
+    /**
+     * 在「已持有 RESERVING 执行权」的前提下预占库存并落终态。
+     *
+     * <p>这是全流程唯一调用 product-service 预占接口的位置，createFresh 与 resume 都必须
+     * 先通过 {@link #claimReserving(String, OrderIdempotency)} 抢到执行权才能进入，
+     * 因此同一幂等键在任意时刻至多一个线程执行预占，库存不会被重复扣减。
+     *
+     * @throws BizException 预占失败；执行权由调用方负责退回
+     */
+    private void reserveUnderOwnership(String key, String orderId, LocalDateTime expireAt,
+                                       List<ReserveItemDTO> reserveItems) {
+        callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems));
+        int updated = idempotencyMapper.markSuccessIfReserving(key, orderId, LocalDateTime.now());
+        if (updated == 0) {
+            // 执行权已被超时回收任务重置，说明本线程持锁时间超出阈值。
+            // 此时库存已预占成功，必须交给补偿任务兜底，避免预占悬空。
+            log.warn("幂等执行权已被回收，转补偿处理, idemKey={}, orderId={}", key, orderId);
+            compensationService.enqueue(orderId);
+        }
+    }
+
+    /**
+     * 抢占库存预占的执行权，返回 true 表示本次调用可以执行预占。
+     *
+     * <p>已经处于 RESERVING 的调用者不再抢占，由 {@link #awaitOrderCreated(OrderIdempotency)}
+     * 等待其完成，避免重复预占。
+     */
+    private boolean claimReserving(String key, OrderIdempotency existing) {
+        if (existing != null && existing.getStatus() == IdempotencyStatus.RESERVING) {
+            return false;
+        }
+        return idempotencyMapper.claimReserving(key, LocalDateTime.now()) == 1;
     }
 
     private CreateOrderResponse resume(OrderIdempotency existing, String requestHash, String buyerId) {
@@ -269,22 +310,18 @@ public class OrderService {
                     "同一 Idempotency-Key 不能用于不同的下单请求");
         }
         Order order = existing.getOrderId() == null ? null : orderMapper.selectById(existing.getOrderId());
+
+        // 订单尚未落库：inserter（create 路径）持有执行权，resume 只负责等待。
+        // 不再「重读状态后自行补做预占」——那正是 #74 重复预占的根因。
         if (order == null) {
-            if (existing.getStatus() == IdempotencyStatus.PROCESSING) {
-                // 另一个并发请求正在创建订单：短暂轮询等它落库，再按同一结果返回。
-                // 幂等的语义是「同一幂等键返回同一结果」，直接抛错会让并发调用方收到失败，
-                // 与幂等语义不符，因此这里等待而不是拒绝。
-                order = awaitOrderCreated(existing);
-                if (order != null) {
-                    return createResponse(order);
-                }
-                throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
+            order = awaitOrderCreated(existing);
+            if (order != null) {
+                return createResponse(order);
             }
-            idempotencyMapper.deleteByKey(existing.getIdemKey());
-            throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "上次下单未完成，请重新提交");
+            throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
         }
-        // 等待期间首个请求可能已完成（幂等键置为 SUCCESS），需要重读最新状态再决定是否补做预占，
-        // 否则会对同一订单重复调用库存预占，导致库存被扣两次。
+
+        // 订单已落库：重读最新状态，已成功直接返回。
         OrderIdempotency latestState = idempotencyMapper.selectByKey(existing.getIdemKey());
         if (latestState != null && latestState.getStatus() == IdempotencyStatus.SUCCESS) {
             return createResponse(order);
@@ -296,28 +333,35 @@ public class OrderService {
 
         List<OrderItem> items = orderItemMapper.selectByOrderId(order.getOrderId());
         if (items.isEmpty()) {
-            idempotencyMapper.deleteByKey(existing.getIdemKey());
+            idempotencyMapper.markFailed(existing.getIdemKey(), LocalDateTime.now());
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "订单明细缺失，请重新提交");
         }
         List<ReserveItemDTO> reserveItems = items.stream()
                 .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
                 .toList();
+        // 订单已落库但预占未完成（持有者崩溃在 order 事务与 reserve 之间）。
+        // 必须重新抢占执行权后才能补做预占，否则多个线程会同时进入这里重复预占库存。
+        if (!claimReserving(existing.getIdemKey(), latestState)) {
+            order = awaitOrderCreated(existing);
+            if (order != null) {
+                return createResponse(order);
+            }
+            throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
+        }
         try {
-            callReserve(new ReserveStockRequestDTO(order.getOrderId(), TimeUtils.format(order.getExpireAt()),
-                    reserveItems));
+            reserveUnderOwnership(existing.getIdemKey(), order.getOrderId(), order.getExpireAt(), reserveItems);
         } catch (BizException e) {
             compensationService.enqueue(order.getOrderId());
             orderMapper.softDelete(order.getOrderId());
             orderItemMapper.softDeleteByOrderId(order.getOrderId());
-            idempotencyMapper.deleteByKey(existing.getIdemKey());
+            idempotencyMapper.markFailed(existing.getIdemKey(), LocalDateTime.now());
             throw e;
         }
-        idempotencyMapper.markSuccess(existing.getIdemKey(), order.getOrderId(), LocalDateTime.now());
         return createResponse(order);
     }
 
     /**
-     * 并发下单时等待首个请求把订单落库，最多等 3 秒。
+     * 并发下单时等待持有执行权的请求把订单落库，最多等 3 秒。
      * 超时返回 null，由调用方转成「处理中」提示。
      */
     private Order awaitOrderCreated(OrderIdempotency existing) {
@@ -339,8 +383,9 @@ public class OrderService {
                     return order;
                 }
             }
-            // 首个请求已失败并释放幂等键，交给调用方走重试分支
-            if (latest.getStatus() != IdempotencyStatus.PROCESSING) {
+            // PROCESSING 与 RESERVING 都表示「仍在处理中」，后者是本次占用执行权的请求正在预占库存。
+            // 只有 FAILED 才是真正结束（幂等键已退回，需重新提交）。
+            if (latest.getStatus() == IdempotencyStatus.FAILED) {
                 return null;
             }
         }
@@ -527,6 +572,17 @@ public class OrderService {
 
     public void cleanStaleIdempotency() {
         idempotencyMapper.deleteStale(LocalDateTime.now().minusMinutes(10));
+        // 回收长时间停留在 RESERVING 的记录：持锁进程崩溃或预占调用卡死时，
+        // 该幂等键会永久无法再被抢占，必须由本任务重置为 FAILED 让调用方能重试。
+        LocalDateTime reservingCutoff = LocalDateTime.now().minusSeconds(RESERVING_TIMEOUT_SECONDS);
+        String staleKey;
+        while ((staleKey = idempotencyMapper.selectStaleReservingKey(reservingCutoff)) != null) {
+            int reset = idempotencyMapper.resetStaleReserving(staleKey, reservingCutoff, LocalDateTime.now());
+            if (reset == 0) {
+                break;
+            }
+            log.warn("回收超时的幂等执行权, idemKey={}, 超时阈值={}s", staleKey, RESERVING_TIMEOUT_SECONDS);
+        }
     }
 
     private CartDTO callCart(String buyerId) {
