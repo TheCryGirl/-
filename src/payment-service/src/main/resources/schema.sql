@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS payment (
     status           VARCHAR(16)  NOT NULL COMMENT '支付状态：PENDING/SUCCESS/FAILED/CLOSED/REFUNDED',
     idempotency_key  VARCHAR(64)  DEFAULT NULL COMMENT '创建支付单的幂等键',
     paid_at          DATETIME     DEFAULT NULL COMMENT '支付成功时间',
+    reconciled_at    DATETIME     DEFAULT NULL COMMENT '支付后对账完成时间；为空表示待对账',
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     created_by       VARCHAR(32)  DEFAULT NULL COMMENT '创建人',

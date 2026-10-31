@@ -11,9 +11,12 @@ import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.PaymentCallbackRequest;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.entity.Payment;
+import com.mall.payment.mapper.PaymentMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 
 /**
  * 支付回调编排。
@@ -31,6 +34,7 @@ public class PaymentCallbackService {
     private final OrderClient orderClient;
     private final ProductClient productClient;
     private final RefundService refundService;
+    private final PaymentMapper paymentMapper;
 
     public CallbackResult process(PaymentCallbackRequest request) {
         if (!signatureService.verify(request)) {
@@ -76,8 +80,11 @@ public class PaymentCallbackService {
             return result;
         }
 
-        notifyOrderPaid(payment);
-        confirmStock(payment);
+        boolean orderOk = notifyOrderPaid(payment);
+        boolean stockOk = confirmStock(payment);
+        if (orderOk && stockOk) {
+            markReconciled(payment);
+        }
         return result;
     }
 
@@ -97,33 +104,49 @@ public class PaymentCallbackService {
         }
     }
 
-    private void notifyOrderPaid(Payment payment) {
-        try {
-            Result<Void> result = orderClient.markPaid(payment.getOrderId());
-            if (result == null || result.getCode() != 0) {
-                log.error("通知订单支付成功失败, orderId={}, code={}",
-                        payment.getOrderId(), result == null ? null : result.getCode());
-            }
+    /**
+     * 标记支付单已完成支付后对账。失败时留给 PaymentReconcileJob 重试，不阻断回调返回。
+     */
+    private void markReconciled(Payment payment) {        try {
+            paymentMapper.markReconciled(payment.getPaymentId(), LocalDateTime.now());
         } catch (Exception e) {
-            log.error("通知订单支付成功异常, orderId={}", payment.getOrderId(), e);
+            log.warn("标记对账完成失败，将由对账任务重试, paymentId={}", payment.getPaymentId(), e);
         }
     }
 
-    private void confirmStock(Payment payment) {
+    private boolean notifyOrderPaid(Payment payment) {
+        try {
+            Result<Void> result = orderClient.markPaid(payment.getOrderId());
+            if (result == null || result.getCode() != 0) {
+                log.error("通知订单支付成功失败, orderId={}, code={}，等待对账任务重试",
+                        payment.getOrderId(), result == null ? null : result.getCode());
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.error("通知订单支付成功异常, orderId={}，等待对账任务重试", payment.getOrderId(), e);
+            return false;
+        }
+    }
+
+    private boolean confirmStock(Payment payment) {
         try {
             Result<ConfirmStockResponse> result =
                     productClient.confirmStock(new StockConfirmRequest(payment.getOrderId()));
             if (result == null || result.getCode() != 0) {
-                log.error("确认扣减库存失败, orderId={}, code={}",
+                log.error("确认扣减库存失败, orderId={}, code={}，等待对账任务重试",
                         payment.getOrderId(), result == null ? null : result.getCode());
-                return;
+                return false;
             }
             ConfirmStockResponse data = result.getData();
             if (data == null || !data.confirmed()) {
-                log.error("库存确认未生效, orderId={}, data={}", payment.getOrderId(), data);
+                log.error("库存确认未生效, orderId={}, data={}，等待对账任务重试", payment.getOrderId(), data);
+                return false;
             }
+            return true;
         } catch (Exception e) {
-            log.error("确认扣减库存异常, orderId={}", payment.getOrderId(), e);
+            log.error("确认扣减库存异常, orderId={}，等待对账任务重试", payment.getOrderId(), e);
+            return false;
         }
     }
 }

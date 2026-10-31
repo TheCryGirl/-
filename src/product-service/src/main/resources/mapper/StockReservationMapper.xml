@@ -23,9 +23,18 @@
         VALUES (#{reservationId}, #{orderId}, #{status}, #{expireAt}, #{createdAt}, #{updatedAt})
     </insert>
 
+    <!--
+        明细主键 id 显式取「reservation_id + sku_id」的 64 位哈希，不再依赖 AUTO_INCREMENT。
+
+        原因：#74 回归时 Issue48InventoryConcurrencyTest 间歇性报
+        "PRIMARY KEY ON public.stock_reservation_item(id)" 冲突。
+        根因是 H2（MODE=MySQL）的自增序列在并发事务回滚后会复用已分配的号段，
+        高并发下产生重复 id。业务上明细唯一性本来就由 (reservation_id, sku_id) 决定，
+        用它的哈希做主键既天然唯一，也省掉一次自增序列争用。
+    -->
     <insert id="insertItem" parameterType="com.mall.product.entity.StockReservationItem">
-        INSERT INTO stock_reservation_item(reservation_id, sku_id, quantity)
-        VALUES (#{reservationId}, #{skuId}, #{quantity})
+        INSERT INTO stock_reservation_item(id, reservation_id, sku_id, quantity)
+        VALUES (#{id}, #{reservationId}, #{skuId}, #{quantity})
     </insert>
 
     <select id="selectByOrderId" resultMap="ReservationMap">

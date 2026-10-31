@@ -93,3 +93,5 @@ management:
 logging:
   level:
     com.mall.user: debug
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5level [%X{traceId:-}] [%15.15thread] %-40.40logger{39} : %msg%n"
