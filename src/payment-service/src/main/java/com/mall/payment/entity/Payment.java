@@ -23,6 +23,8 @@ public class Payment {
     private PaymentStatus status;
     private String idempotencyKey;
     private LocalDateTime paidAt;
+    /** 支付后对账完成时间；为空表示待对账。 */
+    private LocalDateTime reconciledAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;

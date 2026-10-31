@@ -5,9 +5,31 @@
 
     <sql id="columns">
         payment_id, pay_no, order_id, buyer_id, seller_id, channel, amount, refunded_amount,
-        status, idempotency_key, paid_at, created_at, updated_at, created_by,
+        status, idempotency_key, paid_at, reconciled_at, created_at, updated_at, created_by,
         updated_by, is_deleted
     </sql>
+
+    <!--
+        支付后对账用：找出支付成功、但尚未完成对账的支付单。
+        这些单在当时可能因为 order-service 或 product-service 调用失败，
+        只留下了 error 日志，订单仍停在待支付、库存未确认扣减。
+    -->
+    <select id="selectUnreconciledPaid" resultType="com.mall.payment.entity.Payment">
+        SELECT <include refid="columns"/>
+        FROM payment
+        WHERE status = 'SUCCESS'
+          AND reconciled_at IS NULL
+          AND paid_at &gt;= #{from}
+          AND is_deleted = 0
+        ORDER BY paid_at
+        LIMIT #{limit}
+    </select>
+
+    <update id="markReconciled">
+        UPDATE payment
+        SET reconciled_at = #{reconciledAt}
+        WHERE payment_id = #{paymentId}
+    </update>
 
     <select id="selectById" resultType="com.mall.payment.entity.Payment">
         SELECT <include refid="columns"/>

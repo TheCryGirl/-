@@ -14,6 +14,7 @@ CREATE TABLE payment (
     status           VARCHAR(16)  NOT NULL,
     idempotency_key  VARCHAR(64)  DEFAULT NULL,
     paid_at          DATETIME     DEFAULT NULL,
+    reconciled_at    DATETIME     DEFAULT NULL,
     created_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by       VARCHAR(32)  DEFAULT NULL,
