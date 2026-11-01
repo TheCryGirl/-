@@ -30,9 +30,21 @@ const statusText = computed(() => {
   return s || '在售'
 })
 
-const statusClass = computed(() =>
-  statusText.value === '在售' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500',
-)
+/** Element Plus tag 类型；未知状态一律用 info，避免出现无样式标签 */
+const statusType = computed(() => {
+  switch (props.product.status) {
+    case 'ON_SALE':
+      return 'success'
+    case 'PENDING':
+      return 'warning'
+    case 'REJECTED':
+      return 'danger'
+    case 'OFF_SHELF':
+      return 'info'
+    default:
+      return 'info'
+  }
+})
 </script>
 
 <template>
@@ -56,7 +68,7 @@ const statusClass = computed(() =>
 
       <div class="mt-auto flex items-center justify-between gap-2">
         <span class="text-base font-semibold text-red-600">{{ priceText }}</span>
-        <span class="text-[11px] px-2 py-0.5 rounded" :class="statusClass">{{ statusText }}</span>
+        <el-tag :type="statusType" size="small" effect="light" round>{{ statusText }}</el-tag>
       </div>
     </div>
   </article>

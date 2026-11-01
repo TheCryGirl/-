@@ -1,14 +1,132 @@
-@import 'tailwindcss';
+/*
+ * 全局样式入口
+ *
+ * Element Plus 与 Tailwind 共存说明：
+ * 不使用 `@import 'tailwindcss'`，因为它会连带引入 preflight（Tailwind 的全局 reset）。
+ * preflight 会把 button/input 的 border-style 重置为 solid、背景置为 transparent，
+ * 直接破坏 el-button / el-input / el-table 的默认外观（表现为「按钮透明、表格没边框」）。
+ *
+ * 因此只导入 theme 与 utilities，跳过 preflight，再由下面补回项目实际依赖的基础样式。
+ * 注意：不能用 `source(none)` 代替——它只控制扫描范围，并不关闭 preflight。
+ *
+ * 分层说明：
+ * Element Plus 的样式是「未分层（unlayered）」的，而未分层样式优先级高于任何 @layer 内的
+ * 规则。所以写在 @layer base 里的样式无法覆盖 el-* 组件（且不会报错，属于静默失效）。
+ * 这里 base 规则一律用 :where() 包裹把优先级压到最低，既保证能覆盖裸 HTML 标签的浏览器
+ * 默认值，又不会与 Element Plus 抢优先级。
+ */
+@layer theme, base, components, utilities;
 
-:root {
-  font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
-  color: #1f2937;
-  background-color: #f9fafb;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* ============ 基础重置（替代 preflight 中项目实际依赖的部分） ============ */
+@layer base {
+  :where(*, ::before, ::after) {
+    box-sizing: border-box;
+  }
+
+  /* preflight 自带此规则，缺失会导致 hidden 属性失效 */
+  :where([hidden]:not([hidden='until-found'])) {
+    display: none !important;
+  }
+
+  :where(html, body) {
+    margin: 0;
+    padding: 0;
+  }
+
+  :where(body) {
+    min-height: 100vh;
+    font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1f2937;
+    background-color: #f9fafb;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :where(h1, h2, h3, h4, h5, h6) {
+    margin: 0;
+    /* 保留标题语义；字号由页面上的 text-* 工具类决定，
+       未写字号时退回继承，避免出现浏览器默认 2em 巨字 */
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  :where(p, figure, blockquote, dl, dd) {
+    margin: 0;
+  }
+
+  /* 现有页面把 ul 当纯容器用且未写 list-none，
+     缺这条会退回圆点符号与 40px 左缩进，破坏布局 */
+  :where(ul, ol) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  :where(table) {
+    border-collapse: collapse;
+    border-spacing: 0;
+  }
+
+  /* preflight 里 td/th 无内边距；这里只清默认值，页面需要时自行加 */
+  :where(td, th) {
+    padding: 0;
+  }
+
+  :where(hr) {
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+    margin: 0;
+  }
+
+  :where(img, svg, video, canvas) {
+    display: block;
+    max-width: 100%;
+  }
+
+  :where(img, video) {
+    height: auto;
+  }
+
+  /* 原生表单控件：清掉浏览器默认外观与内边距，保证与组件库混排时尺寸一致。
+     element-plus 的组件样式未分层，优先级更高，不受此处影响。 */
+  :where(button, input, select, textarea) {
+    margin: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+  }
+
+  :where(button, [type='button'], [type='reset'], [type='submit']) {
+    background-color: transparent;
+    background-image: none;
+    border: 0;
+    cursor: pointer;
+    -webkit-appearance: button;
+  }
+
+  :where(input, textarea) {
+    background-color: transparent;
+    border: 0;
+  }
+
+  /* 保证键盘可达性：默认去掉 outline 后必须给出可见焦点 */
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
+/* ============ 全局变量与工具类 ============ */
+:root {
+  --app-content-max-width: 1200px;
+  --app-color-danger: #dc2626;
 }
 
 /* 商品卡片图片统一比例，避免长短图把网格撑歪 */
@@ -17,4 +135,18 @@ body {
   object-fit: cover;
   width: 100%;
   background-color: #e5e7eb;
+}
+
+/* 页面内容统一最大宽度 */
+.app-container {
+  max-width: var(--app-content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+/* 长内容区域内滚动，避免窄屏整页横向溢出 */
+.app-scroll-x {
+  overflow-x: auto;
 }

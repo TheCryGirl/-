@@ -1,6 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import AppHeader from './components/AppHeader.vue'
 import { logout } from './stores/auth'
 
@@ -17,13 +18,15 @@ onBeforeUnmount(() => window.removeEventListener('auth:expired', handleAuthExpir
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-gray-50">
-    <AppHeader />
-    <main class="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
-      <RouterView />
-    </main>
-    <footer class="py-4 text-center text-xs text-gray-400 border-t border-gray-200">
-      在线商城 · 软件工程课程实验
-    </footer>
-  </div>
+  <el-config-provider :locale="zhCn">
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      <AppHeader />
+      <main class="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
+        <RouterView />
+      </main>
+      <footer class="py-4 text-center text-xs text-gray-400 border-t border-gray-200">
+        在线商城 · 软件工程课程实验
+      </footer>
+    </div>
+  </el-config-provider>
 </template>
