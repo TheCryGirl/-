@@ -13,6 +13,7 @@ import { isOk, orderApi, unwrapResult } from '../../api'
 import { ORDER_STATUS_MAP, ORDER_STATUS_TAG, statusTag, statusText } from '../../constants/status'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const list = ref([])
@@ -129,7 +130,7 @@ onMounted(fetchList)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">待发货</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 单</span>
+      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '单', list.length) }}</span>
     </div>
 
     <el-alert

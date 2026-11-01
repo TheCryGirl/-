@@ -13,6 +13,7 @@ import { onMounted, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const list = ref([])
@@ -101,7 +102,7 @@ onMounted(fetchList)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">退款审核</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">待审核共 {{ total }} 单</span>
+      <span v-if="!loadError" class="text-xs text-gray-400">待审核{{ formatTotal(total, '笔', list.length) }}</span>
     </div>
 
     <!-- 按退款单号审核：原入口保留 -->

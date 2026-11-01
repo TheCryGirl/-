@@ -18,6 +18,7 @@ import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '.
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
+import { formatTotal } from '../../utils/format'
 
 const router = useRouter()
 
@@ -121,7 +122,7 @@ onMounted(fetchList)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">商品管理</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 件</span>
+      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '件', list.length) }}</span>
     </div>
 
     <!-- 后端支持分页，但 api 层 mine() 未透传参数：超过一页时明确提示，避免以为商品丢了 -->
