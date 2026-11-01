@@ -18,6 +18,8 @@ import UiTable from '../../components/ui/UiTable.vue'
 const list = ref([])
 const loading = ref(false)
 const loadError = ref('')
+/** 后端返回的总条数：本页一次取 50 条，超过时给出提示 */
+const total = ref(0)
 const processing = ref('')
 
 const shipVisible = ref(false)
@@ -51,13 +53,16 @@ async function fetchList() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载待发货订单失败'
       list.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     list.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = Array.isArray(payload) ? payload.length : payload?.total ?? list.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载待发货订单失败')
     list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -122,6 +127,19 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-gray-900">待发货</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 单</span>
+    </div>
+
+    <el-alert
+      v-if="total > list.length"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="`共 ${total} 单，当前仅显示前 ${list.length} 单`"
+    />
+
     <el-alert
       type="info"
       :closable="false"
@@ -133,7 +151,6 @@ onMounted(fetchList)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">待发货订单</span>
-          <span class="text-xs text-gray-400">共 {{ list.length }} 单</span>
         </div>
       </template>
 

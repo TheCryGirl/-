@@ -152,9 +152,12 @@ onMounted(load)
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex items-center justify-between">
-      <el-tag v-if="form.status === 'SUSPENDED'" type="danger" size="small">已被管理员停用</el-tag>
-      <el-tag v-else type="success" size="small">正常营业</el-tag>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-semibold text-gray-900">店铺资料</h1>
+        <el-tag v-if="form.status === 'SUSPENDED'" type="danger" size="small">已被管理员停用</el-tag>
+        <el-tag v-else type="success" size="small">正常营业</el-tag>
+      </div>
       <span class="text-xs text-gray-400">资料保存后立即对买家生效</span>
     </div>
 
@@ -199,7 +202,13 @@ onMounted(load)
                 class="w-16 h-16 rounded-md border border-gray-200"
                 :preview-src-list="[form.logo]"
                 preview-teleported
-              />
+              >
+                <template #error>
+                  <div class="w-16 h-16 rounded-md bg-gray-100 text-xs text-gray-400 flex items-center justify-center">
+                    加载失败
+                  </div>
+                </template>
+              </el-image>
               <div
                 v-else
                 class="w-16 h-16 rounded-md bg-gray-100 text-xs text-gray-400 flex items-center justify-center"

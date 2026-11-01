@@ -18,9 +18,10 @@ import { resolveErrorMessage, showError, showSuccess } from '../../components/ui
 const list = ref([])
 const loading = ref(false)
 const loadError = ref('')
+/** 后端返回的总条数：本页一次取 50 条，超过时给出提示 */
+const total = ref(0)
 const processing = ref('')
 const manualRefundId = ref('')
-const manualRef = ref(null)
 
 /* ---------- 2. 方法 ---------- */
 async function fetchList() {
@@ -31,13 +32,16 @@ async function fetchList() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载待审核退款失败'
       list.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     list.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = Array.isArray(payload) ? payload.length : payload?.total ?? list.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载待审核退款失败')
     list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -97,12 +101,17 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-gray-900">退款审核</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">待审核共 {{ total }} 单</span>
+    </div>
+
     <!-- 按退款单号审核：原入口保留 -->
     <el-card shadow="never">
       <template #header>
         <span class="text-base font-medium">按退款单号审核</span>
       </template>
-      <el-form ref="manualRef" inline @submit.prevent>
+      <el-form inline @submit.prevent>
         <el-form-item label="退款单号">
           <el-input
             v-model="manualRefundId"
@@ -139,7 +148,6 @@ onMounted(fetchList)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">待审核退款</span>
-          <span class="text-xs text-gray-400">共 {{ list.length }} 单</span>
         </div>
       </template>
 

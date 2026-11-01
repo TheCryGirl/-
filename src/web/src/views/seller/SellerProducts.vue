@@ -25,6 +25,8 @@ const router = useRouter()
 const list = ref([])
 const loading = ref(false)
 const loadError = ref('')
+/** 后端返回的总条数：mine() 暂未透传分页参数，可能大于当前列表 */
+const total = ref(0)
 /** 正在上下架的商品 ID；非空时忽略新的操作，避免重复提交 */
 const operatingId = ref('')
 
@@ -46,13 +48,16 @@ async function fetchList() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载商品失败'
       list.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     list.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = Array.isArray(payload) ? payload.length : payload?.total ?? list.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载商品失败')
     list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -114,16 +119,27 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-gray-900">商品管理</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 件</span>
+    </div>
+
+    <!-- 后端支持分页，但 api 层 mine() 未透传参数：超过一页时明确提示，避免以为商品丢了 -->
+    <el-alert
+      v-if="total > list.length"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="`共 ${total} 件，当前仅显示前 ${list.length} 件`"
+    />
+
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">商品列表</span>
-          <div class="flex items-center gap-3">
-            <span class="text-xs text-gray-400">共 {{ list.length }} 件</span>
-            <el-button type="primary" data-testid="seller-products-create" @click="handleCreate">
-              发布商品
-            </el-button>
-          </div>
+          <el-button type="primary" data-testid="seller-products-create" @click="handleCreate">
+            发布商品
+          </el-button>
         </div>
       </template>
 
@@ -155,7 +171,13 @@ onMounted(fetchList)
               class="w-10 h-10 rounded shrink-0"
               :preview-src-list="[row.mainImage]"
               preview-teleported
-            />
+            >
+              <template #error>
+                <div class="w-10 h-10 rounded bg-gray-100 text-xs text-gray-400 flex items-center justify-center">
+                  无图
+                </div>
+              </template>
+            </el-image>
             <div
               v-else
               class="w-10 h-10 rounded bg-gray-100 text-xs text-gray-400 flex items-center justify-center shrink-0"

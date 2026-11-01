@@ -61,7 +61,7 @@ const skuColumns = [
   { key: 'stock', label: '可售库存', width: 160, align: 'center', slot: 'stock' },
 ]
 
-const canSubmit = computed(() => !categoryError.value && categories.value.length > 0)
+const canSubmit = computed(() => (isEdit.value ? true : !categoryError.value && categories.value.length > 0))
 
 /* ---------- 3. 方法 ---------- */
 async function loadCategories() {
@@ -290,16 +290,19 @@ onMounted(() => {
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center gap-3">
-        <el-button link type="primary" data-testid="seller-product-back" @click="handleBack">
-          返回商品管理
-        </el-button>
+        <h1 class="text-lg font-semibold text-gray-900">{{ isEdit ? '编辑商品' : '发布商品' }}</h1>
         <el-tag v-if="isEdit && productStatus" :type="statusTag(PRODUCT_STATUS_TAG, productStatus)" size="small">
           {{ statusText(PRODUCT_STATUS_MAP, productStatus) }}
         </el-tag>
       </div>
-      <span class="text-xs text-gray-400">{{ isEdit ? '修改后需重新审核上架' : '提交后进入管理员审核' }}</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400">{{ isEdit ? '修改后需重新审核上架' : '提交后进入管理员审核' }}</span>
+        <el-button link type="primary" data-testid="seller-product-back" @click="handleBack">
+          返回商品管理
+        </el-button>
+      </div>
     </div>
 
     <!-- 失败态：与空态严格区分，可重试 -->

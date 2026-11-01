@@ -29,6 +29,8 @@ import {
 const list = ref([])
 const loading = ref(false)
 const loadError = ref('')
+/** 后端返回的总条数：本页一次取 50 条，超过时给出提示 */
+const total = ref(0)
 const statusFilter = ref('')
 const processingId = ref('')
 const remarks = reactive({})
@@ -45,13 +47,16 @@ async function fetchList() {
     if (!isOk(data)) {
       loadError.value = data?.message || '售后单加载失败'
       list.value = []
+      total.value = 0
       return
     }
     const page = unwrapResult(data)
     list.value = page?.list ?? []
+    total.value = page?.total ?? list.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '售后单加载失败')
     list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -163,6 +168,19 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-gray-900">售后处理</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 张</span>
+    </div>
+
+    <el-alert
+      v-if="total > list.length"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="`共 ${total} 张，当前仅显示前 ${list.length} 张`"
+    />
+
     <!-- 筛选区：不加卡片 -->
     <el-form inline class="bg-white p-4 rounded-lg">
       <el-form-item label="状态">
