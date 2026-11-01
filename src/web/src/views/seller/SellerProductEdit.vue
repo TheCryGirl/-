@@ -204,11 +204,10 @@ async function saveProduct() {
       showError(data?.message || '保存失败')
       return
     }
-    // 修改商品后后端会把状态重置为待审核（BR-07），必须先告知用户再刷新
+    // 修改商品后后端会把状态重置为待审核（BR-07），必须先告知用户。
+    // 这里刻意不重新拉取详情：此时详情接口会因状态非 ON_SALE 而报错，
+    // 造成「保存成功」与「商品已下架」两条矛盾提示同时出现（与 main 基线一致）。
     showSuccess('商品信息已保存，修改后需重新审核上架')
-    // 保持原流程：保存后重新拉取详情。
-    // 若商品因状态变化导致详情读不到，属既有问题，不在本次 UI 任务里改业务流。
-    await loadProduct()
   } catch (err) {
     showError(resolveErrorMessage(err, '保存失败'))
   } finally {

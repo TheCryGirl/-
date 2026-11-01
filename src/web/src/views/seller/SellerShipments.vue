@@ -3,7 +3,7 @@
  * 卖家待发货（#81 T03）
  *
  * 列表仍是 GET /orders?role=seller&status=PAID（原参数不变），
- * 发货仍是 POST /orders/{orderId}/ship + trackingNo。
+ * 发货仍是 PUT /orders/{orderId}/ship + trackingNo。
  *
  * 原代码用浏览器 prompt 收集物流单号，这里换成 el-dialog + el-form：
  * 取消不发请求，确定才提交；提交按钮 loading，处理中忽略重复点击。

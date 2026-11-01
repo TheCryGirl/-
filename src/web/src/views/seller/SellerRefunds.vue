@@ -47,7 +47,7 @@ async function fetchList() {
   }
 }
 
-async function handleAudit(refundId, approved) {
+async function handleAudit(refundId, approved, remark = '') {
   if (!refundId) {
     showError('请填写退款单号')
     return
@@ -63,14 +63,12 @@ async function handleAudit(refundId, approved) {
 
   processing.value = refundId
   try {
-    const { data } = await paymentApi.auditRefund(refundId, { approved, remark: '' })
+    const { data } = await paymentApi.auditRefund(refundId, { approved, remark })
     if (!isOk(data)) {
       showError(data?.message || '审核失败')
       return
     }
     showSuccess(`退款单 ${refundId} 已${approved ? '同意' : '驳回'}`)
-    const refund = unwrapResult(data)
-    if (refund?.refundId) manualRefundId.value = ''
     // 列表里的单子才需要刷新；手填单号审核时保持列表不动
     if (list.value.some((item) => item.refundId === refundId)) {
       await fetchList()
