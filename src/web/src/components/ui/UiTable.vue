@@ -29,6 +29,13 @@ const props = defineProps({
   showActions: { type: Boolean, default: false },
   actionsLabel: { type: String, default: '操作' },
   actionsWidth: { type: [String, Number], default: 160 },
+  /**
+   * 操作列是否固定在右侧。
+   * 默认 false：el-table 的固定列会额外渲染一层覆盖元素，
+   * 在部分场景下会挡住点击（表现为按钮点了没反应）。
+   * 列不多时不需要固定，需要时再显式传 true。
+   */
+  actionsFixed: { type: [Boolean, String], default: false },
   /** 外层是否加边框 */
   border: { type: Boolean, default: true },
   /** 内容超宽时在表格内部横向滚动，避免整页溢出 */
@@ -85,7 +92,7 @@ function cellText(row, col) {
         :label="actionsLabel"
         :width="actionsWidth"
         align="center"
-        fixed="right"
+        :fixed="actionsFixed"
       >
         <template #default="{ row, $index }">
           <slot name="actions" :row="row" :index="$index" />
