@@ -1,14 +1,71 @@
-@import 'tailwindcss';
+/*
+ * 全局样式入口
+ *
+ * Element Plus 与 Tailwind 共存说明：
+ * 不使用 `@import 'tailwindcss'`，因为它会连带引入 preflight（Tailwind 的全局 reset）。
+ * preflight 会把 button/input 的 border-style 重置为 solid、把背景置为 transparent，
+ * 直接破坏 el-button / el-input / el-table 的默认外观，典型症状是「按钮透明、表格没边框」。
+ *
+ * 这里只导入 theme 与 utilities，跳过 preflight，再由下面的 @layer base 补上
+ * 项目实际依赖的基础样式（box-sizing、body 边距、图片默认行为等）。
+ */
+@layer theme, base, components, utilities;
 
-:root {
-  font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
-  color: #1f2937;
-  background-color: #f9fafb;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1f2937;
+    background-color: #f9fafb;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  p {
+    margin: 0;
+  }
+
+  img,
+  svg,
+  video {
+    display: block;
+    max-width: 100%;
+  }
+
+  /* 原生按钮/输入框保持可用默认外观，交由 Element Plus 或页面样式覆盖 */
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
+:root {
+  --app-content-max-width: 1200px;
+  --app-color-danger: #dc2626;
 }
 
 /* 商品卡片图片统一比例，避免长短图把网格撑歪 */
@@ -17,4 +74,13 @@ body {
   object-fit: cover;
   width: 100%;
   background-color: #e5e7eb;
+}
+
+/* 页面内容统一最大宽度，供各业务页面复用 */
+.app-container {
+  max-width: var(--app-content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
 }
