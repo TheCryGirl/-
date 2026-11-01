@@ -1,202 +1,286 @@
 <script setup>
+/**
+ * 卖家新建 / 编辑商品（#81 T02，最高风险页）
+ *
+ * 两种模式严格分开，不合并成一套可任意改 SKU 的表单：
+ * - 新建：商品资料 + 可增删的初始 SKU 行（至少保留一行）
+ * - 编辑：商品资料 + 已有 SKU 只能改库存、只能新增，不提供删除既有 SKU 的能力
+ *
+ * 主图保持 URL 字符串（与后端 mainImage 一致），不引入上传接口。
+ * 单价输入是元，提交前用 Math.round(Number(yuan) * 100) 转分；12.34 元 → 1234 分。
+ * el-input-number 清空会得到 null，统一走 toCents / Math.floor 兜底，绝不提交 NaN。
+ */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isOk, productApi, unwrapResult } from '../../api'
+import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '../../constants/status'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import UiTable from '../../components/ui/UiTable.vue'
 
 const route = useRoute()
 const router = useRouter()
 const productId = computed(() => route.params.id || '')
 const isEdit = computed(() => Boolean(productId.value))
 
+/* ---------- 1. 状态 ---------- */
 const categories = ref([])
-const loading = ref(false)
-const saving = ref(false)
-const error = ref('')
-const message = ref('')
+const categoryLoading = ref(false)
+const categoryError = ref('')
 
+const loading = ref(false)
+const loadError = ref('')
+const saving = ref(false)
+const savingSkuId = ref('')
+const addingSku = ref(false)
+const productStatus = ref('')
+
+const formRef = ref(null)
 const form = reactive({
   title: '',
   subtitle: '',
   mainImage: '',
   categoryId: '',
 })
+const rules = {
+  title: [{ required: true, message: '请填写商品标题', trigger: 'blur' }],
+  categoryId: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
+}
 
-// 新建商品时的 SKU 列表
-const skus = ref([{ specName: '', price: '', stockAvailable: '' }])
-// 编辑商品时已有的 SKU（只允许调整库存）
+/** 新建模式：初始 SKU 行，价格单位元 */
+const skus = ref([{ specName: '', price: null, stockAvailable: 0 }])
+/** 编辑模式：已有 SKU，只允许调整库存 */
 const existingSkus = ref([])
-const newSku = reactive({ specName: '', price: '', stockAvailable: '' })
+const newSku = reactive({ specName: '', price: null, stockAvailable: 0 })
 const stockDraft = reactive({})
 
+/* ---------- 2. 计算属性 ---------- */
+const skuColumns = [
+  { key: 'specName', label: '规格', minWidth: 160 },
+  { key: 'price', label: '单价', width: 110, align: 'right', formatter: (row) => `¥${formatPrice(row.price)}` },
+  { key: 'stockLocked', label: '已锁定', width: 90, align: 'right' },
+  { key: 'stock', label: '可售库存', width: 160, align: 'center', slot: 'stock' },
+]
+
+const canSubmit = computed(() => (isEdit.value ? true : !categoryError.value && categories.value.length > 0))
+
+/* ---------- 3. 方法 ---------- */
 async function loadCategories() {
+  categoryLoading.value = true
+  categoryError.value = ''
   try {
     const { data } = await productApi.categories()
+    if (!isOk(data)) {
+      categoryError.value = data?.message || '分类加载失败'
+      categories.value = []
+      return
+    }
     const payload = unwrapResult(data)
-    categories.value = Array.isArray(payload) ? payload : payload?.list || []
-  } catch {
+    categories.value = Array.isArray(payload) ? payload : payload?.list ?? []
+  } catch (err) {
+    categoryError.value = resolveErrorMessage(err, '分类加载失败')
     categories.value = []
+  } finally {
+    categoryLoading.value = false
   }
 }
 
 async function loadProduct() {
   if (!isEdit.value) return
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const { data } = await productApi.detail(productId.value)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '商品不存在或无权编辑'
+      return
+    }
     const product = unwrapResult(data)
     if (!product) {
-      error.value = data?.message || '商品不存在或无权编辑'
+      loadError.value = '商品不存在或无权编辑'
       return
     }
     form.title = product.title || ''
     form.subtitle = product.subtitle || ''
     form.mainImage = product.mainImage || ''
     form.categoryId = product.categoryId || ''
+    productStatus.value = product.status || ''
     existingSkus.value = product.skus || []
     existingSkus.value.forEach((sku) => {
       stockDraft[sku.skuId] = sku.stockAvailable ?? 0
     })
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载商品失败'
+    loadError.value = resolveErrorMessage(err, '加载商品失败')
   } finally {
     loading.value = false
   }
 }
 
 function addSkuRow() {
-  skus.value.push({ specName: '', price: '', stockAvailable: '' })
+  skus.value.push({ specName: '', price: null, stockAvailable: 0 })
 }
 
 function removeSkuRow(index) {
+  // 至少保留一行，与原规则一致
   if (skus.value.length === 1) return
   skus.value.splice(index, 1)
 }
 
+/**
+ * 元 → 分。非法值（空、null、NaN、非正数）统一返回 0，
+ * 由调用方按原规则判定为「价格需大于 0」并提示，不会把 NaN 发给后端。
+ */
 function toCents(yuan) {
   const value = Math.round(Number(yuan) * 100)
   return Number.isFinite(value) && value > 0 ? value : 0
 }
 
+/** 库存：空 / null / 负数一律按 0 处理，保证是正整数 */
+function toStock(value) {
+  const n = Math.floor(Number(value))
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/** 规格行 → 提交数组；没有有效行或价格非法时返回 null，沿用原判断 */
 function buildSkus(rows) {
   const result = []
   for (const row of rows) {
     if (!row.specName?.trim()) continue
     const price = toCents(row.price)
-    const stock = Math.max(0, Math.floor(Number(row.stockAvailable) || 0))
     if (price <= 0) return null
-    result.push({ specName: row.specName.trim(), price, stockAvailable: stock })
+    result.push({ specName: row.specName.trim(), price, stockAvailable: toStock(row.stockAvailable) })
   }
   return result.length ? result : null
 }
 
-async function submit() {
-  error.value = ''
-  message.value = ''
-  if (!form.title.trim()) {
-    error.value = '请填写商品标题'
+async function handleSubmit() {
+  if (saving.value) return
+  if (!canSubmit.value) {
+    showError(categoryError.value || '暂无可选分类，无法提交')
     return
   }
-  if (!form.categoryId) {
-    error.value = '请选择商品分类'
+
+  try {
+    await formRef.value?.validate()
+  } catch {
+    // el-form 已在字段下方给出校验提示，这里不重复弹错误
+    return
+  }
+
+  if (isEdit.value) {
+    await saveProduct()
+  } else {
+    await createProduct()
+  }
+}
+
+async function createProduct() {
+  const skuPayload = buildSkus(skus.value)
+  if (!skuPayload) {
+    showError('请至少填写一个规格，且价格需大于 0')
     return
   }
 
   saving.value = true
   try {
-    if (isEdit.value) {
-      const { data } = await productApi.update(productId.value, { ...form })
-      if (!isOk(data)) {
-        error.value = data?.message || '保存失败'
-        return
-      }
-      // 修改商品后后端会把状态重置为待审核（BR-07），需提前告知用户，
-      // 且不再重新拉取详情——此时详情接口会因状态非 ON_SALE 而报错，
-      // 造成「保存成功」与「商品已下架」两条矛盾提示同时出现。
-      message.value = '商品信息已保存，修改后需重新审核上架'
-    } else {
-      const skuPayload = buildSkus(skus.value)
-      if (!skuPayload) {
-        error.value = '请至少填写一个规格，且价格需大于 0'
-        saving.value = false
-        return
-      }
-      const { data } = await productApi.create({ ...form, skus: skuPayload })
-      if (!isOk(data)) {
-        error.value = data?.message || '发布失败'
-        return
-      }
-      message.value = '商品已提交，等待管理员审核'
-      setTimeout(() => router.push({ name: 'seller-products' }), 800)
+    const { data } = await productApi.create({ ...form, skus: skuPayload })
+    if (!isOk(data)) {
+      showError(data?.message || '发布失败')
       return
     }
-    await loadProduct()
+    showSuccess('商品已提交，等待管理员审核')
+    router.push({ name: 'seller-products' })
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '保存失败'
+    showError(resolveErrorMessage(err, '发布失败'))
   } finally {
     saving.value = false
   }
 }
 
-async function addSku() {
-  error.value = ''
-  message.value = ''
+async function saveProduct() {
+  saving.value = true
+  try {
+    const { data } = await productApi.update(productId.value, { ...form })
+    if (!isOk(data)) {
+      showError(data?.message || '保存失败')
+      return
+    }
+    // 修改商品后后端会把状态重置为待审核（BR-07），必须先告知用户。
+    // 这里刻意不重新拉取详情：此时详情接口会因状态非 ON_SALE 而报错，
+    // 造成「保存成功」与「商品已下架」两条矛盾提示同时出现（与 main 基线一致）。
+    showSuccess('商品信息已保存，修改后需重新审核上架')
+  } catch (err) {
+    showError(resolveErrorMessage(err, '保存失败'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function handleAddSku() {
+  if (addingSku.value) return
   if (!newSku.specName?.trim()) {
-    error.value = '请填写规格名称'
+    showError('请填写规格名称')
     return
   }
   const price = toCents(newSku.price)
   if (price <= 0) {
-    error.value = 'SKU 价格需大于 0'
+    showError('SKU 价格需大于 0')
     return
   }
-  saving.value = true
+
+  addingSku.value = true
   try {
     const { data } = await productApi.createSku(productId.value, {
       specName: newSku.specName.trim(),
       price,
-      stockAvailable: Math.max(0, Math.floor(Number(newSku.stockAvailable) || 0)),
+      stockAvailable: toStock(newSku.stockAvailable),
     })
     if (!isOk(data)) {
-      error.value = data?.message || '新增规格失败'
+      showError(data?.message || '新增规格失败')
       return
     }
     newSku.specName = ''
-    newSku.price = ''
-    newSku.stockAvailable = ''
-    message.value = '已新增规格'
+    newSku.price = null
+    newSku.stockAvailable = 0
+    showSuccess('已新增规格')
     await loadProduct()
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '新增规格失败'
+    showError(resolveErrorMessage(err, '新增规格失败'))
   } finally {
-    saving.value = false
+    addingSku.value = false
   }
 }
 
-async function saveStock(sku) {
-  error.value = ''
-  message.value = ''
-  const stock = Math.max(0, Math.floor(Number(stockDraft[sku.skuId]) || 0))
-  saving.value = true
+async function handleSaveStock(sku) {
+  if (savingSkuId.value) return
+  const stock = toStock(stockDraft[sku.skuId])
+
+  savingSkuId.value = sku.skuId
   try {
     const { data } = await productApi.updateStock(sku.skuId, stock)
     if (!isOk(data)) {
-      error.value = data?.message || '调整库存失败'
+      showError(data?.message || '调整库存失败')
       return
     }
-    message.value = `规格 ${sku.specName} 库存已更新为 ${stock}`
+    showSuccess(`规格 ${sku.specName} 库存已更新为 ${stock}`)
     await loadProduct()
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '调整库存失败'
+    showError(resolveErrorMessage(err, '调整库存失败'))
   } finally {
-    saving.value = false
+    savingSkuId.value = ''
   }
 }
 
-function formatPrice(cents) {
-  return ((cents || 0) / 100).toFixed(2)
+function handleBack() {
+  router.push({ name: 'seller-products' })
 }
 
+/** 金额：后端单位是分 */
+function formatPrice(cents) {
+  const n = Number(cents)
+  return Number.isFinite(n) ? (n / 100).toFixed(2) : '-'
+}
+
+/* ---------- 4. 生命周期 ---------- */
 onMounted(() => {
   loadCategories()
   loadProduct()
@@ -205,188 +289,264 @@ onMounted(() => {
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
-        {{ isEdit ? '编辑商品' : '发布商品' }}
-      </h1>
-      <RouterLink :to="{ name: 'seller-products' }" class="text-sm text-blue-600 hover:underline">
-        返回商品管理
-      </RouterLink>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-semibold text-gray-900">{{ isEdit ? '编辑商品' : '发布商品' }}</h1>
+        <el-tag v-if="isEdit && productStatus" :type="statusTag(PRODUCT_STATUS_TAG, productStatus)" size="small">
+          {{ statusText(PRODUCT_STATUS_MAP, productStatus) }}
+        </el-tag>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-gray-400">{{ isEdit ? '修改后需重新审核上架' : '提交后进入管理员审核' }}</span>
+        <el-button link type="primary" data-testid="seller-product-back" @click="handleBack">
+          返回商品管理
+        </el-button>
+      </div>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-if="message" class="text-sm text-green-600">{{ message }}</p>
+    <!-- 失败态：与空态严格区分，可重试 -->
+    <el-result v-if="loadError" status="error" title="加载商品失败" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" data-testid="seller-product-retry" @click="loadProduct">重试</el-button>
+      </template>
+    </el-result>
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
+    <el-form
+      v-else
+      ref="formRef"
+      v-loading="loading"
+      :model="form"
+      :rules="rules"
+      label-width="96px"
+    >
+      <!-- 基本信息 -->
+      <el-card shadow="never" class="mb-4">
+        <template #header>
+          <span class="text-base font-medium">基本信息</span>
+        </template>
 
-    <template v-else>
-      <section class="bg-white rounded-lg border border-gray-200 p-5 space-y-3">
-        <h2 class="text-sm font-medium text-gray-700">基本信息</h2>
-        <label class="block text-sm text-gray-600">
-          标题
-          <input
+        <el-form-item label="商品标题" prop="title">
+          <el-input
             v-model="form.title"
             maxlength="100"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+            show-word-limit
             placeholder="商品标题"
+            data-testid="seller-product-title"
           />
-        </label>
-        <label class="block text-sm text-gray-600">
-          副标题
-          <input
+        </el-form-item>
+
+        <el-form-item label="副标题">
+          <el-input
             v-model="form.subtitle"
             maxlength="200"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
             placeholder="选填，一句话卖点"
+            data-testid="seller-product-subtitle"
           />
-        </label>
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label class="block text-sm text-gray-600">
-            主图地址
-            <input
+        </el-form-item>
+
+        <el-form-item label="主图地址">
+          <div class="w-full">
+            <el-input
               v-model="form.mainImage"
               maxlength="255"
-              class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-              placeholder="选填，上传后可填 /images/xxx.jpg"
+              placeholder="选填，例如 /images/xxx.jpg"
+              data-testid="seller-product-main-image"
             />
-          </label>
-          <label class="block text-sm text-gray-600">
-            分类
-            <select
-              v-model="form.categoryId"
-              class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-            >
-              <option value="">请选择分类</option>
-              <option v-for="c in categories" :key="c.categoryId" :value="c.categoryId">
-                {{ c.name }}
-              </option>
-            </select>
-          </label>
-        </div>
-      </section>
+            <p class="mt-1 text-xs text-gray-400">
+              这里填写图片地址（与商品原有字段一致），本页不做上传，避免多出一次写请求。
+            </p>
+          </div>
+        </el-form-item>
 
-      <!-- 新建时维护初始 SKU -->
-      <section v-if="!isEdit" class="bg-white rounded-lg border border-gray-200 p-5 space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-sm font-medium text-gray-700">商品规格</h2>
-          <button
-            class="text-sm text-blue-600 hover:underline"
-            @click="addSkuRow"
-          >
-            + 添加规格
-          </button>
-        </div>
+        <el-form-item label="分类" prop="categoryId">
+          <div class="w-full">
+            <el-select
+              v-model="form.categoryId"
+              placeholder="请选择分类"
+              filterable
+              :loading="categoryLoading"
+              :disabled="!canSubmit"
+              style="width: 260px"
+              data-testid="seller-product-category"
+            >
+              <el-option
+                v-for="c in categories"
+                :key="c.categoryId"
+                :label="c.name"
+                :value="c.categoryId"
+              />
+            </el-select>
+            <el-alert
+              v-if="categoryError"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="mt-2"
+              title="分类加载失败，请重试后再选择"
+            >
+              <el-button link type="primary" size="small" @click="loadCategories">重新加载分类</el-button>
+            </el-alert>
+            <el-alert
+              v-else-if="!categoryLoading && !categories.length"
+              type="warning"
+              :closable="false"
+              show-icon
+              class="mt-2"
+              title="暂无可选分类，请联系管理员创建后再发布商品"
+            />
+          </div>
+        </el-form-item>
+      </el-card>
+
+      <!-- 新建：可增删的初始规格 -->
+      <el-card v-if="!isEdit" shadow="never" class="mb-4">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="text-base font-medium">商品规格</span>
+            <el-button link type="primary" data-testid="seller-product-add-sku-row" @click="addSkuRow">
+              添加规格
+            </el-button>
+          </div>
+        </template>
+
         <div
           v-for="(row, index) in skus"
-          :key="index"
-          class="grid gap-2 sm:grid-cols-[1fr_100px_100px_40px] items-center"
+          :key="`new-sku-${index}`"
+          class="flex flex-wrap items-center gap-2 mb-3"
         >
-          <input
+          <el-input
             v-model="row.specName"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
             placeholder="规格名称，如 黑色"
+            style="width: 200px"
+            :data-testid="`seller-product-sku-name-${index}`"
           />
-          <input
+          <el-input-number
             v-model="row.price"
-            type="number"
-            min="0.01"
-            step="0.01"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            :min="0.01"
+            :step="0.01"
+            :precision="2"
+            controls-position="right"
             placeholder="价格（元）"
+            style="width: 150px"
+            :data-testid="`seller-product-sku-price-${index}`"
           />
-          <input
+          <el-input-number
             v-model="row.stockAvailable"
-            type="number"
-            min="0"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
+            :min="0"
+            :step="1"
+            :precision="0"
+            controls-position="right"
             placeholder="库存"
+            style="width: 130px"
+            :data-testid="`seller-product-sku-stock-${index}`"
           />
-          <button
-            class="text-xs text-gray-400 hover:text-red-600 disabled:opacity-40"
+          <el-button
+            link
+            type="danger"
             :disabled="skus.length === 1"
+            :data-testid="`seller-product-sku-remove-${index}`"
             @click="removeSkuRow(index)"
           >
             删除
-          </button>
+          </el-button>
         </div>
-      </section>
+        <p class="text-xs text-gray-400">至少保留一行；规格名称为空的行不会提交。</p>
+      </el-card>
 
-      <!-- 编辑时维护已有 SKU 库存 -->
-      <section v-if="isEdit" class="bg-white rounded-lg border border-gray-200 p-5 space-y-3">
-        <h2 class="text-sm font-medium text-gray-700">已有规格与库存</h2>
-        <p v-if="!existingSkus.length" class="text-sm text-gray-500">暂无规格，请在下方新增</p>
-        <div
-          v-for="sku in existingSkus"
-          :key="sku.skuId"
-          class="flex flex-wrap items-center gap-3 text-sm"
-        >
-          <span class="w-32 text-gray-900">{{ sku.specName }}</span>
-          <span class="w-24 text-red-600">¥{{ formatPrice(sku.price) }}</span>
-          <span class="text-xs text-gray-400">已锁定 {{ sku.stockLocked ?? 0 }}</span>
-          <input
-            v-model.number="stockDraft[sku.skuId]"
-            type="number"
-            min="0"
-            class="w-24 px-2 py-1 border border-gray-300 rounded-md text-sm"
-          />
-          <button
-            class="text-xs text-blue-600 hover:underline"
-            :disabled="saving"
-            @click="saveStock(sku)"
-          >
-            保存库存
-          </button>
-        </div>
-
-        <div class="border-t border-gray-100 pt-3 space-y-2">
-          <h3 class="text-sm font-medium text-gray-700">新增规格</h3>
-          <div class="grid gap-2 sm:grid-cols-[1fr_100px_100px_80px] items-center">
-            <input
-              v-model="newSku.specName"
-              class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              placeholder="规格名称"
-            />
-            <input
-              v-model="newSku.price"
-              type="number"
-              min="0.01"
-              step="0.01"
-              class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              placeholder="价格（元）"
-            />
-            <input
-              v-model="newSku.stockAvailable"
-              type="number"
-              min="0"
-              class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              placeholder="库存"
-            />
-            <button
-              class="px-3 py-2 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50 disabled:opacity-50"
-              :disabled="saving"
-              @click="addSku"
-            >
-              新增
-            </button>
+      <!-- 编辑：已有规格只改库存，另可新增 -->
+      <el-card v-if="isEdit" shadow="never" class="mb-4">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="text-base font-medium">已有规格与库存</span>
+            <span class="text-xs text-gray-400">已有规格只支持调整库存与新增，不支持删除或改价</span>
           </div>
+        </template>
+
+        <UiTable
+          :columns="skuColumns"
+          :data="existingSkus"
+          row-key="skuId"
+          empty-text="暂无规格，请在下方新增"
+          show-actions
+          actions-width="110"
+        >
+          <template #stock="{ row }">
+            <el-input-number
+              v-model="stockDraft[row.skuId]"
+              :min="0"
+              :step="1"
+              :precision="0"
+              size="small"
+              controls-position="right"
+              style="width: 120px"
+              :data-testid="`seller-sku-stock-${row.skuId}`"
+            />
+          </template>
+          <template #actions="{ row }">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :loading="savingSkuId === row.skuId"
+              :data-testid="`seller-sku-stock-save-${row.skuId}`"
+              @click="handleSaveStock(row)"
+            >
+              保存库存
+            </el-button>
+          </template>
+        </UiTable>
+
+        <el-divider content-position="left">新增规格</el-divider>
+        <div class="flex flex-wrap items-center gap-2">
+          <el-input
+            v-model="newSku.specName"
+            placeholder="规格名称"
+            style="width: 200px"
+            data-testid="seller-sku-new-name"
+          />
+          <el-input-number
+            v-model="newSku.price"
+            :min="0.01"
+            :step="0.01"
+            :precision="2"
+            controls-position="right"
+            placeholder="价格（元）"
+            style="width: 150px"
+            data-testid="seller-sku-new-price"
+          />
+          <el-input-number
+            v-model="newSku.stockAvailable"
+            :min="0"
+            :step="1"
+            :precision="0"
+            controls-position="right"
+            placeholder="库存"
+            style="width: 130px"
+            data-testid="seller-sku-new-stock"
+          />
+          <el-button
+            type="primary"
+            plain
+            :loading="addingSku"
+            data-testid="seller-sku-new-submit"
+            @click="handleAddSku"
+          >
+            新增
+          </el-button>
         </div>
-      </section>
+      </el-card>
 
       <div class="flex justify-end gap-2">
-        <RouterLink
-          :to="{ name: 'seller-products' }"
-          class="px-5 py-2 rounded-md border border-gray-300 text-gray-600 text-sm hover:bg-gray-50"
+        <el-button data-testid="seller-product-cancel" @click="handleBack">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          data-testid="seller-product-save"
+          @click="handleSubmit"
         >
-          取消
-        </RouterLink>
-        <button
-          class="px-5 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-          :disabled="saving"
-          @click="submit"
-        >
-          {{ saving ? '保存中…' : isEdit ? '保存修改' : '提交审核' }}
-        </button>
+          {{ isEdit ? '保存修改' : '提交审核' }}
+        </el-button>
       </div>
-    </template>
+    </el-form>
   </div>
 </template>

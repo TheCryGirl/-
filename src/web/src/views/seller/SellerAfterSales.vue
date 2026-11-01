@@ -1,9 +1,23 @@
 <script setup>
+/**
+ * 卖家售后处理（#81 T05）
+ *
+ * 流程与按钮条件完全沿用原代码：
+ * - PENDING：同意 / 驳回（仅退款与退货退款文案不同）
+ * - BUYER_SHIPPED + RETURN_REFUND：确认收货并退款
+ * - BUYER_SHIPPED + EXCHANGE：回填换货物流后确认收货并重新发货
+ * - APPROVED：只提示等待买家回填退货物流
+ *
+ * 状态文案继续用 utils/afterSale.js（买家页与卖家页共用，含换货 COMPLETED），
+ * 标签颜色用 constants/status.js 的 AFTER_SALE_STATUS_TAG，未知状态回退 info。
+ */
 import { onMounted, reactive, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
+import { AFTER_SALE_STATUS_TAG, statusTag } from '../../constants/status'
+import { confirmAction } from '../../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import { formatPrice, formatTime } from '../../utils/format'
 import {
-  afterSaleStatusClass,
   afterSaleStatusLabel,
   afterSaleStatusOptions,
   afterSaleStepIndex,
@@ -11,26 +25,38 @@ import {
   afterSaleTypeLabel,
 } from '../../utils/afterSale'
 
-const tickets = ref([])
-const loading = ref(true)
-const error = ref('')
-const message = ref('')
+/* ---------- 1. 状态 ---------- */
+const list = ref([])
+const loading = ref(false)
+const loadError = ref('')
+/** 后端返回的总条数：本页一次取 50 条，超过时给出提示 */
+const total = ref(0)
 const statusFilter = ref('')
 const processingId = ref('')
 const remarks = reactive({})
 const exchangeTracking = reactive({})
 
-async function load() {
+/* ---------- 2. 方法 ---------- */
+async function fetchList() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const params = { page: 1, size: 50 }
     if (statusFilter.value) params.status = statusFilter.value
     const { data } = await paymentApi.afterSales(params)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '售后单加载失败'
+      list.value = []
+      total.value = 0
+      return
+    }
     const page = unwrapResult(data)
-    tickets.value = page?.list || []
+    list.value = page?.list ?? []
+    total.value = page?.total ?? list.value.length
   } catch (err) {
-    error.value = err.response?.data?.message || '售后单加载失败'
+    loadError.value = resolveErrorMessage(err, '售后单加载失败')
+    list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -41,245 +67,267 @@ function actionLabel(ticket, approved) {
   return approved ? '同意售后' : '驳回'
 }
 
-async function audit(ticket, approved) {
+async function handleAudit(ticket, approved) {
+  if (processingId.value) return
+
+  const ok = await confirmAction({
+    message: `确定${actionLabel(ticket, approved)}售后单「${ticket.ticketId}」？`,
+    danger: !approved,
+  })
+  if (!ok) return
+
   processingId.value = ticket.ticketId
-  error.value = ''
-  message.value = ''
   try {
     const { data } = await paymentApi.auditAfterSale(ticket.ticketId, {
       approved,
       remark: remarks[ticket.ticketId] || '',
     })
     if (!isOk(data)) {
-      error.value = data?.message || '处理失败'
+      showError(data?.message || '处理失败')
       return
     }
-    const result = unwrapResult(data)
-    message.value = `售后单 ${result?.ticketId || ticket.ticketId} 已${approved ? '同意' : '驳回'}`
+    showSuccess(`售后单 ${ticket.ticketId} 已${approved ? '同意' : '驳回'}`)
     remarks[ticket.ticketId] = ''
-    await load()
+    await fetchList()
   } catch (err) {
-    error.value = err.response?.data?.message || '处理失败'
+    showError(resolveErrorMessage(err, '处理失败'))
   } finally {
     processingId.value = ''
   }
 }
 
-async function receive(ticket) {
+async function handleReceive(ticket) {
+  if (processingId.value) return
+
+  const ok = await confirmAction({
+    message: `确认已收到售后单「${ticket.ticketId}」的退货并退款？`,
+    danger: true,
+  })
+  if (!ok) return
+
   processingId.value = ticket.ticketId
-  error.value = ''
-  message.value = ''
   try {
     const { data } = await paymentApi.receiveAfterSaleReturn(ticket.ticketId, {
       remark: remarks[ticket.ticketId] || '确认收货并退款',
     })
     if (!isOk(data)) {
-      error.value = data?.message || '确认收货失败'
+      showError(data?.message || '确认收货失败')
       return
     }
-    message.value = `售后单 ${ticket.ticketId} 已确认收货并完成退款`
+    showSuccess(`售后单 ${ticket.ticketId} 已确认收货并完成退款`)
     remarks[ticket.ticketId] = ''
-    await load()
+    await fetchList()
   } catch (err) {
-    error.value = err.response?.data?.message || '确认收货失败'
+    showError(resolveErrorMessage(err, '确认收货失败'))
   } finally {
     processingId.value = ''
   }
 }
 
-async function reship(ticket) {
+async function handleReship(ticket) {
   const trackingNo = (exchangeTracking[ticket.ticketId] || '').trim()
   if (!trackingNo) {
-    error.value = '请填写换货物流单号'
+    showError('请填写换货物流单号')
     return
   }
+  if (processingId.value) return
+
+  const ok = await confirmAction({
+    message: `确认按换货物流「${trackingNo}」重新发货？`,
+  })
+  if (!ok) return
+
   processingId.value = ticket.ticketId
-  error.value = ''
-  message.value = ''
   try {
     const { data } = await paymentApi.reshipAfterSale(ticket.ticketId, {
       trackingNo,
       remark: remarks[ticket.ticketId] || '确认收货并重新发货',
     })
     if (!isOk(data)) {
-      error.value = data?.message || '换货发货失败'
+      showError(data?.message || '换货发货失败')
       return
     }
-    message.value = `售后单 ${ticket.ticketId} 已完成换货发货`
+    showSuccess(`售后单 ${ticket.ticketId} 已完成换货发货`)
     exchangeTracking[ticket.ticketId] = ''
     remarks[ticket.ticketId] = ''
-    await load()
+    await fetchList()
   } catch (err) {
-    error.value = err.response?.data?.message || '换货发货失败'
+    showError(resolveErrorMessage(err, '换货发货失败'))
   } finally {
     processingId.value = ''
   }
 }
 
-onMounted(load)
+function handleFilterChange() {
+  fetchList()
+}
+
+/* ---------- 3. 生命周期 ---------- */
+onMounted(fetchList)
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div>
-        <h1 class="text-lg font-semibold text-gray-900">售后处理</h1>
-        <p class="text-xs text-gray-400 mt-1">仅展示本店售后单；管理员进入时可见全量</p>
-      </div>
-      <select
-        v-model="statusFilter"
-        class="px-3 py-1.5 border border-gray-300 rounded-md text-sm"
-        @change="load"
-      >
-        <option value="">全部状态</option>
-        <option v-for="item in afterSaleStatusOptions" :key="item.value" :value="item.value">
-          {{ item.label }}
-        </option>
-      </select>
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold text-gray-900">售后处理</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 张</span>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-if="message" class="text-sm text-green-600">{{ message }}</p>
+    <el-alert
+      v-if="total > list.length"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="`共 ${total} 张，当前仅显示前 ${list.length} 张`"
+    />
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
-    <div v-else-if="!tickets.length" class="py-16 text-center text-gray-400 text-sm">
-      暂无售后单
-    </div>
-
-    <article
-      v-for="ticket in tickets"
-      :key="ticket.ticketId"
-      class="bg-white rounded-lg border border-gray-200 p-4 space-y-3"
-    >
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-900">
-            {{ afterSaleTypeLabel(ticket.type) }}
-          </span>
-          <span
-            class="text-xs px-2 py-0.5 rounded"
-            :class="afterSaleStatusClass(ticket.status)"
-          >
-            {{ afterSaleStatusLabel(ticket.status) }}
-          </span>
-        </div>
-        <span class="text-xs text-gray-400">{{ formatTime(ticket.createdAt) }}</span>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-        <span>售后单：{{ ticket.ticketId }}</span>
-        <span>订单：{{ ticket.orderId }}</span>
-        <span>买家：{{ ticket.buyerId }}</span>
-        <span v-if="ticket.amount > 0">退款金额 ¥{{ formatPrice(ticket.amount) }}</span>
-      </div>
-      <p class="text-sm text-gray-500">原因：{{ ticket.reason || '—' }}</p>
-
-      <div
-        v-if="ticket.status !== 'REJECTED'"
-        class="flex flex-wrap items-center gap-2 pt-1"
-      >
-        <template v-for="(step, index) in afterSaleSteps(ticket.type)" :key="step">
-          <div class="flex items-center gap-1">
-            <span
-              class="w-5 h-5 rounded-full text-[10px] flex items-center justify-center"
-              :class="
-                index <= afterSaleStepIndex(ticket.type, ticket.status)
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-100 text-gray-400'
-              "
-            >
-              {{ index + 1 }}
-            </span>
-            <span
-              class="text-xs"
-              :class="
-                index <= afterSaleStepIndex(ticket.type, ticket.status)
-                  ? 'text-gray-700'
-                  : 'text-gray-400'
-              "
-            >
-              {{ step }}
-            </span>
-          </div>
-          <span
-            v-if="index < afterSaleSteps(ticket.type).length - 1"
-            class="w-5 h-px bg-gray-200"
-          ></span>
-        </template>
-      </div>
-
-      <div class="text-xs text-gray-500 space-y-1">
-        <p v-if="ticket.refundId">退款单号：{{ ticket.refundId }}</p>
-        <p v-if="ticket.returnTrackingNo">退货物流：{{ ticket.returnTrackingNo }}</p>
-        <p v-if="ticket.exchangeTrackingNo">换货物流：{{ ticket.exchangeTrackingNo }}</p>
-        <p v-if="ticket.auditRemark">处理备注：{{ ticket.auditRemark }}</p>
-      </div>
-
-      <div class="border-t border-gray-100 pt-3 space-y-2">
-        <input
-          v-if="['PENDING', 'BUYER_SHIPPED'].includes(ticket.status)"
-          v-model="remarks[ticket.ticketId]"
-          maxlength="255"
-          class="w-full sm:w-80 px-3 py-2 border border-gray-300 rounded-md text-sm"
-          placeholder="处理备注（选填）"
-        />
-
-        <div v-if="ticket.status === 'PENDING'" class="flex justify-end gap-2">
-          <button
-            class="px-3 py-1.5 rounded border border-gray-300 text-gray-600 text-sm hover:bg-gray-50 disabled:opacity-50"
-            :disabled="processingId === ticket.ticketId"
-            @click="audit(ticket, false)"
-          >
-            {{ actionLabel(ticket, false) }}
-          </button>
-          <button
-            class="px-3 py-1.5 rounded bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-300"
-            :disabled="processingId === ticket.ticketId"
-            @click="audit(ticket, true)"
-          >
-            {{ actionLabel(ticket, true) }}
-          </button>
-        </div>
-
-        <div
-          v-else-if="ticket.status === 'BUYER_SHIPPED' && ticket.type === 'RETURN_REFUND'"
-          class="flex justify-end"
+    <!-- 筛选区：不加卡片 -->
+    <el-form inline class="bg-white p-4 rounded-lg">
+      <el-form-item label="状态">
+        <el-select
+          v-model="statusFilter"
+          placeholder="全部状态"
+          clearable
+          style="width: 170px"
+          data-testid="seller-after-sales-filter-status"
+          @change="handleFilterChange"
         >
-          <button
-            class="px-4 py-2 rounded bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-300"
-            :disabled="processingId === ticket.ticketId"
-            @click="receive(ticket)"
-          >
-            确认收货并退款
-          </button>
-        </div>
-
-        <div
-          v-else-if="ticket.status === 'BUYER_SHIPPED' && ticket.type === 'EXCHANGE'"
-          class="flex flex-wrap items-center justify-end gap-2"
-        >
-          <input
-            v-model="exchangeTracking[ticket.ticketId]"
-            maxlength="64"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm w-64"
-            placeholder="换货物流单号"
+          <el-option
+            v-for="item in afterSaleStatusOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
           />
-          <button
-            class="px-4 py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-            :disabled="processingId === ticket.ticketId"
-            @click="reship(ticket)"
-          >
-            确认收货并重新发货
-          </button>
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <span class="text-xs text-gray-400">仅展示本店售后单；管理员进入时可见全量</span>
+      </el-form-item>
+    </el-form>
+
+    <el-result v-if="loadError" status="error" title="售后单加载失败" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" data-testid="seller-after-sales-retry" @click="fetchList">重试</el-button>
+      </template>
+    </el-result>
+
+    <div v-else v-loading="loading">
+      <el-empty v-if="!loading && !list.length" description="暂无售后单" />
+
+      <el-card
+        v-for="ticket in list"
+        :key="ticket.ticketId"
+        shadow="never"
+        class="mb-3"
+        :data-testid="`seller-after-sale-${ticket.ticketId}`"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-800">{{ afterSaleTypeLabel(ticket.type) }}</span>
+            <el-tag :type="statusTag(AFTER_SALE_STATUS_TAG, ticket.status)" size="small">
+              {{ afterSaleStatusLabel(ticket.status) }}
+            </el-tag>
+          </div>
+          <span class="text-xs text-gray-400">{{ formatTime(ticket.createdAt) }}</span>
         </div>
 
-        <p
-          v-else-if="ticket.status === 'APPROVED'"
-          class="text-xs text-gray-400 text-right"
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 mt-2">
+          <span>售后单：{{ ticket.ticketId }}</span>
+          <span>订单：{{ ticket.orderId }}</span>
+          <span>买家：{{ ticket.buyerId }}</span>
+          <span v-if="ticket.amount > 0">退款金额 ¥{{ formatPrice(ticket.amount) }}</span>
+        </div>
+        <p class="text-sm text-gray-500 mt-1">原因：{{ ticket.reason || '—' }}</p>
+
+        <el-steps
+          v-if="ticket.status !== 'REJECTED'"
+          :active="afterSaleStepIndex(ticket.type, ticket.status) + 1"
+          simple
+          class="mt-3"
         >
-          已同意，等待买家回填退货物流
-        </p>
-      </div>
-    </article>
+          <el-step v-for="step in afterSaleSteps(ticket.type)" :key="step" :title="step" />
+        </el-steps>
+
+        <div class="text-xs text-gray-500 space-y-1 mt-3">
+          <p v-if="ticket.refundId">退款单号：{{ ticket.refundId }}</p>
+          <p v-if="ticket.returnTrackingNo">退货物流：{{ ticket.returnTrackingNo }}</p>
+          <p v-if="ticket.exchangeTrackingNo">换货物流：{{ ticket.exchangeTrackingNo }}</p>
+          <p v-if="ticket.auditRemark">处理备注：{{ ticket.auditRemark }}</p>
+        </div>
+
+        <el-divider />
+
+        <div class="space-y-3">
+          <el-input
+            v-if="['PENDING', 'BUYER_SHIPPED'].includes(ticket.status)"
+            v-model="remarks[ticket.ticketId]"
+            maxlength="255"
+            placeholder="处理备注（选填）"
+            style="max-width: 420px"
+            :data-testid="`seller-after-sale-remark-${ticket.ticketId}`"
+          />
+
+          <!-- PENDING：同意 / 驳回 -->
+          <div v-if="ticket.status === 'PENDING'" class="flex justify-end gap-2">
+            <el-button
+              :disabled="processingId === ticket.ticketId"
+              :data-testid="`seller-after-sale-reject-${ticket.ticketId}`"
+              @click="handleAudit(ticket, false)"
+            >
+              {{ actionLabel(ticket, false) }}
+            </el-button>
+            <el-button
+              type="success"
+              :loading="processingId === ticket.ticketId"
+              :data-testid="`seller-after-sale-approve-${ticket.ticketId}`"
+              @click="handleAudit(ticket, true)"
+            >
+              {{ actionLabel(ticket, true) }}
+            </el-button>
+          </div>
+
+          <!-- 退货退款：卖家收货 -->
+          <div
+            v-else-if="ticket.status === 'BUYER_SHIPPED' && ticket.type === 'RETURN_REFUND'"
+            class="flex justify-end"
+          >
+            <el-button
+              type="success"
+              :loading="processingId === ticket.ticketId"
+              :data-testid="`seller-after-sale-receive-${ticket.ticketId}`"
+              @click="handleReceive(ticket)"
+            >
+              确认收货并退款
+            </el-button>
+          </div>
+
+          <!-- 换货：回填物流并重新发货 -->
+          <div
+            v-else-if="ticket.status === 'BUYER_SHIPPED' && ticket.type === 'EXCHANGE'"
+            class="flex flex-wrap items-center justify-end gap-2"
+          >
+            <el-input
+              v-model="exchangeTracking[ticket.ticketId]"
+              maxlength="64"
+              placeholder="换货物流单号"
+              style="width: 240px"
+              :data-testid="`seller-after-sale-exchange-tracking-${ticket.ticketId}`"
+            />
+            <el-button
+              type="primary"
+              :loading="processingId === ticket.ticketId"
+              :data-testid="`seller-after-sale-reship-${ticket.ticketId}`"
+              @click="handleReship(ticket)"
+            >
+              确认收货并重新发货
+            </el-button>
+          </div>
+
+          <p v-else-if="ticket.status === 'APPROVED'" class="text-xs text-gray-400 text-right">
+            已同意，等待买家回填退货物流
+          </p>
+        </div>
+      </el-card>
+    </div>
   </div>
 </template>
