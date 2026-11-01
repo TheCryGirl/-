@@ -3,7 +3,7 @@
  * 卖家店铺资料（#81 T06）
  *
  * 上传仍走原来的原生 file input + FormData → productApi.uploadImage：
- * 不换成 el-upload，避免它自带的 action 与自定义上传叠加出两次请求；
+ * 不换成 Element 的上传组件，避免它自带的 action 与自定义上传叠加出两次请求；
  * 5MB 限制、accept、返回体解析（{ url }）与失败可重试都保持原样。
  *
  * 表单字段、校验规则、保存接口（PUT /shops/mine）与清空语义均不变。
