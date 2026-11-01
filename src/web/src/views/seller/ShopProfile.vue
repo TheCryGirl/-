@@ -1,7 +1,18 @@
 <script setup>
+/**
+ * 卖家店铺资料（#81 T06）
+ *
+ * 上传仍走原来的原生 file input + FormData → productApi.uploadImage：
+ * 不换成 el-upload，避免它自带的 action 与自定义上传叠加出两次请求；
+ * 5MB 限制、accept、返回体解析（{ url }）与失败可重试都保持原样。
+ *
+ * 表单字段、校验规则、保存接口（PUT /shops/mine）与清空语义均不变。
+ */
 import { onMounted, reactive, ref } from 'vue'
 import { isOk, productApi, shopApi, unwrapResult } from '../../api'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 
+/* ---------- 1. 状态 ---------- */
 const form = reactive({
   shopId: '',
   name: '',
@@ -12,11 +23,27 @@ const form = reactive({
   status: 'ACTIVE',
 })
 const loading = ref(false)
+const loadError = ref('')
 const saving = ref(false)
 const uploading = ref(false)
-const message = ref('')
-const error = ref('')
+const formRef = ref(null)
+const fileInputRef = ref(null)
 
+const rules = {
+  name: [
+    { required: true, message: '店铺名称不能为空', trigger: 'blur' },
+    { max: 64, message: '店铺名称最多 64 字', trigger: 'blur' },
+  ],
+  contactPhone: [
+    {
+      pattern: /^$|^1[3-9]\d{9}$|^0\d{2,3}-?\d{7,8}$/,
+      message: '联系电话格式不正确，支持手机号或区号座机',
+      trigger: 'blur',
+    },
+  ],
+}
+
+/* ---------- 2. 方法 ---------- */
 function fill(shop) {
   form.shopId = shop.shopId || ''
   form.name = shop.name || ''
@@ -29,61 +56,74 @@ function fill(shop) {
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const { data } = await shopApi.mine()
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载店铺资料失败'
+      return
+    }
     const shop = unwrapResult(data)
     if (!shop) {
-      error.value = data?.message || '加载店铺资料失败'
+      loadError.value = '加载店铺资料失败'
       return
     }
     fill(shop)
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载店铺资料失败'
+    loadError.value = resolveErrorMessage(err, '加载店铺资料失败')
   } finally {
     loading.value = false
   }
 }
 
-async function uploadLogo(event) {
+function pickLogo() {
+  fileInputRef.value?.click()
+}
+
+async function handleLogoChange(event) {
   const file = event.target.files?.[0]
   if (!file) return
   if (file.size > 5 * 1024 * 1024) {
-    error.value = '图片不能超过 5MB'
+    showError('图片不能超过 5MB')
+    event.target.value = ''
     return
   }
+  if (uploading.value) return
+
   uploading.value = true
-  error.value = ''
   try {
     const formData = new FormData()
     formData.append('file', file)
     const { data } = await productApi.uploadImage(formData)
-    const uploaded = unwrapResult(data)
-    if (!uploaded) {
-      error.value = data?.message || '图片上传失败'
+    if (!isOk(data)) {
+      showError(data?.message || '图片上传失败')
       return
     }
-    // 与商品主图共用 /images 静态映射
-    form.logo = uploaded.url || ''
+    const uploaded = unwrapResult(data)
+    if (!uploaded?.url) {
+      showError('图片上传失败，未返回图片地址')
+      return
+    }
+    // 与商品主图共用 /images 静态映射，只更新草稿，保存时才写库
+    form.logo = uploaded.url
+    showSuccess('图片已上传，保存后生效')
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '图片上传失败'
+    showError(resolveErrorMessage(err, '图片上传失败'))
   } finally {
     uploading.value = false
+    // 允许重复选择同一文件再次上传
     event.target.value = ''
   }
 }
 
 async function save() {
-  message.value = ''
-  error.value = ''
-  if (!form.name.trim()) {
-    error.value = '店铺名称不能为空'
+  if (saving.value) return
+  try {
+    await formRef.value?.validate()
+  } catch {
     return
   }
-  if (form.contactPhone && !/^$|^1[3-9]\d{9}$|^0\d{2,3}-?\d{7,8}$/.test(form.contactPhone)) {
-    error.value = '联系电话格式不正确'
-    return
-  }
+
   saving.value = true
   try {
     const { data } = await shopApi.updateMine({
@@ -94,125 +134,160 @@ async function save() {
       contactWechat: form.contactWechat,
     })
     if (!isOk(data)) {
-      error.value = data?.message || '保存店铺资料失败'
+      showError(data?.message || '保存店铺资料失败')
       return
     }
     fill(unwrapResult(data) || form)
-    message.value = '店铺资料已保存'
+    showSuccess('店铺资料已保存')
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '保存店铺资料失败'
+    showError(resolveErrorMessage(err, '保存店铺资料失败'))
   } finally {
     saving.value = false
   }
 }
 
+/* ---------- 3. 生命周期 ---------- */
 onMounted(load)
 </script>
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">店铺资料</h1>
-      <span
-        v-if="form.status === 'SUSPENDED'"
-        class="text-xs text-red-600 border border-red-500 px-2 py-0.5 rounded"
-      >
-        已被管理员停用
-      </span>
-      <span
-        v-else
-        class="text-xs text-green-600 border border-green-500 px-2 py-0.5 rounded"
-      >
-        正常营业
-      </span>
+      <el-tag v-if="form.status === 'SUSPENDED'" type="danger" size="small">已被管理员停用</el-tag>
+      <el-tag v-else type="success" size="small">正常营业</el-tag>
+      <span class="text-xs text-gray-400">资料保存后立即对买家生效</span>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-if="message" class="text-sm text-green-600">{{ message }}</p>
-    <p v-if="loading" class="text-sm text-gray-500">加载中…</p>
+    <el-result v-if="loadError" status="error" title="加载店铺资料失败" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" data-testid="seller-shop-retry" @click="load">重试</el-button>
+      </template>
+    </el-result>
 
-    <section v-else class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-      <p v-if="form.status === 'SUSPENDED'" class="text-sm text-red-600 bg-red-50 rounded p-3">
-        店铺停用期间，你的商品不会出现在买家搜索结果中，也无法下单。恢复营业后会自动重新上架。
-      </p>
+    <el-form v-else ref="formRef" v-loading="loading" :model="form" :rules="rules" label-width="96px">
+      <el-card shadow="never">
+        <template #header>
+          <span class="text-base font-medium">店铺资料</span>
+        </template>
 
-      <label class="block text-sm text-gray-600">
-        店铺名称
-        <input
-          v-model="form.name"
-          maxlength="64"
-          class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="必填，最多 64 字"
+        <el-alert
+          v-if="form.status === 'SUSPENDED'"
+          type="error"
+          :closable="false"
+          show-icon
+          class="mb-4"
+          title="店铺停用期间，你的商品不会出现在买家搜索结果中，也无法下单。恢复营业后会自动重新上架。"
         />
-      </label>
 
-      <div class="text-sm text-gray-600">
-        店铺头像
-        <div class="mt-1 flex items-center gap-3">
-          <img
-            v-if="form.logo"
-            :src="form.logo"
-            alt="店铺头像"
-            class="w-16 h-16 rounded-md object-cover border border-gray-200"
+        <el-form-item label="店铺名称" prop="name">
+          <el-input
+            v-model="form.name"
+            maxlength="64"
+            show-word-limit
+            placeholder="必填，最多 64 字"
+            data-testid="seller-shop-name"
           />
-          <div v-else class="w-16 h-16 rounded-md bg-gray-100 text-xs text-gray-400 flex items-center justify-center">
-            无头像
+        </el-form-item>
+
+        <el-form-item label="店铺头像">
+          <div class="w-full space-y-2">
+            <div class="flex items-center gap-3">
+              <el-image
+                v-if="form.logo"
+                :src="form.logo"
+                fit="cover"
+                class="w-16 h-16 rounded-md border border-gray-200"
+                :preview-src-list="[form.logo]"
+                preview-teleported
+              />
+              <div
+                v-else
+                class="w-16 h-16 rounded-md bg-gray-100 text-xs text-gray-400 flex items-center justify-center"
+              >
+                无头像
+              </div>
+
+              <!-- 原生文件选择保留，保证一次点击只发一次上传请求 -->
+              <el-button
+                :loading="uploading"
+                data-testid="seller-shop-logo-pick"
+                @click="pickLogo"
+              >
+                {{ uploading ? '上传中…' : '上传图片' }}
+              </el-button>
+              <el-button
+                v-if="form.logo"
+                link
+                type="danger"
+                data-testid="seller-shop-logo-clear"
+                @click="form.logo = ''"
+              >
+                清除
+              </el-button>
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                :disabled="uploading"
+                data-testid="seller-shop-logo-file"
+                @change="handleLogoChange"
+              />
+            </div>
+
+            <el-input
+              v-model="form.logo"
+              maxlength="255"
+              placeholder="也可以直接填写图片地址，例如 /images/shop1.png"
+              data-testid="seller-shop-logo-url"
+            />
+            <p class="text-xs text-gray-400">
+              上传只改动本地草稿，点「保存资料」后才写入店铺信息；图片不超过 5MB。
+            </p>
           </div>
-          <label class="px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-50">
-            {{ uploading ? '上传中…' : '上传图片' }}
-            <input type="file" accept="image/*" class="hidden" :disabled="uploading" @change="uploadLogo" />
-          </label>
-          <button v-if="form.logo" class="text-xs text-red-500" @click="form.logo = ''">清除</button>
-        </div>
-        <input
-          v-model="form.logo"
-          maxlength="255"
-          class="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-          placeholder="也可以直接填写图片地址"
-        />
-      </div>
+        </el-form-item>
 
-      <label class="block text-sm text-gray-600">
-        店铺简介
-        <textarea
-          v-model="form.description"
-          rows="3"
-          maxlength="255"
-          class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="选填，最多 255 字"
-        ></textarea>
-      </label>
+        <el-form-item label="店铺简介">
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="3"
+            maxlength="255"
+            show-word-limit
+            placeholder="选填，最多 255 字"
+            data-testid="seller-shop-description"
+          />
+        </el-form-item>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="text-sm text-gray-600">
-          联系电话
-          <input
+        <el-form-item label="联系电话" prop="contactPhone">
+          <el-input
             v-model="form.contactPhone"
             maxlength="20"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="手机号或座机"
+            placeholder="手机号或座机，例如 13800138000 / 010-12345678"
+            data-testid="seller-shop-contact-phone"
           />
-        </label>
-        <label class="text-sm text-gray-600">
-          在线联系方式
-          <input
+        </el-form-item>
+
+        <el-form-item label="在线联系方式">
+          <el-input
             v-model="form.contactWechat"
             maxlength="64"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
             placeholder="微信 / 旺旺"
+            data-testid="seller-shop-contact-wechat"
           />
-        </label>
-      </div>
+        </el-form-item>
 
-      <div class="flex justify-end">
-        <button
-          class="px-5 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-          :disabled="saving"
-          @click="save"
-        >
-          {{ saving ? '保存中…' : '保存资料' }}
-        </button>
-      </div>
-    </section>
+        <div class="flex justify-end">
+          <el-button
+            type="primary"
+            :loading="saving"
+            data-testid="seller-shop-save"
+            @click="save"
+          >
+            保存资料
+          </el-button>
+        </div>
+      </el-card>
+    </el-form>
   </div>
 </template>
