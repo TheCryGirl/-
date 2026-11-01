@@ -1,0 +1,383 @@
+{
+  "results": [
+    {
+      "name": "L01 商品列表 20 条",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 总量文案",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L01-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 键盘可聚焦查询按钮",
+      "pass": true,
+      "detail": "product-list-search"
+    },
+    {
+      "name": "screenshot L01-keyboard-focus",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 键盘回车筛选",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 空态",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L01-empty",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 错误态",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L01-error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 第 2 页 2 条",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 购物车 3 行",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L02-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 勾选与数量",
+      "pass": true,
+      "detail": "与苹果设备\n\n曜石黑 / 标准版\n\n\t\n¥199.00\n\t\n\t\n¥199.00\n\t\n删除\n\n\n\t\n\n纯棉基础款 T 恤 男女同款 白色\n\n白色 / M\n\n\t\n¥25.99\n\t\n\t\n¥77.97\n\t\n删除\n\n\n\t\n\n智能运动手环 心率监测\n\n黑色 / 标准版\n\n商品已下架\n\t\n¥129.00\n\t\n\t\n¥129.00\n\t\n删除\n已选 4 件，合计 ¥276.97\n去结算\n在线商城 · 软件工程课程实验"
+    },
+    {
+      "name": "screenshot L02-selected",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L02-confirm",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 取消删除保留条目",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 确认删除",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L03 两个地址两个商品",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L03-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L03 选择地址 A2",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L04 仅 MOCK 渠道",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L04-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L04 创建支付单",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L04-created",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L04 支付后详情待发货",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L06-detail-paid",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 空购物车",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L02-empty",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L05 订单列表",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L05-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L05 状态筛选",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L05-filtered",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L05 键盘进入详情",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L06-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L06-evaluation-dialog",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L06 大图被拒",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L06 大图不发请求",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L06 小图只发一次请求",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L06 评价提交成功",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L06-evaluation-submitted",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L08 售后记录",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L08-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L08 退货物流",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L08-tracking",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L08 空态",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L08-empty",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L07 个人资料与地址",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L07-desktop",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L07 地址校验",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L07-address-validation",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L07 新增地址",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L07-address-created",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L07 删除地址",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L01 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L01-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L02 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L02-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L03 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L03-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L04 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L04-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L05 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L05-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L06 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L06-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L07 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L07-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L08 窄屏无横向溢出",
+      "pass": true,
+      "detail": "{\"scrollWidth\":375,\"innerWidth\":375,\"ok\":true}"
+    },
+    {
+      "name": "screenshot L08-narrow",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "L08 错误态",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "screenshot L08-error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "订单只创建一次",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "评价图片只上传一次",
+      "pass": true,
+      "detail": "1"
+    },
+    {
+      "name": "无控制台错误",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "consoleIssues": [],
+  "orderCreate": 1,
+  "imageUpload": 1,
+  "generatedAt": "2026-11-01T12:32:17.664Z"
+}

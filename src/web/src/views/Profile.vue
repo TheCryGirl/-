@@ -2,19 +2,24 @@
 import { onMounted, reactive, ref } from 'vue'
 import { addressApi, isOk, userApi, unwrapResult } from '../api'
 import { auth, setUser } from '../stores/auth'
+import { confirmAction } from '../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 
 const profile = reactive({ nickname: '', phone: '', avatar: '' })
-const profileLoading = ref(false)
-const profileMessage = ref('')
-const profileError = ref('')
+const profileSaving = ref(false)
+const profileLoadError = ref('')
 const avatarUploading = ref(false)
+const avatarInput = ref(null)
 
 const addresses = ref([])
 const addressLoading = ref(false)
-const addressError = ref('')
+const addressLoadError = ref('')
 const editingId = ref('')
 const formVisible = ref(false)
 const saving = ref(false)
+const removingId = ref('')
+const settingDefaultId = ref('')
+const addressFormRef = ref(null)
 const form = reactive({
   receiver: '',
   phone: '',
@@ -25,8 +30,16 @@ const form = reactive({
   defaultAddress: false,
 })
 
-function unwrap(res) {
-  return unwrapResult(res.data)
+// 校验规则与原页面保持一致：区/县选填，手机号只接受 11 位大陆手机号
+const addressRules = {
+  receiver: [{ required: true, message: '请填写收货人', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请填写手机号', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确', trigger: 'blur' },
+  ],
+  province: [{ required: true, message: '请填写省份', trigger: 'blur' }],
+  city: [{ required: true, message: '请填写城市', trigger: 'blur' }],
+  detail: [{ required: true, message: '请填写详细地址', trigger: 'blur' }],
 }
 
 function fillProfile(user) {
@@ -37,84 +50,107 @@ function fillProfile(user) {
 }
 
 async function loadProfile() {
+  profileLoadError.value = ''
   try {
-    const user = unwrap(await userApi.me())
+    const { data } = await userApi.me()
+    if (!isOk(data)) {
+      profileLoadError.value = data?.message || '加载个人信息失败'
+      return
+    }
+    const user = unwrapResult(data)
     // 失败时不能把错误包装当成用户信息写进登录态
     if (!user) {
-      profileError.value = '加载个人信息失败'
+      profileLoadError.value = '加载个人信息失败'
       return
     }
     setUser(user)
     fillProfile(user)
   } catch (err) {
-    profileError.value = err.response?.data?.message || err.message || '加载个人信息失败'
+    profileLoadError.value = resolveErrorMessage(err, '加载个人信息失败')
   }
 }
 
 async function saveProfile() {
-  profileLoading.value = true
-  profileMessage.value = ''
-  profileError.value = ''
+  if (profileSaving.value) return
+  profileSaving.value = true
   try {
-    const res = await userApi.updateMe({ ...profile })
-    const user = unwrap(res)
+    const { data } = await userApi.updateMe({ ...profile })
+    if (!isOk(data)) {
+      showError(data?.message || '保存失败')
+      return
+    }
+    const user = unwrapResult(data)
     if (!user) {
-      profileError.value = res.data?.message || '保存失败'
+      showError('保存失败：未返回用户信息')
       return
     }
     setUser(user)
     fillProfile(user)
-    profileMessage.value = '个人信息已保存'
+    showSuccess('个人信息已保存')
   } catch (err) {
-    profileError.value = err.response?.data?.message || err.message || '保存失败'
+    showError(resolveErrorMessage(err, '保存失败'))
   } finally {
-    profileLoading.value = false
+    profileSaving.value = false
   }
 }
 
-async function uploadAvatar(event) {
+function triggerAvatarUpload() {
+  avatarInput.value?.click()
+}
+
+async function handleAvatarFile(event) {
   const file = event.target.files?.[0]
-  if (!file) return
+  event.target.value = ''
+  if (!file || avatarUploading.value) return
   if (file.size > 5 * 1024 * 1024) {
-    profileError.value = '头像不能超过 5MB'
+    showError('头像不能超过 5MB')
     return
   }
+
   avatarUploading.value = true
-  profileMessage.value = ''
-  profileError.value = ''
   try {
+    // 保持原上传流程：FormData 字段固定为 file，一次选择只发一次请求
     const formData = new FormData()
     formData.append('file', file)
-    const res = await userApi.uploadAvatar(formData)
-    if (!isOk(res.data)) {
-      profileError.value = res.data?.message || '头像上传失败'
+    const { data } = await userApi.uploadAvatar(formData)
+    if (!isOk(data)) {
+      showError(data?.message || '头像上传失败')
       return
     }
-    const uploaded = unwrapResult(res.data)
-    profile.avatar = uploaded?.avatar || ''
+    const uploaded = unwrapResult(data)
+    if (!uploaded?.avatar) {
+      showError('头像上传失败，未返回头像地址')
+      return
+    }
+    profile.avatar = uploaded.avatar
     // 后端已把路径写回档案，重新拉取一次保证内存登录态与库一致
     await loadProfile()
-    profileMessage.value = '头像已更新'
+    showSuccess('头像已更新')
   } catch (err) {
-    profileError.value = err.response?.data?.message || err.message || '头像上传失败'
+    showError(resolveErrorMessage(err, '头像上传失败'))
   } finally {
     avatarUploading.value = false
-    event.target.value = ''
   }
 }
 
 async function loadAddresses() {
   const userId = auth.user?.userId
   if (!userId) {
-    addressError.value = '登录状态已失效，请重新登录'
+    addressLoadError.value = '登录状态已失效，请重新登录'
     return
   }
   addressLoading.value = true
-  addressError.value = ''
+  addressLoadError.value = ''
   try {
-    addresses.value = unwrap(await addressApi.list(userId)) || []
+    const { data } = await addressApi.list(userId)
+    if (!isOk(data)) {
+      addressLoadError.value = data?.message || '加载地址失败'
+      return
+    }
+    const payload = unwrapResult(data)
+    addresses.value = Array.isArray(payload) ? payload : []
   } catch (err) {
-    addressError.value = err.response?.data?.message || err.message || '加载地址失败'
+    addressLoadError.value = resolveErrorMessage(err, '加载地址失败')
   } finally {
     addressLoading.value = false
   }
@@ -149,62 +185,75 @@ function openEdit(addr) {
 }
 
 async function submitAddress() {
-  addressError.value = ''
-  if (!form.receiver || !form.phone || !form.province || !form.city || !form.detail) {
-    addressError.value = '请填写收货人、手机号、省份、城市和详细地址'
+  if (saving.value) return
+  try {
+    await addressFormRef.value?.validate()
+  } catch {
     return
   }
-  if (!/^1[3-9]\d{9}$/.test(form.phone)) {
-    addressError.value = '手机号格式不正确'
-    return
-  }
+
+  const isEditing = Boolean(editingId.value)
   saving.value = true
   try {
     const payload = { ...form }
-    const res = editingId.value
+    const res = isEditing
       ? await addressApi.update(editingId.value, payload)
       : await addressApi.create(payload)
     // 业务失败也是 HTTP 200，必须按 code 判断
     if (!isOk(res.data)) {
-      addressError.value = res.data?.message || '保存地址失败'
+      showError(res.data?.message || '保存地址失败')
       return
     }
     formVisible.value = false
     resetForm()
     await loadAddresses()
+    showSuccess(isEditing ? '地址已更新' : '地址已新增')
   } catch (err) {
-    addressError.value = err.response?.data?.message || err.message || '保存地址失败'
+    showError(resolveErrorMessage(err, '保存地址失败'))
   } finally {
     saving.value = false
   }
 }
 
 async function removeAddress(addr) {
-  if (!window.confirm(`确认删除地址「${addr.receiver} ${addr.detail}」？`)) return
-  addressError.value = ''
+  if (removingId.value) return
+  const ok = await confirmAction({
+    message: `确认删除地址「${addr.receiver} ${addr.detail}」？`,
+    danger: true,
+  })
+  if (!ok) return
+
+  removingId.value = addr.addressId
   try {
     const res = await addressApi.remove(addr.addressId)
     if (!isOk(res.data)) {
-      addressError.value = res.data?.message || '删除失败'
+      showError(res.data?.message || '删除失败')
       return
     }
     await loadAddresses()
+    showSuccess('地址已删除')
   } catch (err) {
-    addressError.value = err.response?.data?.message || err.message || '删除失败'
+    showError(resolveErrorMessage(err, '删除失败'))
+  } finally {
+    removingId.value = ''
   }
 }
 
 async function setDefault(addr) {
-  addressError.value = ''
+  if (settingDefaultId.value) return
+  settingDefaultId.value = addr.addressId
   try {
     const res = await addressApi.setDefault(addr.addressId)
     if (!isOk(res.data)) {
-      addressError.value = res.data?.message || '设置默认地址失败'
+      showError(res.data?.message || '设置默认地址失败')
       return
     }
     await loadAddresses()
+    showSuccess('默认地址已更新')
   } catch (err) {
-    addressError.value = err.response?.data?.message || err.message || '设置默认地址失败'
+    showError(resolveErrorMessage(err, '设置默认地址失败'))
+  } finally {
+    settingDefaultId.value = ''
   }
 }
 
@@ -216,197 +265,275 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="max-w-4xl mx-auto space-y-6">
+  <div class="max-w-4xl mx-auto space-y-4">
     <h1 class="text-lg font-semibold text-gray-900">个人中心</h1>
 
     <!-- 个人资料 -->
-    <section class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-medium text-gray-700">个人资料</h2>
-        <span class="text-xs text-gray-400">账号：{{ auth.user?.account }}</span>
-      </div>
-
-      <p v-if="profileMessage" class="text-sm text-green-600">{{ profileMessage }}</p>
-      <p v-if="profileError" class="text-sm text-red-600">{{ profileError }}</p>
-
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="text-sm text-gray-600">
-          昵称
-          <input
-            v-model="profile.nickname"
-            maxlength="20"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="2-20 个字符"
-          />
-        </label>
-        <label class="text-sm text-gray-600">
-          手机号
-          <input
-            v-model="profile.phone"
-            maxlength="11"
-            class="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="选填"
-          />
-        </label>
-        <div class="text-sm text-gray-600 sm:col-span-2">
-          头像
-          <div class="mt-1 flex items-center gap-3">
-            <img
-              v-if="profile.avatar"
-              :src="profile.avatar"
-              alt="头像"
-              class="w-14 h-14 rounded-full object-cover border border-gray-200"
-            />
-            <div
-              v-else
-              class="w-14 h-14 rounded-full bg-gray-100 text-xs text-gray-400 flex items-center justify-center"
-            >
-              未设置
-            </div>
-            <label
-              class="px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 cursor-pointer hover:bg-gray-50"
-            >
-              {{ avatarUploading ? '上传中…' : '上传头像' }}
-              <input
-                type="file"
-                accept="image/*"
-                class="hidden"
-                :disabled="avatarUploading"
-                @change="uploadAvatar"
-              />
-            </label>
-            <button v-if="profile.avatar" class="text-xs text-red-500" @click="profile.avatar = ''">
-              移除
-            </button>
-          </div>
-          <input
-            v-model="profile.avatar"
-            maxlength="255"
-            class="mt-2 w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="也可以直接填写图片地址"
-          />
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-base font-medium">个人资料</span>
+          <span class="text-xs text-gray-400">账号：{{ auth.user?.account || '-' }}</span>
         </div>
-      </div>
+      </template>
 
-      <div class="flex justify-end">
-        <button
-          class="px-5 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-          :disabled="profileLoading"
-          @click="saveProfile"
-        >
-          {{ profileLoading ? '保存中…' : '保存资料' }}
-        </button>
-      </div>
-    </section>
+      <el-alert
+        v-if="profileLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="mb-4"
+        :title="profileLoadError"
+      >
+        <el-button link type="primary" data-testid="profile-retry" @click="loadProfile">重新加载</el-button>
+      </el-alert>
+
+      <el-form :model="profile" label-width="80px" @submit.prevent>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <el-form-item label="昵称">
+            <el-input
+              v-model="profile.nickname"
+              maxlength="20"
+              show-word-limit
+              placeholder="2-20 个字符"
+              data-testid="profile-nickname"
+            />
+          </el-form-item>
+          <el-form-item label="手机号">
+            <el-input
+              v-model="profile.phone"
+              maxlength="11"
+              placeholder="选填"
+              data-testid="profile-phone"
+            />
+          </el-form-item>
+
+          <el-form-item label="头像" class="sm:col-span-2">
+            <div class="w-full space-y-2">
+              <div class="flex flex-wrap items-center gap-3">
+                <el-image
+                  v-if="profile.avatar"
+                  :src="profile.avatar"
+                  fit="cover"
+                  class="w-14 h-14 rounded-full border border-gray-200"
+                  :preview-src-list="[profile.avatar]"
+                  preview-teleported
+                >
+                  <template #error>
+                    <div class="w-14 h-14 rounded-full bg-gray-100 text-xs text-gray-400 flex items-center justify-center">
+                      加载失败
+                    </div>
+                  </template>
+                </el-image>
+                <div
+                  v-else
+                  class="w-14 h-14 rounded-full bg-gray-100 text-xs text-gray-400 flex items-center justify-center"
+                >
+                  未设置
+                </div>
+
+                <el-button
+                  :loading="avatarUploading"
+                  data-testid="profile-avatar-upload"
+                  @click="triggerAvatarUpload"
+                >
+                  {{ avatarUploading ? '上传中…' : '上传头像' }}
+                </el-button>
+                <el-button
+                  v-if="profile.avatar"
+                  link
+                  type="danger"
+                  data-testid="profile-avatar-remove"
+                  @click="profile.avatar = ''"
+                >
+                  移除
+                </el-button>
+                <input
+                  ref="avatarInput"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  :disabled="avatarUploading"
+                  data-testid="profile-avatar-file"
+                  @change="handleAvatarFile"
+                />
+              </div>
+
+              <el-input
+                v-model="profile.avatar"
+                maxlength="255"
+                placeholder="也可以直接填写图片地址"
+                data-testid="profile-avatar-url"
+              />
+              <p class="text-xs text-gray-400">头像不超过 5MB，上传后立即写入个人档案。</p>
+            </div>
+          </el-form-item>
+        </div>
+
+        <div class="flex justify-end">
+          <el-button
+            type="primary"
+            :loading="profileSaving"
+            data-testid="profile-save"
+            @click="saveProfile"
+          >
+            {{ profileSaving ? '保存中…' : '保存资料' }}
+          </el-button>
+        </div>
+      </el-form>
+    </el-card>
 
     <!-- 收货地址 -->
-    <section class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-medium text-gray-700">收货地址</h2>
-        <button
-          class="px-3 py-1.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50"
-          @click="openCreate"
-        >
-          新增地址
-        </button>
-      </div>
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-base font-medium">收货地址</span>
+          <el-button type="primary" data-testid="profile-address-create" @click="openCreate">
+            新增地址
+          </el-button>
+        </div>
+      </template>
 
-      <p v-if="addressError" class="text-sm text-red-600">{{ addressError }}</p>
-      <p v-if="addressLoading" class="text-sm text-gray-500">加载中…</p>
-      <p v-else-if="!addresses.length" class="text-sm text-gray-500">还没有收货地址</p>
+      <el-alert
+        v-if="addressLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="mb-3"
+        :title="addressLoadError"
+      >
+        <el-button link type="primary" data-testid="profile-address-retry" @click="loadAddresses">
+          重新加载
+        </el-button>
+      </el-alert>
 
-      <ul v-else class="space-y-3">
-        <li
-          v-for="addr in addresses"
-          :key="addr.addressId"
-          class="flex items-start justify-between gap-4 p-3 border border-gray-200 rounded-md"
-        >
-          <div class="text-sm">
-            <p class="font-medium text-gray-900">
-              {{ addr.receiver }} {{ addr.phone }}
-              <span
-                v-if="addr.defaultAddress ?? addr.isDefault"
-                class="ml-2 text-xs text-blue-600 border border-blue-600 px-1 rounded"
+      <template v-else>
+        <div v-if="addressLoading" v-loading="true" class="min-h-28 flex items-center justify-center text-sm text-gray-400">
+          正在加载地址…
+        </div>
+
+        <el-empty v-else-if="!addresses.length" description="还没有收货地址">
+          <el-button type="primary" plain data-testid="profile-address-empty-create" @click="openCreate">
+            新增第一条地址
+          </el-button>
+        </el-empty>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="addr in addresses"
+            :key="addr.addressId"
+            class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-gray-200 p-3"
+            :data-testid="`profile-address-${addr.addressId}`"
+          >
+            <div class="min-w-0 text-sm">
+              <p class="font-medium text-gray-900 break-words">
+                {{ addr.receiver }} {{ addr.phone }}
+                <el-tag v-if="addr.defaultAddress ?? addr.isDefault" type="primary" size="small" class="ml-2">
+                  默认
+                </el-tag>
+              </p>
+              <p class="text-gray-500 break-words mt-1">
+                {{ addr.province }} {{ addr.city }} {{ addr.district }} {{ addr.detail }}
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <el-button
+                v-if="!(addr.defaultAddress ?? addr.isDefault)"
+                link
+                type="primary"
+                size="small"
+                :loading="settingDefaultId === addr.addressId"
+                :data-testid="`profile-address-default-${addr.addressId}`"
+                @click="setDefault(addr)"
               >
-                默认
-              </span>
-            </p>
-            <p class="text-gray-500">
-              {{ addr.province }} {{ addr.city }} {{ addr.district }} {{ addr.detail }}
-            </p>
+                设为默认
+              </el-button>
+              <el-button
+                link
+                type="primary"
+                size="small"
+                :data-testid="`profile-address-edit-${addr.addressId}`"
+                @click="openEdit(addr)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                size="small"
+                :loading="removingId === addr.addressId"
+                :data-testid="`profile-address-delete-${addr.addressId}`"
+                @click="removeAddress(addr)"
+              >
+                删除
+              </el-button>
+            </div>
           </div>
-          <div class="flex items-center gap-3 text-sm whitespace-nowrap">
-            <button
-              v-if="!(addr.defaultAddress ?? addr.isDefault)"
-              class="text-gray-500 hover:text-blue-600"
-              @click="setDefault(addr)"
-            >
-              设为默认
-            </button>
-            <button class="text-gray-500 hover:text-blue-600" @click="openEdit(addr)">编辑</button>
-            <button class="text-red-500 hover:text-red-600" @click="removeAddress(addr)">删除</button>
-          </div>
-        </li>
-      </ul>
+        </div>
+      </template>
+    </el-card>
 
-      <!-- 地址表单 -->
-      <div v-if="formVisible" class="border-t border-gray-100 pt-4 space-y-3">
-        <h3 class="text-sm font-medium text-gray-700">
-          {{ editingId ? '编辑地址' : '新增地址' }}
-        </h3>
-        <div class="grid gap-3 sm:grid-cols-2">
-          <input
-            v-model="form.receiver"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="收货人"
-          />
-          <input
-            v-model="form.phone"
-            maxlength="11"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="手机号"
-          />
-          <input
-            v-model="form.province"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="省份"
-          />
-          <input
-            v-model="form.city"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="城市"
-          />
-          <input
-            v-model="form.district"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm"
-            placeholder="区/县（选填）"
-          />
-          <label class="flex items-center gap-2 text-sm text-gray-600">
-            <input v-model="form.defaultAddress" type="checkbox" />
-            设为默认地址
-          </label>
-          <input
+    <!-- 地址表单 -->
+    <el-dialog
+      v-model="formVisible"
+      :title="editingId ? '编辑地址' : '新增地址'"
+      width="560px"
+      destroy-on-close
+    >
+      <el-form ref="addressFormRef" :model="form" :rules="addressRules" label-width="90px">
+        <el-form-item label="收货人" prop="receiver">
+          <el-input v-model="form.receiver" maxlength="20" placeholder="请输入收货人" data-testid="address-form-receiver" />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="form.phone" maxlength="11" placeholder="11 位手机号" data-testid="address-form-phone" />
+        </el-form-item>
+        <el-form-item label="省份" prop="province">
+          <el-input v-model="form.province" maxlength="32" placeholder="省份" data-testid="address-form-province" />
+        </el-form-item>
+        <el-form-item label="城市" prop="city">
+          <el-input v-model="form.city" maxlength="32" placeholder="城市" data-testid="address-form-city" />
+        </el-form-item>
+        <el-form-item label="区/县">
+          <el-input v-model="form.district" maxlength="32" placeholder="选填" data-testid="address-form-district" />
+        </el-form-item>
+        <el-form-item label="详细地址" prop="detail">
+          <el-input
             v-model="form.detail"
-            class="px-3 py-2 border border-gray-300 rounded-md text-sm sm:col-span-2"
-            placeholder="详细地址（街道、门牌号）"
+            type="textarea"
+            :rows="2"
+            maxlength="255"
+            placeholder="街道、门牌号"
+            data-testid="address-form-detail"
           />
-        </div>
-        <div class="flex justify-end gap-3">
-          <button
-            class="px-4 py-2 rounded-md border border-gray-300 text-gray-600 text-sm hover:bg-gray-50"
-            @click="formVisible = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-            :disabled="saving"
-            @click="submitAddress"
-          >
-            {{ saving ? '保存中…' : '保存地址' }}
-          </button>
-        </div>
-      </div>
-    </section>
+        </el-form-item>
+        <el-form-item label="默认地址">
+          <el-checkbox v-model="form.defaultAddress" data-testid="address-form-default">
+            设为默认地址
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button :disabled="saving" data-testid="address-form-cancel" @click="formVisible = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          data-testid="address-form-submit"
+          @click="submitAddress"
+        >
+          {{ saving ? '保存中…' : '保存地址' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* Element Plus 按钮默认不显示焦点环，键盘操作时需要可见反馈 */
+.el-button:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+</style>
