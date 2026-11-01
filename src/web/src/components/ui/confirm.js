@@ -1,4 +1,8 @@
 import { ElMessageBox } from 'element-plus'
+// ElMessageBox 是以函数方式调用的，不会出现在模板里，
+// unplugin-vue-components 的按需解析只处理模板标签，因此必须手动引入样式，
+// 否则确认框渲染出来是空白的（表现为「点了没反应」）。
+import 'element-plus/es/components/message-box/style/css'
 
 /**
  * 统一确认框。
