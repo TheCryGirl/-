@@ -1,135 +1,221 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+/**
+ * 卖家商品管理（#81 T01，试点页）
+ *
+ * 结构照 src/views/_StandardPage.vue：el-card 包 UiTable，加载 / 空 / 失败三态分开，
+ * 写操作一律 confirmAction + isOk + 防重复提交。
+ *
+ * 数据沿用 GET /products/mine，上下架沿用 PUT /products/:id/status，
+ * 原操作条件（在售可下架、已下架可上架、已驳回提示重新提交）保持不变。
+ *
+ * 注：后端 /products/mine 支持 status/page/size，但 src/api/index.js 的 mine()
+ * 没有透传参数，该文件属禁改清单，因此本页暂不做筛选与分页（与原页面范围一致）。
+ */
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { isOk, productApi, unwrapResult } from '../../api'
+import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '../../constants/status'
+import { confirmAction } from '../../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import UiTable from '../../components/ui/UiTable.vue'
 
-const products = ref([])
-const loading = ref(true)
-const error = ref('')
+const router = useRouter()
 
-async function load() {
+/* ---------- 1. 状态 ---------- */
+const list = ref([])
+const loading = ref(false)
+const loadError = ref('')
+/** 正在上下架的商品 ID；非空时忽略新的操作，避免重复提交 */
+const operatingId = ref('')
+
+/* ---------- 2. 计算属性 ---------- */
+const columns = computed(() => [
+  { key: 'title', label: '商品', minWidth: 260, slot: 'product' },
+  { key: 'price', label: '价格', width: 120, align: 'right', slot: 'price' },
+  { key: 'stock', label: '库存', width: 100, align: 'right' },
+  { key: 'status', label: '状态', width: 110, align: 'center', slot: 'status' },
+  { key: 'createdAt', label: '创建时间', width: 160, formatter: (row) => formatDateTime(row.createdAt) },
+])
+
+/* ---------- 3. 方法 ---------- */
+async function fetchList() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const { data } = await productApi.mine()
-    const payload = unwrapResult(data)
-    if (!payload) {
-      error.value = data?.message || '加载商品失败'
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载商品失败'
+      list.value = []
       return
     }
-    products.value = Array.isArray(payload) ? payload : payload?.list || []
+    const payload = unwrapResult(data)
+    list.value = Array.isArray(payload) ? payload : payload?.list ?? []
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载失败'
+    loadError.value = resolveErrorMessage(err, '加载商品失败')
+    list.value = []
   } finally {
     loading.value = false
   }
 }
 
-async function updateStatus(productId, status) {
-  error.value = ''
+function handleCreate() {
+  router.push({ name: 'seller-product-new' })
+}
+
+function handleEdit(row) {
+  router.push({ name: 'seller-product-edit', params: { id: row.productId } })
+}
+
+/**
+ * 上下架：保持原按钮语义（点了就提交），提交前二次确认。
+ * 后端失败只提示错误、不改本地行数据，避免界面出现假成功。
+ */
+async function handleChangeStatus(row, next) {
+  const actionText = next === 'OFF_SHELF' ? '下架' : '上架'
+
+  const ok = await confirmAction({
+    message: `确定${actionText}商品「${row.title}」？`,
+    danger: next === 'OFF_SHELF',
+  })
+  if (!ok) return
+
+  if (operatingId.value) return
+  operatingId.value = row.productId
   try {
-    const { data } = await productApi.updateStatus(productId, status)
+    const { data } = await productApi.updateStatus(row.productId, next)
     if (!isOk(data)) {
-      error.value = data?.message || '操作失败'
+      showError(data?.message || `${actionText}失败`)
       return
     }
-    await load()
+    showSuccess(`${actionText}成功`)
+    await fetchList()
   } catch (err) {
-    error.value = err.response?.data?.message || '操作失败'
+    showError(resolveErrorMessage(err, `${actionText}失败`))
+  } finally {
+    operatingId.value = ''
   }
 }
 
-function statusText(s) {
-  const map = { PENDING: '待审核', ON_SALE: '在售', OFF_SHELF: '已下架', REJECTED: '已驳回' }
-  return map[s] || s
+/** 金额：后端单位是分 */
+function formatMoney(cents) {
+  const n = Number(cents)
+  return Number.isFinite(n) ? `¥${(n / 100).toFixed(2)}` : '-'
 }
 
-function statusClass(s) {
-  if (s === 'ON_SALE') return 'bg-green-100 text-green-700'
-  if (s === 'REJECTED') return 'bg-red-100 text-red-700'
-  if (s === 'OFF_SHELF') return 'bg-gray-100 text-gray-500'
-  return 'bg-yellow-100 text-yellow-700'
+/** 时间：统一 YYYY-MM-DD HH:mm */
+function formatDateTime(value) {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 16)
 }
 
-function formatPrice(cents) {
-  return (cents / 100).toFixed(2)
-}
-
-onMounted(load)
+/* ---------- 4. 生命周期 ---------- */
+onMounted(fetchList)
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">商品管理</h1>
-      <RouterLink
-        :to="{ name: 'seller-product-new' }"
-        class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="text-base font-medium">商品列表</span>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-400">共 {{ list.length }} 件</span>
+            <el-button type="primary" data-testid="seller-products-create" @click="handleCreate">
+              发布商品
+            </el-button>
+          </div>
+        </div>
+      </template>
+
+      <!-- 失败态：与空态严格区分，可重试 -->
+      <el-result v-if="loadError" status="error" title="加载商品失败" :sub-title="loadError">
+        <template #extra>
+          <el-button type="primary" data-testid="seller-products-retry" @click="fetchList">
+            重试
+          </el-button>
+        </template>
+      </el-result>
+
+      <UiTable
+        v-else
+        :columns="columns"
+        :data="list"
+        :loading="loading"
+        row-key="productId"
+        empty-text="暂无商品"
+        show-actions
+        actions-width="170"
       >
-        + 发布商品
-      </RouterLink>
-    </div>
+        <template #product="{ row }">
+          <div class="flex items-center gap-3">
+            <el-image
+              v-if="row.mainImage"
+              :src="row.mainImage"
+              fit="cover"
+              class="w-10 h-10 rounded shrink-0"
+              :preview-src-list="[row.mainImage]"
+              preview-teleported
+            />
+            <div
+              v-else
+              class="w-10 h-10 rounded bg-gray-100 text-xs text-gray-400 flex items-center justify-center shrink-0"
+            >
+              无图
+            </div>
+            <div class="min-w-0">
+              <p class="truncate text-gray-800">{{ row.title }}</p>
+              <p v-if="row.subtitle" class="truncate text-xs text-gray-400">{{ row.subtitle }}</p>
+            </div>
+          </div>
+        </template>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+        <template #price="{ row }">
+          <span class="text-red-600 font-medium">{{ formatMoney(row.price) }}</span>
+        </template>
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
-    <div v-else-if="!products.length" class="py-16 text-center text-gray-400 text-sm">
-      暂无商品
-    </div>
+        <template #status="{ row }">
+          <el-tag :type="statusTag(PRODUCT_STATUS_TAG, row.status)" size="small">
+            {{ statusText(PRODUCT_STATUS_MAP, row.status) }}
+          </el-tag>
+        </template>
 
-    <div v-else class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="text-left px-4 py-2.5 font-medium">商品</th>
-            <th class="text-right px-4 py-2.5 font-medium">价格</th>
-            <th class="text-left px-4 py-2.5 font-medium">状态</th>
-            <th class="text-left px-4 py-2.5 font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="p in products" :key="p.productId">
-            <td class="px-4 py-2.5">
-              <div class="flex items-center gap-3">
-                <img :src="p.mainImage || '/icons.svg'" class="w-12 h-12 object-cover rounded" alt="" />
-                <span class="text-gray-900">{{ p.title }}</span>
-              </div>
-            </td>
-            <td class="px-4 py-2.5 text-right text-red-600 font-medium">
-              ¥{{ formatPrice(p.price) }}
-            </td>
-            <td class="px-4 py-2.5">
-              <span class="text-xs px-2 py-0.5 rounded" :class="statusClass(p.status)">
-                {{ statusText(p.status) }}
-              </span>
-            </td>
-            <td class="px-4 py-2.5">
-              <RouterLink
-                :to="{ name: 'seller-product-edit', params: { id: p.productId } }"
-                class="text-xs text-gray-600 hover:text-blue-600 mr-2"
-              >
-                编辑
-              </RouterLink>
-              <button
-                v-if="p.status === 'ON_SALE'"
-                class="text-xs text-gray-600 hover:text-blue-600 mr-2"
-                @click="updateStatus(p.productId, 'OFF_SHELF')"
-              >
-                下架
-              </button>
-              <button
-                v-if="p.status === 'OFF_SHELF'"
-                class="text-xs text-gray-600 hover:text-blue-600"
-                @click="updateStatus(p.productId, 'ON_SALE')"
-              >
-                上架
-              </button>
-              <span v-if="p.status === 'REJECTED'" class="text-xs text-gray-400">
-                请编辑后重新提交审核
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <template #actions="{ row }">
+          <el-button
+            link
+            type="primary"
+            size="small"
+            :data-testid="`seller-products-edit-${row.productId}`"
+            @click="handleEdit(row)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            v-if="row.status === 'ON_SALE'"
+            link
+            type="warning"
+            size="small"
+            :loading="operatingId === row.productId"
+            :data-testid="`seller-products-off-shelf-${row.productId}`"
+            @click="handleChangeStatus(row, 'OFF_SHELF')"
+          >
+            下架
+          </el-button>
+          <el-button
+            v-if="row.status === 'OFF_SHELF'"
+            link
+            type="success"
+            size="small"
+            :loading="operatingId === row.productId"
+            :data-testid="`seller-products-on-sale-${row.productId}`"
+            @click="handleChangeStatus(row, 'ON_SALE')"
+          >
+            上架
+          </el-button>
+          <span v-if="row.status === 'REJECTED'" class="text-xs text-gray-400">
+            请编辑后重新提交审核
+          </span>
+        </template>
+      </UiTable>
+    </el-card>
   </div>
 </template>
