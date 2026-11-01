@@ -138,6 +138,11 @@ test(order): 增加并发下单100并发的测试用例 (#40)
 
 **PR 正文模板**：
 
+> **2026-11-01 更新**：仓库已有 `.github/pull_request_template.md`，创建 PR 时**自动带出**，不用手写。
+> 模板含 8 项自检，涉及前端时尤其要逐项勾选（见 [06-开发规范](06-开发规范.md) 第 11.8 节）。
+
+格式示意（以实际模板文件为准）：
+
 ```markdown
 ## 关联 Issue
 Closes #12
@@ -147,14 +152,30 @@ Closes #12
 - 实现幂等令牌校验
 - 补充单元测试
 
-## 自测情况
-- [x] 本地跑通完整下单流程
-- [x] 重复提交同一令牌只创建一笔订单
+## 自检（8 项）
+- [ ] 只改了自己负责的文件
+- [ ] 无直接 import element-plus
+- [ ] 无 window.confirm / window.alert
+- [ ] 无 @/ 别名路径
+- [ ] 列表有 loading / empty / error 三态
+- [ ] 分页用 usePagination，从 1 起
+- [ ] 本地 pnpm build 通过
+- [ ] 试点页已由组长验收
 
 ## 截图（如涉及界面）
 ```
 
 **审查要求**：至少一名其他成员 approve 后合入。PR 的审查记录同样是「协作过程」的证据。
+
+**合并前检查**：由组长执行，任何一条不过不合并——**只要有一次「检查不过也照样合并」，所有规则就作废了**。
+
+```bash
+cd src/web
+grep -rn "from 'element-plus'" src/views
+grep -rn "window.confirm\|window.alert" src/views
+grep -rn "records" src/views
+pnpm build
+```
 
 ## 六、Project 看板：进度可视化
 
