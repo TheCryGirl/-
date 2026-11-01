@@ -16,7 +16,7 @@ import { isOk, paymentApi, unwrapResult } from '../../api'
 import { AFTER_SALE_STATUS_TAG, statusTag } from '../../constants/status'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
-import { formatPrice, formatTime } from '../../utils/format'
+import { formatPrice, formatTime, formatTotal } from '../../utils/format'
 import {
   afterSaleStatusLabel,
   afterSaleStatusOptions,
@@ -170,7 +170,7 @@ onMounted(fetchList)
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">售后处理</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 张</span>
+      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '单', list.length) }}</span>
     </div>
 
     <el-alert
@@ -178,7 +178,7 @@ onMounted(fetchList)
       type="info"
       :closable="false"
       show-icon
-      :title="`共 ${total} 张，当前仅显示前 ${list.length} 张`"
+      :title="`共 ${total} 单，当前仅显示前 ${list.length} 单`"
     />
 
     <!-- 筛选区：不加卡片 -->
