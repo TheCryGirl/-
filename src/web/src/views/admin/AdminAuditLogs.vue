@@ -1,17 +1,22 @@
-<script setup>
+﻿<script setup>
 import { onMounted, ref } from 'vue'
-import { auditApi, unwrapResult } from '../../api'
+import { auditApi, isOk, unwrapResult } from '../../api'
+import { resolveErrorMessage } from '../../components/ui/message'
+import UiTable from '../../components/ui/UiTable.vue'
+import { usePagination } from '../../composables/usePagination'
 
+/* ---------- 1. 状态 ---------- */
 const logs = ref([])
-const page = ref(1)
-const size = ref(20)
-const total = ref(0)
+const loading = ref(false)
+const loadError = ref('')
 const operatorId = ref('')
 const action = ref('')
+/** 日期保持原接口要求的 'YYYY-MM-DD' 字符串，不做 Date 对象/时区转换 */
 const from = ref('')
 const to = ref('')
-const loading = ref(true)
-const error = ref('')
+
+const pagination = usePagination({ defaultSize: 20, onChange: () => load() })
+const { page, size, total, onPageChange, onSizeChange } = pagination
 
 const actionOptions = [
   { value: '', label: '全部动作' },
@@ -24,27 +29,43 @@ const actionOptions = [
   { value: 'CONFIG_UPDATE', label: '平台配置变更' },
 ]
 
+/* ---------- 2. 计算属性 ---------- */
+const columns = [
+  { key: 'createdAt', label: '时间', width: 180, formatter: (row) => formatTime(row.createdAt) },
+  { key: 'operatorId', label: '操作人', width: 140 },
+  { key: 'operatorRole', label: '角色', width: 100 },
+  { key: 'action', label: '动作', width: 140, formatter: (row) => actionLabel(row.action) },
+  { key: 'targetType', label: '对象', width: 180, slot: 'target' },
+  { key: 'detail', label: '详情', minWidth: 220, slot: 'detail', tooltip: false },
+  { key: 'result', label: '结果', width: 90, align: 'center', slot: 'result' },
+]
+
+/* ---------- 3. 方法 ---------- */
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
-    const { data } = await auditApi.list({
-      page: page.value,
-      size: size.value,
-      operatorId: operatorId.value.trim() || undefined,
-      action: action.value || undefined,
-      from: from.value || undefined,
-      to: to.value || undefined,
-    })
-    const payload = unwrapResult(data)
-    if (!payload) {
-      error.value = data?.message || '加载失败'
+    const params = { page: page.value, size: size.value }
+    if (operatorId.value.trim()) params.operatorId = operatorId.value.trim()
+    if (action.value) params.action = action.value
+    // 原样传 'YYYY-MM-DD' 字符串，后端按该格式解析
+    if (from.value) params.from = from.value
+    if (to.value) params.to = to.value
+
+    const { data } = await auditApi.list(params)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载审计日志失败'
+      logs.value = []
+      total.value = 0
       return
     }
-    logs.value = payload.list || []
-    total.value = payload.total || 0
+    const payload = unwrapResult(data)
+    logs.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? logs.value.length
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载失败'
+    loadError.value = resolveErrorMessage(err, '加载审计日志失败')
+    logs.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -55,8 +76,18 @@ function search() {
   load()
 }
 
+function resetFilters() {
+  operatorId.value = ''
+  action.value = ''
+  from.value = ''
+  to.value = ''
+  page.value = 1
+  load()
+}
+
 function actionLabel(value) {
-  return actionOptions.find((item) => item.value === value)?.label || value || '—'
+  if (!value) return '—'
+  return actionOptions.find((item) => item.value === value)?.label || value
 }
 
 function formatTime(t) {
@@ -68,102 +99,101 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-lg font-semibold text-gray-900">操作审计日志</h1>
+    <el-form inline class="bg-white p-4 rounded-lg" @submit.prevent>
+      <el-form-item label="操作人 ID">
+        <el-input
+          v-model="operatorId"
+          placeholder="操作人 ID"
+          clearable
+          style="width: 180px"
+          @keyup.enter="search"
+          @clear="search"
+        />
+      </el-form-item>
+      <el-form-item label="动作">
+        <el-select v-model="action" style="width: 170px" @change="search">
+          <el-option v-for="item in actionOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="时间">
+        <el-date-picker
+          v-model="from"
+          type="date"
+          placeholder="开始日期"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          style="width: 150px"
+        />
+        <span class="mx-2 text-gray-400">至</span>
+        <el-date-picker
+          v-model="to"
+          type="date"
+          placeholder="结束日期"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          style="width: 150px"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </el-form-item>
+    </el-form>
 
-    <div class="flex flex-wrap items-center gap-2">
-      <input
-        v-model="operatorId"
-        type="text"
-        placeholder="操作人 ID"
-        class="w-44 px-3 py-2 text-sm border border-gray-300 rounded-md"
-        @keyup.enter="search"
-      />
-      <select
-        v-model="action"
-        class="px-3 py-2 text-sm border border-gray-300 rounded-md bg-white"
-        @change="search"
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="text-base font-medium">审计记录</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 条</span>
+        </div>
+      </template>
+
+      <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
+        <template #extra>
+          <el-button type="primary" @click="load">重试</el-button>
+        </template>
+      </el-result>
+
+      <UiTable
+        v-else
+        :columns="columns"
+        :data="logs"
+        :loading="loading"
+        row-key="auditId"
+        empty-text="暂无审计记录"
       >
-        <option v-for="item in actionOptions" :key="item.value" :value="item.value">
-          {{ item.label }}
-        </option>
-      </select>
-      <label class="flex items-center gap-1 text-xs text-gray-500">
-        从
-        <input v-model="from" type="date" class="px-2 py-1.5 text-sm border border-gray-300 rounded-md" />
-      </label>
-      <label class="flex items-center gap-1 text-xs text-gray-500">
-        到
-        <input v-model="to" type="date" class="px-2 py-1.5 text-sm border border-gray-300 rounded-md" />
-      </label>
-      <button
-        class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
-        @click="search"
-      >
-        查询
-      </button>
-    </div>
+        <template #target="{ row }">
+          <span class="text-gray-500">
+            {{ row.targetType || '—' }}<span v-if="row.targetId">：{{ row.targetId }}</span>
+          </span>
+        </template>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+        <template #detail="{ row }">
+          <div class="max-w-80 whitespace-pre-wrap break-all line-clamp-2">{{ row.detail || '—' }}</div>
+        </template>
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
+        <template #result="{ row }">
+          <el-tag :type="row.result === 'SUCCESS' ? 'success' : 'danger'" size="small">
+            {{ row.result === 'SUCCESS' ? '成功' : '失败' }}
+          </el-tag>
+        </template>
 
-    <div v-else class="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="text-left px-4 py-2.5 font-medium">时间</th>
-            <th class="text-left px-4 py-2.5 font-medium">操作人</th>
-            <th class="text-left px-4 py-2.5 font-medium">角色</th>
-            <th class="text-left px-4 py-2.5 font-medium">动作</th>
-            <th class="text-left px-4 py-2.5 font-medium">对象</th>
-            <th class="text-left px-4 py-2.5 font-medium">详情</th>
-            <th class="text-left px-4 py-2.5 font-medium">结果</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="log in logs" :key="log.auditId">
-            <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">{{ formatTime(log.createdAt) }}</td>
-            <td class="px-4 py-2.5 text-gray-900 whitespace-nowrap">{{ log.operatorId || '—' }}</td>
-            <td class="px-4 py-2.5 text-gray-600 whitespace-nowrap">{{ log.operatorRole || '—' }}</td>
-            <td class="px-4 py-2.5 text-gray-700 whitespace-nowrap">{{ actionLabel(log.action) }}</td>
-            <td class="px-4 py-2.5 text-gray-500 whitespace-nowrap">
-              {{ log.targetType }}<span v-if="log.targetId">：{{ log.targetId }}</span>
-            </td>
-            <td class="px-4 py-2.5 text-gray-700 max-w-80">
-              <span class="line-clamp-2">{{ log.detail || '—' }}</span>
-            </td>
-            <td class="px-4 py-2.5 whitespace-nowrap">
-              <span
-                class="text-xs px-2 py-0.5 rounded"
-                :class="log.result === 'SUCCESS' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-              >
-                {{ log.result === 'SUCCESS' ? '成功' : '失败' }}
-              </span>
-            </td>
-          </tr>
-          <tr v-if="!logs.length">
-            <td colspan="7" class="px-4 py-10 text-center text-gray-400">暂无审计记录</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <template #pagination>
+          <el-pagination
+            :current-page="page"
+            :page-size="size"
+            :total="total"
+            :page-sizes="[20, 50, 100]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPageChange"
+            @size-change="onSizeChange"
+          />
+        </template>
+      </UiTable>
+    </el-card>
 
-    <div v-if="total > size" class="flex items-center justify-center gap-2">
-      <button
-        class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
-        :disabled="page === 1"
-        @click="page--; load()"
-      >
-        上一页
-      </button>
-      <span class="text-sm text-gray-500">{{ page }} / {{ Math.ceil(total / size) }}</span>
-      <button
-        class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
-        :disabled="page * size >= total"
-        @click="page++; load()"
-      >
-        下一页
-      </button>
-    </div>
+    <p class="text-xs text-gray-400">
+      审计日志为只读记录，按时间倒序展示最近的操作；日期按服务器当地日期筛选。
+    </p>
   </div>
 </template>

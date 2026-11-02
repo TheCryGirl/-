@@ -1,6 +1,8 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
-import { orderApi, paymentApi, unwrapResult } from '../../api'
+import { isOk, orderApi, paymentApi, unwrapResult } from '../../api'
+import { ORDER_STATUS_MAP, statusText } from '../../constants/status'
+import { resolveErrorMessage } from '../../components/ui/message'
 
 /**
  * 资金对账：按订单口径核对「应收 / 已收 / 已退」。
@@ -14,33 +16,16 @@ import { orderApi, paymentApi, unwrapResult } from '../../api'
  * - 已退 = 退款单中状态 SUCCESS 的金额之和
  * - 净入账 = 已收 − 已退
  */
+/* ---------- 1. 状态 ---------- */
 const orders = ref([])
 const refunds = ref([])
-const loading = ref(true)
-const error = ref('')
+const loading = ref(false)
+const loadError = ref('')
 
 /** 这些状态的订单代表钱已实际到账 */
 const PAID_STATUS = ['PAID', 'SHIPPED', 'COMPLETED', 'REFUNDED']
 
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const [orderRes, refundRes] = await Promise.all([
-      orderApi.list({ page: 1, size: 200 }),
-      paymentApi.refunds({ page: 1, size: 200 }),
-    ])
-    const o = unwrapResult(orderRes.data)
-    const r = unwrapResult(refundRes.data)
-    orders.value = Array.isArray(o) ? o : o?.list || []
-    refunds.value = Array.isArray(r) ? r : r?.list || []
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载对账数据失败'
-  } finally {
-    loading.value = false
-  }
-}
-
+/* ---------- 2. 计算属性 ---------- */
 const stats = computed(() => {
   let gmv = 0 // 全部下单金额
   let paidCount = 0
@@ -85,6 +70,14 @@ const stats = computed(() => {
   }
 })
 
+const statusRows = computed(() =>
+  Object.entries(stats.value.byStatus).map(([code, count]) => ({
+    code,
+    label: statusText(ORDER_STATUS_MAP, code, code),
+    count,
+  })),
+)
+
 /** 按天汇总净入账，用于发现某天资金异常 */
 const daily = computed(() => {
   const map = new Map()
@@ -110,8 +103,39 @@ const daily = computed(() => {
     .sort((a, b) => b.day.localeCompare(a.day))
 })
 
-function yuan(cents) {
-  return ((cents || 0) / 100).toFixed(2)
+/* ---------- 3. 方法 ---------- */
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const [orderRes, refundRes] = await Promise.all([
+      orderApi.list({ page: 1, size: 200 }),
+      paymentApi.refunds({ page: 1, size: 200 }),
+    ])
+    if (!isOk(orderRes.data) || !isOk(refundRes.data)) {
+      loadError.value =
+        orderRes.data?.message || refundRes.data?.message || '加载对账数据失败'
+      orders.value = []
+      refunds.value = []
+      return
+    }
+    const o = unwrapResult(orderRes.data)
+    const r = unwrapResult(refundRes.data)
+    orders.value = Array.isArray(o) ? o : o?.list ?? []
+    refunds.value = Array.isArray(r) ? r : r?.list ?? []
+  } catch (err) {
+    loadError.value = resolveErrorMessage(err, '加载对账数据失败')
+    orders.value = []
+    refunds.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+/** 金额：后端为分 */
+function formatMoney(cents) {
+  const n = Number(cents)
+  return (Number.isFinite(n) ? n / 100 : 0).toFixed(2)
 }
 
 onMounted(load)
@@ -119,62 +143,63 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">资金对账</h1>
-      <button
-        class="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"
-        @click="load"
-      >
-        刷新
-      </button>
-    </div>
-
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
+    <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" @click="load">重试</el-button>
+      </template>
+    </el-result>
 
     <template v-else>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-white rounded-lg border border-gray-200 p-3">
-          <p class="text-xs text-gray-500">下单总额（元）</p>
-          <p class="text-xl font-semibold text-gray-900">{{ yuan(stats.gmv) }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ stats.orderCount }} 笔订单</p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-3">
-          <p class="text-xs text-gray-500">已收金额（元）</p>
-          <p class="text-xl font-semibold text-green-600">{{ yuan(stats.paidAmount) }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ stats.paidCount }} 笔已付款</p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-3">
-          <p class="text-xs text-gray-500">已退金额（元）</p>
-          <p class="text-xl font-semibold text-red-600">{{ yuan(stats.refundedAmount) }}</p>
-          <p class="text-xs text-gray-400 mt-1">{{ stats.refundedCount }} 笔退款</p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-3">
-          <p class="text-xs text-gray-500">净入账（元）</p>
-          <p class="text-xl font-semibold text-blue-600">{{ yuan(stats.netAmount) }}</p>
-          <p class="text-xs text-gray-400 mt-1">已收 − 已退</p>
-        </div>
-      </div>
+      <el-card shadow="never">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-base font-medium">资金总览</span>
+            <el-button :loading="loading" @click="load">刷新</el-button>
+          </div>
+        </template>
 
-      <div class="grid sm:grid-cols-2 gap-3">
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
-          <h2 class="text-sm font-medium text-gray-800 mb-3">订单状态分布</h2>
-          <ul class="space-y-1.5 text-sm">
-            <li
-              v-for="(count, key) in stats.byStatus"
-              :key="key"
-              class="flex justify-between"
-            >
-              <span class="text-gray-600">{{ key }}</span>
-              <span class="text-gray-900">{{ count }}</span>
+        <div v-loading="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-3 min-h-16">
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">下单总额（元）</p>
+            <p class="text-xl font-semibold text-gray-900">{{ formatMoney(stats.gmv) }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ stats.orderCount }} 笔订单</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">已收金额（元）</p>
+            <p class="text-xl font-semibold text-green-600">{{ formatMoney(stats.paidAmount) }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ stats.paidCount }} 笔已付款</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">已退金额（元）</p>
+            <p class="text-xl font-semibold text-red-600">{{ formatMoney(stats.refundedAmount) }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ stats.refundedCount }} 笔退款</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">净入账（元）</p>
+            <p class="text-xl font-semibold text-blue-600">{{ formatMoney(stats.netAmount) }}</p>
+            <p class="text-xs text-gray-400 mt-1">已收 − 已退</p>
+          </div>
+        </div>
+      </el-card>
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <el-card shadow="never">
+          <template #header>
+            <span class="text-sm font-medium text-gray-800">订单状态分布</span>
+          </template>
+          <ul v-if="statusRows.length" class="space-y-1.5 text-sm">
+            <li v-for="row in statusRows" :key="row.code" class="flex justify-between">
+              <span class="text-gray-600">{{ row.label }}</span>
+              <span class="text-gray-900">{{ row.count }}</span>
             </li>
-            <li v-if="!Object.keys(stats.byStatus).length" class="text-gray-400">暂无订单</li>
           </ul>
-        </div>
+          <el-empty v-else description="暂无订单" :image-size="80" />
+        </el-card>
 
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
-          <h2 class="text-sm font-medium text-gray-800 mb-3">待处理事项</h2>
+        <el-card shadow="never">
+          <template #header>
+            <span class="text-sm font-medium text-gray-800">待处理事项</span>
+          </template>
           <ul class="space-y-1.5 text-sm">
             <li class="flex justify-between">
               <span class="text-gray-600">已取消订单（未收款）</span>
@@ -182,40 +207,43 @@ onMounted(load)
             </li>
             <li class="flex justify-between">
               <span class="text-gray-600">待审核退款（未出账）</span>
-              <span class="text-orange-600">¥{{ yuan(stats.pendingRefundAmount) }}</span>
+              <span class="text-orange-600">¥{{ formatMoney(stats.pendingRefundAmount) }}</span>
             </li>
           </ul>
-        </div>
+        </el-card>
       </div>
 
-      <div class="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-        <div class="px-4 py-2.5 border-b border-gray-100">
-          <h2 class="text-sm font-medium text-gray-800">按日对账</h2>
-        </div>
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-600">
-            <tr>
-              <th class="text-left px-4 py-2.5 font-medium">日期</th>
-              <th class="text-right px-4 py-2.5 font-medium">付款笔数</th>
-              <th class="text-right px-4 py-2.5 font-medium">收款（元）</th>
-              <th class="text-right px-4 py-2.5 font-medium">退款（元）</th>
-              <th class="text-right px-4 py-2.5 font-medium">净入账（元）</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="d in daily" :key="d.day">
-              <td class="px-4 py-2.5 text-gray-700">{{ d.day }}</td>
-              <td class="px-4 py-2.5 text-right text-gray-700">{{ d.count }}</td>
-              <td class="px-4 py-2.5 text-right text-green-600">{{ yuan(d.amount) }}</td>
-              <td class="px-4 py-2.5 text-right text-red-600">{{ yuan(d.refund) }}</td>
-              <td class="px-4 py-2.5 text-right font-medium text-gray-900">{{ yuan(d.net) }}</td>
-            </tr>
-            <tr v-if="!daily.length">
-              <td colspan="5" class="px-4 py-8 text-center text-gray-400">暂无对账数据</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <el-card shadow="never">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="text-base font-medium">按日对账</span>
+            <span class="text-xs text-gray-400">共 {{ daily.length }} 天</span>
+          </div>
+        </template>
+
+        <el-table v-loading="loading" :data="daily" border style="width: 100%">
+          <el-table-column prop="day" label="日期" width="130" />
+          <el-table-column prop="count" label="付款笔数" width="110" align="right" />
+          <el-table-column label="收款（元）" width="130" align="right">
+            <template #default="{ row }">
+              <span class="text-green-600">{{ formatMoney(row.amount) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="退款（元）" width="130" align="right">
+            <template #default="{ row }">
+              <span class="text-red-600">{{ formatMoney(row.refund) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="净入账（元）" min-width="130" align="right">
+            <template #default="{ row }">
+              <span class="font-medium text-gray-900">{{ formatMoney(row.net) }}</span>
+            </template>
+          </el-table-column>
+          <template #empty>
+            <el-empty description="暂无对账数据" :image-size="80" />
+          </template>
+        </el-table>
+      </el-card>
     </template>
 
     <p class="text-xs text-gray-400">
