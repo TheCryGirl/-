@@ -77,6 +77,19 @@ cd src/web
 VITE_GATEWAY_TARGET=http://localhost:19000 pnpm dev
 ```
 
+> **注意：这条 `up -d` 跑的是镜像内的 jar，不是你在 `src/<服务>/target/` 下构建出的包。**
+>
+> 若要容器运行本次构建的产物，需先把 jar 放到部署目录对应的 `target/` 路径，再以只读 bind mount 方式挂进容器（实测形态：`/opt/mall/src/<服务>/target/<服务>-1.0.0-SNAPSHOT.jar → /app/app.jar`，`Cmd: java -jar app.jar`，`WorkingDir: /app`），并 **`--force-recreate` 重建容器**——单纯 `restart` 可能仍绑定旧文件句柄。
+>
+> 上述挂载路径来自 2026-11-02 对运行中容器的只读核查；**部署目录与仓库的对应关系、原始部署脚本尚未确认**，此处不给出未经证实的命令。详见 [src/README](src/README.md)。
+
+> **已知现象：容器会被反复重置**
+>
+> 在 WSL 环境下曾多次观测到：`docker ps` 中所有容器状态反复显示 `Up N seconds`（N 很小）、`StartedAt` 刷新，而 `RestartCount` 仍为 0；网关短时报 `503 Unable to find instance for <service>`。
+>
+> 这是 **WSL 实例被重建导致容器连带重启，不是容器自身崩溃，也不是业务代码问题**。具体触发原因尚未证实。遇到时等待服务重新注册完成后再访问即可。
+
+
 访问地址：前端 http://localhost:5173 ，网关 http://localhost:19000 ，Nacos 控制台 http://localhost:18848/nacos ，MySQL 端口 13306。
 
 **管理员账号**通过环境变量初始化，不写入默认值。**`src/docker/.env` 需要你自己创建**（仓库里没有这个文件，也不含任何真实凭据），创建后填写：
