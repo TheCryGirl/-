@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
+import { confirmAction } from '../../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import UiTable from '../../components/ui/UiTable.vue'
+import { formatTotal } from '../../utils/format'
 
 /**
  * 退款复核：管理员视角复核全平台退款单。
@@ -8,11 +12,13 @@ import { isOk, paymentApi, unwrapResult } from '../../api'
  * 与商家「退款审核」的区别：卖家审自己店的退款，这里看全平台，
  * 用于发现异常（如金额异常、反复退款、卖家长期不处理）。
  */
+/* ---------- 1. 状态 ---------- */
 const refunds = ref([])
-const loading = ref(true)
-const error = ref('')
-const notice = ref('')
+const total = ref(0)
+const loading = ref(false)
+const loadError = ref('')
 const status = ref('ALL')
+/** 行级忙状态：正在复核的退款单号 */
 const processing = ref('')
 
 const STATUS_TABS = [
@@ -30,57 +36,22 @@ const STATUS_TEXT = {
   FAILED: '失败',
 }
 
-const STATUS_CLASS = {
-  PENDING: 'bg-orange-100 text-orange-600',
-  SUCCESS: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-gray-100 text-gray-500',
-  FAILED: 'bg-red-100 text-red-600',
+const STATUS_TAG = {
+  PENDING: 'warning',
+  SUCCESS: 'success',
+  REJECTED: 'info',
+  FAILED: 'danger',
 }
 
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const params = { page: 1, size: 100 }
-    if (status.value !== 'ALL') params.status = status.value
-    const { data } = await paymentApi.refunds(params)
-    const payload = unwrapResult(data)
-    refunds.value = Array.isArray(payload) ? payload : payload?.list || []
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载退款单失败'
-  } finally {
-    loading.value = false
-  }
-}
-
-function switchTab(key) {
-  if (status.value === key) return
-  status.value = key
-  load()
-}
-
-/** 管理员复核：对争议退款直接裁定 */
-async function review(refundId, approved) {
-  processing.value = refundId
-  error.value = ''
-  notice.value = ''
-  try {
-    const { data } = await paymentApi.auditRefund(refundId, {
-      approved,
-      remark: approved ? '管理员复核通过' : '管理员复核驳回',
-    })
-    if (!isOk(data)) {
-      error.value = data?.message || '复核失败'
-      return
-    }
-    notice.value = approved ? '已裁定支持退款' : '已驳回退款'
-    await load()
-  } catch (err) {
-    error.value = err.response?.data?.message || '复核失败'
-  } finally {
-    processing.value = ''
-  }
-}
+/* ---------- 2. 计算属性 ---------- */
+const columns = [
+  { key: 'refundId', label: '退款单号', minWidth: 170 },
+  { key: 'orderId', label: '订单', minWidth: 170 },
+  { key: 'amount', label: '金额', width: 130, align: 'right', slot: 'amount' },
+  { key: 'reason', label: '原因', minWidth: 160, slot: 'reason', tooltip: false },
+  { key: 'status', label: '状态', width: 110, align: 'center', slot: 'status' },
+  { key: 'createdAt', label: '申请时间', width: 180, formatter: (row) => formatTime(row.createdAt) },
+]
 
 const summary = computed(() => {
   const c = { total: refunds.value.length, pending: 0, success: 0, amount: 0 }
@@ -94,112 +65,187 @@ const summary = computed(() => {
   return c
 })
 
-function formatPrice(cents) {
-  return ((cents || 0) / 100).toFixed(2)
+/* ---------- 3. 方法 ---------- */
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    // 保持改造前的请求参数：一次取 100 条，不做前端分页
+    const params = { page: 1, size: 100 }
+    if (status.value !== 'ALL') params.status = status.value
+    const { data } = await paymentApi.refunds(params)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载退款单失败'
+      refunds.value = []
+      total.value = 0
+      return
+    }
+    const payload = unwrapResult(data)
+    refunds.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? refunds.value.length
+  } catch (err) {
+    loadError.value = resolveErrorMessage(err, '加载退款单失败')
+    refunds.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
 }
 
+function switchTab(key) {
+  if (status.value === key) return
+  status.value = key
+  load()
+}
+
+/** 退款状态文案：未知值保留原样 */
+function refundStatusText(value) {
+  return STATUS_TEXT[value] || value || '-'
+}
+
+function refundStatusTag(value) {
+  return STATUS_TAG[value] || 'info'
+}
+
+/** 管理员复核：对争议退款直接裁定 */
+async function review(refund, approved) {
+  const actionText = approved ? '支持退款' : '驳回退款'
+  const ok = await confirmAction({
+    message: approved
+      ? `确定对退款单「${refund.refundId}」裁定支持退款？金额 ${formatMoney(refund.amount)} 将退回买家。`
+      : `确定驳回退款单「${refund.refundId}」？驳回后买家无法再就本单申请退款。`,
+    title: approved ? '支持退款' : '驳回退款',
+    danger: !approved,
+  })
+  if (!ok) return
+
+  if (processing.value) return
+  processing.value = refund.refundId
+  try {
+    const { data } = await paymentApi.auditRefund(refund.refundId, {
+      approved,
+      remark: approved ? '管理员复核通过' : '管理员复核驳回',
+    })
+    if (!isOk(data)) {
+      showError(data?.message || '复核失败')
+      return
+    }
+    showSuccess(approved ? '已裁定支持退款' : '已驳回退款')
+    await load()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '复核失败'))
+  } finally {
+    processing.value = ''
+  }
+}
+
+/** 金额：后端为分 */
+function formatMoney(cents) {
+  const n = Number(cents)
+  return Number.isFinite(n) ? `¥${(n / 100).toFixed(2)}` : '-'
+}
+
+function formatTime(value) {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 19)
+}
+
+/* ---------- 4. 生命周期 ---------- */
 onMounted(load)
 </script>
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-lg font-semibold text-gray-900">退款复核</h1>
-
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
+    <div v-if="!loadError" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <el-card shadow="never">
         <p class="text-xs text-gray-500">退款单总数</p>
-        <p class="text-xl font-semibold text-gray-900">{{ summary.total }}</p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
+        <p class="text-xl font-semibold text-gray-900 mt-1">{{ summary.total }}</p>
+      </el-card>
+      <el-card shadow="never">
         <p class="text-xs text-gray-500">待审核</p>
-        <p class="text-xl font-semibold text-orange-500">{{ summary.pending }}</p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
+        <p class="text-xl font-semibold text-orange-500 mt-1">{{ summary.pending }}</p>
+      </el-card>
+      <el-card shadow="never">
         <p class="text-xs text-gray-500">已退款笔数</p>
-        <p class="text-xl font-semibold text-green-600">{{ summary.success }}</p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
+        <p class="text-xl font-semibold text-green-600 mt-1">{{ summary.success }}</p>
+      </el-card>
+      <el-card shadow="never">
         <p class="text-xs text-gray-500">已退金额（元）</p>
-        <p class="text-xl font-semibold text-red-600">{{ formatPrice(summary.amount) }}</p>
-      </div>
+        <p class="text-xl font-semibold text-red-600 mt-1">{{ formatMoney(summary.amount) }}</p>
+      </el-card>
     </div>
 
-    <div class="flex gap-2">
-      <button
-        v-for="t in STATUS_TABS"
-        :key="t.key"
-        class="px-3 py-1.5 text-sm rounded-md border"
-        :class="
-          status === t.key
-            ? 'bg-blue-50 border-blue-300 text-blue-600'
-            : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-        "
-        @click="switchTab(t.key)"
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-base font-medium">退款单</span>
+          <div class="flex items-center gap-3">
+            <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '笔', refunds.length) }}</span>
+            <el-radio-group v-model="status" size="small" @change="switchTab">
+              <el-radio-button v-for="t in STATUS_TABS" :key="t.key" :value="t.key">
+                {{ t.label }}
+              </el-radio-button>
+            </el-radio-group>
+          </div>
+        </div>
+      </template>
+
+      <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
+        <template #extra>
+          <el-button type="primary" @click="load">重试</el-button>
+        </template>
+      </el-result>
+
+      <UiTable
+        v-else
+        :columns="columns"
+        :data="refunds"
+        :loading="loading"
+        row-key="refundId"
+        empty-text="暂无退款单"
+        show-actions
+        actions-width="170"
       >
-        {{ t.label }}
-      </button>
-    </div>
+        <template #amount="{ row }">
+          <span class="text-red-600 font-medium">{{ formatMoney(row.amount) }}</span>
+        </template>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-if="notice" class="text-sm text-green-600">{{ notice }}</p>
+        <template #reason="{ row }">
+          <div class="max-w-64 whitespace-pre-wrap break-all line-clamp-2">{{ row.reason || '—' }}</div>
+        </template>
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
-    <div v-else-if="!refunds.length" class="py-16 text-center text-gray-400 text-sm">
-      暂无退款单
-    </div>
+        <template #status="{ row }">
+          <el-tag :type="refundStatusTag(row.status)" size="small">
+            {{ refundStatusText(row.status) }}
+          </el-tag>
+        </template>
 
-    <div v-else class="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="text-left px-4 py-2.5 font-medium">退款单号</th>
-            <th class="text-left px-4 py-2.5 font-medium">订单</th>
-            <th class="text-right px-4 py-2.5 font-medium">金额</th>
-            <th class="text-left px-4 py-2.5 font-medium">原因</th>
-            <th class="text-left px-4 py-2.5 font-medium">状态</th>
-            <th class="text-left px-4 py-2.5 font-medium">申请时间</th>
-            <th class="text-right px-4 py-2.5 font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="r in refunds" :key="r.refundId">
-            <td class="px-4 py-2.5 text-gray-700">{{ r.refundId }}</td>
-            <td class="px-4 py-2.5 text-gray-500 text-xs">{{ r.orderId }}</td>
-            <td class="px-4 py-2.5 text-right text-red-600 font-medium">
-              ¥{{ formatPrice(r.amount) }}
-            </td>
-            <td class="px-4 py-2.5 text-gray-600">{{ r.reason || '—' }}</td>
-            <td class="px-4 py-2.5">
-              <span class="text-xs px-2 py-0.5 rounded" :class="STATUS_CLASS[r.status] || 'bg-gray-100'">
-                {{ STATUS_TEXT[r.status] || r.status }}
-              </span>
-            </td>
-            <td class="px-4 py-2.5 text-xs text-gray-500">{{ r.createdAt || '—' }}</td>
-            <td class="px-4 py-2.5 text-right">
-              <div v-if="r.status === 'PENDING'" class="flex justify-end gap-2">
-                <button
-                  class="px-3 py-1 rounded border border-gray-300 text-xs text-gray-600 hover:bg-gray-50"
-                  :disabled="processing === r.refundId"
-                  @click="review(r.refundId, false)"
-                >
-                  驳回
-                </button>
-                <button
-                  class="px-3 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700"
-                  :disabled="processing === r.refundId"
-                  @click="review(r.refundId, true)"
-                >
-                  支持退款
-                </button>
-              </div>
-              <span v-else class="text-xs text-gray-400">
-                {{ r.auditedBy ? '已处理' : '—' }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <template #actions="{ row }">
+          <div v-if="row.status === 'PENDING'" class="flex items-center justify-end gap-2">
+            <el-button
+              link
+              size="small"
+              :disabled="!!processing && processing !== row.refundId"
+              :loading="processing === row.refundId"
+              @click="review(row, false)"
+            >
+              驳回
+            </el-button>
+            <el-button
+              link
+              size="small"
+              type="success"
+              :disabled="!!processing && processing !== row.refundId"
+              :loading="processing === row.refundId"
+              @click="review(row, true)"
+            >
+              支持退款
+            </el-button>
+          </div>
+          <span v-else class="text-xs text-gray-400">{{ row.auditedBy ? '已处理' : '—' }}</span>
+        </template>
+      </UiTable>
+    </el-card>
 
     <p class="text-xs text-gray-400">
       说明：卖家应在「退款审核」处理自己店的退款单；此页用于平台侧复核与争议裁定。

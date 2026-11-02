@@ -1,6 +1,8 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
-import { orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../api'
+import { isOk, orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../api'
+import { resolveErrorMessage } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /**
  * 基础风控：用一组可解释的规则扫描全平台数据，列出需要人工关注的记录。
@@ -12,45 +14,22 @@ import { orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../a
  * 4. 库存告罄：在售但可售库存为 0
  * 5. 冻结账号仍有在售商品
  */
-const loading = ref(true)
-const error = ref('')
+/* ---------- 1. 状态 ---------- */
+const loading = ref(false)
+const loadError = ref('')
 const orders = ref([])
 const refunds = ref([])
 const products = ref([])
 const users = ref([])
 
-/** 规则阈值，可按课程要求调整 */
+/** 规则阈值，可按课程要求调整（展示口径不做任何重算） */
 const THRESHOLD = {
   refundCount: 2, // 同一买家退款 ≥ 2 笔
   refundAmount: 50000, // 单笔退款 ≥ 500 元（单位：分）
   productPrice: 100000, // 商品单价 ≥ 1000 元
 }
 
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const [oRes, rRes, pRes, uRes] = await Promise.all([
-      orderApi.list({ page: 1, size: 200 }),
-      paymentApi.refunds({ page: 1, size: 200 }),
-      productApi.list({ size: 200 }),
-      userApi.list({ page: 1, size: 200 }),
-    ])
-    const pick = (d) => {
-      const p = unwrapResult(d)
-      return Array.isArray(p) ? p : p?.list || []
-    }
-    orders.value = pick(oRes.data)
-    refunds.value = pick(rRes.data)
-    products.value = pick(pRes.data)
-    users.value = pick(uRes.data)
-  } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载风控数据失败'
-  } finally {
-    loading.value = false
-  }
-}
-
+/* ---------- 2. 计算属性 ---------- */
 const risks = computed(() => {
   const list = []
 
@@ -139,87 +118,129 @@ const stats = computed(() => ({
   low: risks.value.filter((r) => r.level === '低').length,
 }))
 
-const LEVEL_CLASS = {
-  高: 'bg-red-100 text-red-600',
-  中: 'bg-orange-100 text-orange-600',
-  低: 'bg-gray-100 text-gray-500',
+/* ---------- 3. 方法 ---------- */
+async function load() {
+  loading.value = true
+  loadError.value = ''
+  try {
+    const [oRes, rRes, pRes, uRes] = await Promise.all([
+      orderApi.list({ page: 1, size: 200 }),
+      paymentApi.refunds({ page: 1, size: 200 }),
+      productApi.list({ size: 200 }),
+      userApi.list({ page: 1, size: 200 }),
+    ])
+    const failed = [oRes, rRes, pRes, uRes].find((res) => !isOk(res.data))
+    if (failed) {
+      loadError.value = failed.data?.message || '加载风控数据失败'
+      orders.value = []
+      refunds.value = []
+      products.value = []
+      users.value = []
+      return
+    }
+    const pick = (d) => {
+      const p = unwrapResult(d)
+      return Array.isArray(p) ? p : p?.list ?? []
+    }
+    orders.value = pick(oRes.data)
+    refunds.value = pick(rRes.data)
+    products.value = pick(pRes.data)
+    users.value = pick(uRes.data)
+  } catch (err) {
+    loadError.value = resolveErrorMessage(err, '加载风控数据失败')
+    orders.value = []
+    refunds.value = []
+    products.value = []
+    users.value = []
+  } finally {
+    loading.value = false
+  }
 }
 
+/** 级别 → el-tag 类型；未知级别回退 info */
+function levelTag(level) {
+  if (level === '高') return 'danger'
+  if (level === '中') return 'warning'
+  return 'info'
+}
+
+/* ---------- 4. 生命周期 ---------- */
 onMounted(load)
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">基础风控</h1>
-      <button
-        class="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"
-        @click="load"
-      >
-        重新扫描
-      </button>
-    </div>
+    <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" @click="load">重试</el-button>
+      </template>
+    </el-result>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
-        <p class="text-xs text-gray-500">风险项</p>
-        <p class="text-xl font-semibold text-gray-900">{{ stats.total }}</p>
+    <template v-else>
+      <el-card shadow="never">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-base font-medium">风险概览</span>
+            <el-button :loading="loading" @click="load">重新扫描</el-button>
+          </div>
+        </template>
+
+        <div v-loading="loading" class="grid grid-cols-2 lg:grid-cols-4 gap-3 min-h-16">
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">风险项</p>
+            <p class="text-xl font-semibold text-gray-900">{{ stats.total }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">高危</p>
+            <p class="text-xl font-semibold text-red-600">{{ stats.high }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">中危</p>
+            <p class="text-xl font-semibold text-orange-500">{{ stats.mid }}</p>
+          </div>
+          <div class="rounded-lg border border-gray-200 p-3">
+            <p class="text-xs text-gray-500">提示</p>
+            <p class="text-xl font-semibold text-gray-500">{{ stats.low }}</p>
+          </div>
+        </div>
+      </el-card>
+
+      <el-card shadow="never">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="text-base font-medium">风险明细</span>
+            <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(risks.length, '条') }}</span>
+          </div>
+        </template>
+
+        <el-table v-loading="loading" :data="risks" border style="width: 100%">
+          <el-table-column label="级别" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag :type="levelTag(row.level)" size="small">{{ row.level }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="rule" label="规则" width="140" />
+          <el-table-column prop="target" label="涉及对象" min-width="180" />
+          <el-table-column prop="detail" label="详情" min-width="240" />
+          <el-table-column prop="action" label="建议" min-width="200" />
+          <template #empty>
+            <el-empty description="未发现异常" :image-size="80" />
+          </template>
+        </el-table>
+      </el-card>
+    </template>
+
+    <el-card shadow="never">
+      <template #header>
+        <span class="text-sm font-medium text-gray-800">当前启用的规则与阈值</span>
+      </template>
+      <div class="text-xs text-gray-500 space-y-1">
+        <p>1. 高频退款：同一买家退款 ≥ {{ THRESHOLD.refundCount }} 笔 → 中危</p>
+        <p>2. 大额退款：单笔退款 ≥ ¥{{ (THRESHOLD.refundAmount / 100).toFixed(0) }} → 高危</p>
+        <p>3. 价格异常：商品单价 ≥ ¥{{ (THRESHOLD.productPrice / 100).toFixed(0) }} → 提示</p>
+        <p>4. 库存告罄：在售但可售库存 = 0 → 提示</p>
+        <p>5. 冻结账号在售：卖家已冻结仍有在售商品 → 高危</p>
       </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
-        <p class="text-xs text-gray-500">高危</p>
-        <p class="text-xl font-semibold text-red-600">{{ stats.high }}</p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
-        <p class="text-xs text-gray-500">中危</p>
-        <p class="text-xl font-semibold text-orange-500">{{ stats.mid }}</p>
-      </div>
-      <div class="bg-white rounded-lg border border-gray-200 p-3">
-        <p class="text-xs text-gray-500">提示</p>
-        <p class="text-xl font-semibold text-gray-500">{{ stats.low }}</p>
-      </div>
-    </div>
-
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
-
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">扫描中…</div>
-    <div v-else-if="!risks.length" class="py-16 text-center text-gray-400 text-sm">
-      未发现异常
-    </div>
-
-    <div v-else class="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="text-left px-4 py-2.5 font-medium">级别</th>
-            <th class="text-left px-4 py-2.5 font-medium">规则</th>
-            <th class="text-left px-4 py-2.5 font-medium">涉及对象</th>
-            <th class="text-left px-4 py-2.5 font-medium">详情</th>
-            <th class="text-left px-4 py-2.5 font-medium">建议</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="(r, i) in risks" :key="i">
-            <td class="px-4 py-2.5">
-              <span class="text-xs px-2 py-0.5 rounded" :class="LEVEL_CLASS[r.level]">
-                {{ r.level }}
-              </span>
-            </td>
-            <td class="px-4 py-2.5 text-gray-700">{{ r.rule }}</td>
-            <td class="px-4 py-2.5 text-xs text-gray-500">{{ r.target }}</td>
-            <td class="px-4 py-2.5 text-gray-600">{{ r.detail }}</td>
-            <td class="px-4 py-2.5 text-gray-500">{{ r.action }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="bg-white rounded-lg border border-gray-200 p-4 text-xs text-gray-500 space-y-1">
-      <p class="font-medium text-gray-700 mb-2">当前启用的规则与阈值</p>
-      <p>1. 高频退款：同一买家退款 ≥ {{ THRESHOLD.refundCount }} 笔 → 中危</p>
-      <p>2. 大额退款：单笔退款 ≥ ¥{{ (THRESHOLD.refundAmount / 100).toFixed(0) }} → 高危</p>
-      <p>3. 价格异常：商品单价 ≥ ¥{{ (THRESHOLD.productPrice / 100).toFixed(0) }} → 提示</p>
-      <p>4. 库存告罄：在售但可售库存 = 0 → 提示</p>
-      <p>5. 冻结账号在售：卖家已冻结仍有在售商品 → 高危</p>
-    </div>
+    </el-card>
   </div>
 </template>

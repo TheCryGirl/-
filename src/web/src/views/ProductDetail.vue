@@ -1,20 +1,32 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, evaluationApi, favoriteApi, historyApi, isOk, productApi, unwrapResult } from '../api'
+import {
+  cartApi,
+  evaluationApi,
+  favoriteApi,
+  historyApi,
+  isOk,
+  productApi,
+  unwrapResult,
+} from '../api'
 import { isLoggedIn } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 
+/* ---------- 1. 状态 ---------- */
 const product = ref(null)
 const selectedSku = ref(null)
 const quantity = ref(1)
-const loading = ref(true)
-const error = ref('')
+const loading = ref(false)
+const loadError = ref('')
 const notice = ref('')
+const noticeType = ref('success')
 const favorited = ref(false)
 const favoriteBusy = ref(false)
+const cartBusy = ref(false)
+const buyBusy = ref(false)
 
 // 商品评价（#57）：公开列表 + 平均分统计
 const evalStats = ref({ total: 0, average: 0 })
@@ -28,6 +40,7 @@ const evalLoading = ref(false)
 // 需要另取分类树把 id 翻成名字，否则页面只能显示「未分类」。
 const categoryNames = ref({})
 
+/* ---------- 2. 计算属性 ---------- */
 const categoryLabel = computed(() => {
   const p = product.value
   if (!p) return ''
@@ -42,6 +55,16 @@ const cover = computed(() => {
   return `/images/${raw}`
 })
 
+/** 当前 SKU 可购上限：库存与 999 取小，至少 1（库存为 0 时按钮禁用） */
+const quantityMax = computed(() => Math.max(1, Math.min(999, selectedSku.value?.stockAvailable ?? 999)))
+
+const soldOut = computed(() => (selectedSku.value?.stockAvailable ?? 0) <= 0)
+
+watch(selectedSku, () => {
+  quantity.value = Math.min(quantityMax.value, Math.max(1, Number(quantity.value) || 1))
+})
+
+/* ---------- 3. 方法 ---------- */
 /** 拉取分类树，拍平成 id → name 的查表 */
 async function loadCategoryNames() {
   try {
@@ -70,7 +93,8 @@ async function loadEvaluations() {
       evaluationApi.productStats(route.params.id),
       evaluationApi.byProduct(route.params.id, { page: evalPage.value, size: evalSize }),
     ])
-    evalStats.value = unwrapResult(statsRes.data) || { total: 0, average: 0 }
+    const stats = unwrapResult(statsRes.data)
+    if (stats) evalStats.value = stats
     const payload = unwrapResult(listRes.data)
     evalList.value = payload?.list || []
     evalTotal.value = payload?.total || 0
@@ -86,46 +110,52 @@ function stars(n) {
   return '★'.repeat(value) + '☆'.repeat(5 - value)
 }
 
-function changeEvalPage(delta) {
-  evalPage.value = Math.max(1, evalPage.value + delta)
+function changeEvalPage(next) {
+  evalPage.value = next
   loadEvaluations()
 }
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const { data } = await productApi.detail(route.params.id)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '商品不存在或已下架'
+      return
+    }
     const productData = unwrapResult(data)
     if (!productData) {
-      error.value = data?.message || '商品不存在或已下架'
+      loadError.value = data?.message || '商品不存在或已下架'
       return
     }
     product.value = productData
-    if (product.value?.skus?.length) {
-      selectedSku.value = product.value.skus[0]
-    }
+    // 无 SKU 时保持 selectedSku 为空，加购/购买必须提示而不是假成功
+    selectedSku.value = productData.skus?.length ? productData.skus[0] : null
     // 收藏状态与浏览足迹都是登录后的附加能力，失败不影响商品展示
     loadFavoriteState()
     recordHistory()
   } catch (err) {
-    error.value = err.response?.status === 404 ? '商品不存在或已下架' : '加载失败，请稍后重试'
+    loadError.value = err.response?.status === 404 ? '商品不存在或已下架' : '加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
 }
 
+/** 后端金额单位为分，展示按元 */
 function formatPrice(cents) {
-  return (cents / 100).toFixed(2)
+  const n = Number(cents)
+  return (Number.isFinite(n) ? n / 100 : 0).toFixed(2)
 }
 
-function maxQuantity() {
-  return Math.min(999, selectedSku.value?.stockAvailable ?? 999)
+function setNotice(text, type = 'success') {
+  notice.value = text
+  noticeType.value = type
 }
 
 function changeQuantity(delta) {
-  const next = quantity.value + delta
-  quantity.value = Math.min(maxQuantity(), Math.max(1, next))
+  const next = Number(quantity.value || 1) + delta
+  quantity.value = Math.min(quantityMax.value, Math.max(1, next))
 }
 
 function ensureLogin() {
@@ -139,6 +169,7 @@ function ensureLogin() {
 
 async function toggleFavorite() {
   if (!ensureLogin()) return
+  if (favoriteBusy.value) return
   favoriteBusy.value = true
   notice.value = ''
   try {
@@ -146,13 +177,13 @@ async function toggleFavorite() {
       ? await favoriteApi.remove(route.params.id)
       : await favoriteApi.add(route.params.id)
     if (!isOk(data)) {
-      notice.value = data?.message || '收藏操作失败'
+      setNotice(data?.message || '收藏操作失败', 'error')
       return
     }
     favorited.value = !favorited.value
-    notice.value = favorited.value ? '已加入收藏' : '已取消收藏'
+    setNotice(favorited.value ? '已加入收藏' : '已取消收藏')
   } catch (err) {
-    notice.value = err.response?.data?.message || '收藏操作失败'
+    setNotice(err.response?.data?.message || '收藏操作失败', 'error')
   } finally {
     favoriteBusy.value = false
   }
@@ -175,47 +206,68 @@ function recordHistory() {
   historyApi.record(route.params.id).catch(() => {})
 }
 
-async function addToCart() {
-  if (!ensureLogin()) return
+/** 商品/SKU 可售校验：不满足时提示并返回 null，避免请求后假成功 */
+function checkedSku() {
   if (!selectedSku.value) {
-    notice.value = '请选择规格'
-    return
+    setNotice('请先选择商品规格', 'warning')
+    return null
   }
   if ((selectedSku.value.stockAvailable ?? 0) <= 0) {
-    notice.value = '该规格暂时缺货'
-    return
+    setNotice('该规格暂时缺货', 'warning')
+    return null
   }
+  return selectedSku.value
+}
+
+async function addToCart() {
+  if (!ensureLogin()) return
+  const sku = checkedSku()
+  if (!sku) return
+  if (cartBusy.value) return
+  cartBusy.value = true
+  notice.value = ''
   try {
-    const { data } = await cartApi.add({ productId: route.params.id, skuId: selectedSku.value.skuId, quantity: quantity.value })
-    notice.value = isOk(data) ? '已加入购物车' : data?.message || '加入购物车失败'
+    const { data } = await cartApi.add({
+      productId: route.params.id,
+      skuId: sku.skuId,
+      quantity: quantity.value,
+    })
+    if (!isOk(data)) {
+      setNotice(data?.message || '加入购物车失败', 'error')
+      return
+    }
+    setNotice('已加入购物车')
   } catch (err) {
-    notice.value = err.response?.data?.message || '加入购物车失败'
+    setNotice(err.response?.data?.message || '加入购物车失败', 'error')
+  } finally {
+    cartBusy.value = false
   }
 }
 
 async function buyNow() {
   if (!ensureLogin()) return
-  if (!selectedSku.value) {
-    notice.value = '请选择规格'
-    return
-  }
-  if ((selectedSku.value.stockAvailable ?? 0) <= 0) {
-    notice.value = '该规格暂时缺货'
-    return
-  }
+  const sku = checkedSku()
+  if (!sku) return
+  if (buyBusy.value) return
+  buyBusy.value = true
+  notice.value = ''
   try {
     const desiredQuantity = quantity.value
     // 契约的下单接口只接受 cartItemIds，立即购买先入购物车再取回真实条目
-    const addRes = await cartApi.add({ productId: route.params.id, skuId: selectedSku.value.skuId, quantity: desiredQuantity })
+    const addRes = await cartApi.add({
+      productId: route.params.id,
+      skuId: sku.skuId,
+      quantity: desiredQuantity,
+    })
     if (!isOk(addRes.data)) {
-      notice.value = addRes.data?.message || '加入购物车失败'
+      setNotice(addRes.data?.message || '加入购物车失败', 'error')
       return
     }
     const { data } = await cartApi.get()
     const cart = unwrapResult(data)
-    const item = cart?.items?.find((i) => i.skuId === selectedSku.value.skuId)
+    const item = cart?.items?.find((i) => i.skuId === sku.skuId)
     if (!item) {
-      notice.value = '创建购物车条目失败'
+      setNotice('创建购物车条目失败', 'error')
       return
     }
     // 同一 SKU 在购物车中会累加数量，立即购买只结算本次选择的数量
@@ -226,10 +278,13 @@ async function buyNow() {
     sessionStorage.setItem('checkoutItems', JSON.stringify([item]))
     router.push({ name: 'order-confirm' })
   } catch (err) {
-    notice.value = err.response?.data?.message || '立即购买失败'
+    setNotice(err.response?.data?.message || '立即购买失败', 'error')
+  } finally {
+    buyBusy.value = false
   }
 }
 
+/* ---------- 4. 生命周期 ---------- */
 onMounted(() => {
   loadCategoryNames()
   load()
@@ -239,21 +294,19 @@ onMounted(() => {
 
 <template>
   <div>
-    <div v-if="loading" class="py-20 text-center text-gray-400 text-sm">加载中…</div>
+    <div v-if="loading" v-loading="loading" class="min-h-40" />
 
-    <div v-else-if="error" class="py-20 text-center space-y-3">
-      <p class="text-gray-500">{{ error }}</p>
-      <RouterLink :to="{ name: 'products' }" class="text-blue-600 text-sm hover:underline">
-        返回商品列表
-      </RouterLink>
-    </div>
+    <el-result v-else-if="loadError" status="error" icon="error" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" @click="router.push({ name: 'products' })">返回商品列表</el-button>
+      </template>
+    </el-result>
 
     <div v-else-if="product" class="space-y-4">
-      <nav class="text-sm text-gray-400">
-        <RouterLink :to="{ name: 'products' }" class="hover:text-blue-600">商品市场</RouterLink>
-        <span class="mx-2">/</span>
-        <span class="text-gray-600">{{ product.title }}</span>
-      </nav>
+      <el-breadcrumb separator="/" class="text-sm">
+        <el-breadcrumb-item :to="{ name: 'products' }">商品市场</el-breadcrumb-item>
+        <el-breadcrumb-item>{{ product.title }}</el-breadcrumb-item>
+      </el-breadcrumb>
 
       <div class="bg-white rounded-lg border border-gray-200 p-5 grid md:grid-cols-2 gap-6">
         <div>
@@ -283,90 +336,96 @@ onMounted(() => {
             <dd class="text-gray-800">{{ categoryLabel }}</dd>
             <dt class="text-gray-500">卖家</dt>
             <dd class="text-gray-800">{{ product.sellerId }}</dd>
+            <dt class="text-gray-500">商品 ID</dt>
+            <dd class="text-gray-800 break-all">{{ product.productId || route.params.id }}</dd>
           </dl>
 
           <div>
-            <button
-              class="px-3 py-1.5 rounded-md text-sm border transition-colors disabled:opacity-40"
-              :class="favorited ? 'border-red-500 text-red-600 bg-red-50' : 'border-gray-300 text-gray-600 hover:bg-gray-50'"
-              :disabled="favoriteBusy"
+            <el-button
+              :type="favorited ? 'danger' : ''"
+              :plain="!favorited"
+              :loading="favoriteBusy"
               @click="toggleFavorite"
             >
               {{ favorited ? '已收藏' : '收藏' }}
-            </button>
+            </el-button>
           </div>
 
           <div v-if="product.skus?.length" class="space-y-2">
             <span class="text-sm text-gray-600">规格</span>
             <div class="flex flex-wrap gap-2">
-              <button
+              <el-button
                 v-for="sku in product.skus"
                 :key="sku.skuId"
-                class="px-3 py-1.5 text-sm border rounded-md"
-                :class="selectedSku?.skuId === sku.skuId ? 'border-blue-500 bg-blue-50 text-blue-600' : 'border-gray-300 text-gray-700 hover:bg-gray-50'"
+                size="small"
+                :type="selectedSku?.skuId === sku.skuId ? 'primary' : ''"
+                :plain="selectedSku?.skuId !== sku.skuId"
                 @click="selectedSku = sku"
               >
                 {{ sku.specName }}
-              </button>
+                <span class="text-xs opacity-70">（库存 {{ sku.stockAvailable ?? 0 }}）</span>
+              </el-button>
             </div>
           </div>
+          <el-alert
+            v-else
+            type="warning"
+            :closable="false"
+            show-icon
+            title="该商品暂无可售规格"
+            description="商品未配置规格，暂时无法加入购物车或购买。"
+          />
 
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <span class="text-sm text-gray-600">数量</span>
-            <div class="flex items-center gap-2">
-              <button
-                class="w-7 h-7 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-                :disabled="quantity <= 1"
-                @click="changeQuantity(-1)"
-              >
-                −
-              </button>
-              <input
-                v-model.number="quantity"
-                type="number"
-                min="1"
-                :max="maxQuantity()"
-                class="w-14 text-center text-sm border border-gray-300 rounded py-1"
-                @blur="quantity = Math.min(maxQuantity(), Math.max(1, Number(quantity) || 1))"
-              />
-              <button
-                class="w-7 h-7 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40"
-                :disabled="quantity >= maxQuantity()"
-                @click="changeQuantity(1)"
-              >
-                +
-              </button>
-            </div>
+            <el-input-number
+              v-model="quantity"
+              :min="1"
+              :max="quantityMax"
+              :step="1"
+              step-strictly
+              :precision="0"
+              size="small"
+              style="width: 120px"
+            />
             <span class="text-xs text-gray-400">
               库存 {{ selectedSku?.stockAvailable ?? '—' }}
             </span>
           </div>
 
-          <div class="mt-2 flex gap-2">
-            <button
-              class="px-6 py-2.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-300"
-              :disabled="(selectedSku?.stockAvailable ?? 0) <= 0"
+          <div class="mt-2 flex flex-wrap gap-2">
+            <el-button
+              type="primary"
+              :disabled="soldOut || !selectedSku"
+              :loading="buyBusy"
               @click="buyNow"
             >
               立即购买
-            </button>
-            <button
-              class="px-6 py-2.5 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50 disabled:opacity-40"
-              :disabled="(selectedSku?.stockAvailable ?? 0) <= 0"
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              :disabled="soldOut || !selectedSku"
+              :loading="cartBusy"
               @click="addToCart"
             >
               加入购物车
-            </button>
+            </el-button>
           </div>
 
-          <p v-if="notice" class="text-sm rounded-md px-3 py-2" :class="notice.includes('失败') ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50'">
-            {{ notice }}
-          </p>
+          <el-alert
+            v-if="notice"
+            :type="noticeType"
+            :title="notice"
+            :closable="true"
+            show-icon
+            @close="notice = ''"
+          />
         </div>
       </div>
 
       <div class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-base font-semibold text-gray-900">
             商品评价
             <span class="text-sm font-normal text-gray-400">（{{ evalStats.total || 0 }}）</span>
@@ -377,49 +436,46 @@ onMounted(() => {
           </div>
         </div>
 
-        <p v-if="evalLoading" class="py-6 text-center text-gray-400 text-sm">加载评价…</p>
-        <p v-else-if="!evalList.length" class="py-6 text-center text-gray-400 text-sm">
-          还没有评价，购买并确认收货后可以评价晒图
-        </p>
+        <div v-loading="evalLoading" class="min-h-16">
+          <el-empty
+            v-if="!evalLoading && !evalList.length"
+            description="还没有评价，购买并确认收货后可以评价晒图"
+            :image-size="80"
+          />
 
-        <div v-else class="divide-y divide-gray-100">
-          <div v-for="ev in evalList" :key="ev.evaluationId" class="py-3 space-y-2">
-            <div class="flex items-center gap-3 text-sm">
-              <span class="text-gray-700 font-medium">{{ ev.buyerLabel }}</span>
-              <span class="text-amber-500 tracking-wide">{{ stars(ev.rating) }}</span>
-              <span class="text-xs text-gray-400">{{ ev.createdAt || '—' }}</span>
-            </div>
-            <p v-if="ev.content" class="text-sm text-gray-700 whitespace-pre-line">{{ ev.content }}</p>
-            <div v-if="ev.images?.length" class="flex flex-wrap gap-2">
-              <img
-                v-for="(img, i) in ev.images"
-                :key="i"
-                :src="img"
-                class="w-24 h-24 object-cover rounded border border-gray-200"
-                alt="买家晒图"
-              />
+          <div v-else class="divide-y divide-gray-100">
+            <div v-for="ev in evalList" :key="ev.evaluationId" class="py-3 space-y-2">
+              <div class="flex flex-wrap items-center gap-3 text-sm">
+                <span class="text-gray-700 font-medium">{{ ev.buyerLabel }}</span>
+                <span class="text-amber-500 tracking-wide">{{ stars(ev.rating) }}</span>
+                <span class="text-xs text-gray-400">{{ ev.createdAt || '—' }}</span>
+              </div>
+              <p v-if="ev.content" class="text-sm text-gray-700 whitespace-pre-line">{{ ev.content }}</p>
+              <div v-if="ev.images?.length" class="flex flex-wrap gap-2">
+                <el-image
+                  v-for="(img, i) in ev.images"
+                  :key="i"
+                  :src="img"
+                  :preview-src-list="ev.images"
+                  :initial-index="i"
+                  fit="cover"
+                  class="w-24 h-24 rounded border border-gray-200"
+                  preview-teleported
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div v-if="evalTotal > evalSize" class="flex items-center justify-center gap-2">
-          <button
-            class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
-            :disabled="evalPage === 1"
-            @click="changeEvalPage(-1)"
-          >
-            上一页
-          </button>
-          <span class="text-sm text-gray-500">
-            {{ evalPage }} / {{ Math.ceil(evalTotal / evalSize) }}
-          </span>
-          <button
-            class="px-3 py-1 text-sm border border-gray-300 rounded-md disabled:opacity-40"
-            :disabled="evalPage * evalSize >= evalTotal"
-            @click="changeEvalPage(1)"
-          >
-            下一页
-          </button>
+        <div v-if="evalTotal > evalSize" class="flex justify-end">
+          <el-pagination
+            :current-page="evalPage"
+            :page-size="evalSize"
+            :total="evalTotal"
+            layout="prev, pager, next"
+            small
+            @current-change="changeEvalPage"
+          />
         </div>
       </div>
     </div>

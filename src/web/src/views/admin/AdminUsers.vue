@@ -1,15 +1,25 @@
-<script setup>
+﻿<script setup>
 import { onMounted, ref } from 'vue'
 import { isOk, unwrapResult, userApi } from '../../api'
+import { confirmAction } from '../../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import UiTable from '../../components/ui/UiTable.vue'
+import { usePagination } from '../../composables/usePagination'
+import { formatTotal } from '../../utils/format'
 import { auth } from '../../stores/auth'
 
+/* ---------- 1. 状态 ---------- */
 const users = ref([])
-const page = ref(1)
-const size = ref(10)
-const total = ref(0)
+const loading = ref(false)
+const loadError = ref('')
 const keyword = ref('')
-const loading = ref(true)
-const error = ref('')
+/** 行级忙状态：保存正在写操作的行 ID，避免误以为整页都在加载 */
+const busyId = ref('')
+/** 角色下拉的本地草稿：确认前不写回 row.role，取消时回退到原值 */
+const roleDraft = ref({})
+
+const pagination = usePagination({ defaultSize: 10, onChange: () => load() })
+const { page, size, total, onPageChange, onSizeChange } = pagination
 
 const roleOptions = [
   { value: 'BUYER', label: '买家' },
@@ -17,40 +27,39 @@ const roleOptions = [
   { value: 'ADMIN', label: '管理员' },
 ]
 
+/* ---------- 2. 计算属性 ---------- */
+const columns = [
+  { key: 'account', label: '账号', width: 160 },
+  { key: 'nickname', label: '昵称', minWidth: 140 },
+  { key: 'role', label: '角色', width: 170, align: 'center', slot: 'role' },
+  { key: 'status', label: '状态', width: 110, align: 'center', slot: 'status' },
+  { key: 'createdAt', label: '注册时间', width: 190, formatter: (row) => formatTime(row.createdAt) },
+]
+
+/* ---------- 3. 方法 ---------- */
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
-    const { data } = await userApi.list({
-      page: page.value,
-      size: size.value,
-      keyword: keyword.value || undefined,
-    })
-    const payload = unwrapResult(data)
-    if (!payload) {
-      error.value = data?.message || '加载失败'
+    const params = { page: page.value, size: size.value }
+    if (keyword.value.trim()) params.keyword = keyword.value.trim()
+
+    const { data } = await userApi.list(params)
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载用户列表失败'
+      users.value = []
+      total.value = 0
       return
     }
-    users.value = payload.list || []
-    total.value = payload.total || 0
+    const payload = unwrapResult(data)
+    users.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? users.value.length
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载失败'
+    loadError.value = resolveErrorMessage(err, '加载用户列表失败')
+    users.value = []
+    total.value = 0
   } finally {
     loading.value = false
-  }
-}
-
-async function toggleStatus(user) {
-  const newStatus = user.status === 'ACTIVE' ? 'FROZEN' : 'ACTIVE'
-  try {
-    const { data } = await userApi.updateStatus(user.userId, { status: newStatus })
-    if (!isOk(data)) {
-      error.value = data?.message || '操作失败'
-      return
-    }
-    await load()
-  } catch (err) {
-    error.value = err.response?.data?.message || '操作失败'
   }
 }
 
@@ -59,134 +68,213 @@ function search() {
   load()
 }
 
+function resetFilters() {
+  keyword.value = ''
+  page.value = 1
+  load()
+}
+
 function isSelf(user) {
   return user.userId === auth.user?.userId
 }
 
-async function changeRole(user, event) {
-  const nextRole = event.target.value
+/** 角色下拉当前值：优先本地草稿，取消后草稿清除即回到 row.role */
+function roleValue(row) {
+  return roleDraft.value[row.userId] ?? row.role
+}
+
+/** 用户状态只有 ACTIVE / FROZEN 两种，未知值不吞掉 */
+function userStatusText(status) {
+  if (status === 'ACTIVE') return '正常'
+  if (status === 'FROZEN') return '已冻结'
+  return status || '-'
+}
+
+function userStatusTag(status) {
+  if (status === 'ACTIVE') return 'success'
+  if (status === 'FROZEN') return 'danger'
+  return 'info'
+}
+
+async function changeRole(user, nextRole) {
   if (nextRole === user.role) return
   const label = roleOptions.find((r) => r.value === nextRole)?.label || nextRole
-  if (!window.confirm(`确定把 ${user.account} 的角色改为「${label}」？对方需重新登录后生效。`)) {
-    event.target.value = user.role
+
+  // 先让下拉显示新选择，取消/失败时清掉草稿回退
+  roleDraft.value = { ...roleDraft.value, [user.userId]: nextRole }
+  const ok = await confirmAction({
+    message: `确定把 ${user.account} 的角色改为「${label}」？对方需重新登录后生效。`,
+    title: '变更角色',
+  })
+  if (!ok) {
+    const next = { ...roleDraft.value }
+    delete next[user.userId]
+    roleDraft.value = next
     return
   }
-  error.value = ''
+
+  if (busyId.value) return
+  busyId.value = user.userId
   try {
     const { data } = await userApi.updateRole(user.userId, nextRole)
     if (!isOk(data)) {
-      error.value = data?.message || '变更角色失败'
-      event.target.value = user.role
+      showError(data?.message || '变更角色失败')
+      const next = { ...roleDraft.value }
+      delete next[user.userId]
+      roleDraft.value = next
       return
     }
+    showSuccess(`已将 ${user.account} 的角色改为「${label}」`)
+    const next = { ...roleDraft.value }
+    delete next[user.userId]
+    roleDraft.value = next
     await load()
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '变更角色失败'
-    event.target.value = user.role
+    showError(resolveErrorMessage(err, '变更角色失败'))
+    const next = { ...roleDraft.value }
+    delete next[user.userId]
+    roleDraft.value = next
+  } finally {
+    busyId.value = ''
   }
 }
 
-function formatTime(t) {
-  return t || '—'
+async function toggleStatus(user) {
+  const next = user.status === 'ACTIVE' ? 'FROZEN' : 'ACTIVE'
+  const actionText = next === 'FROZEN' ? '冻结' : '解冻'
+
+  const ok = await confirmAction({
+    message:
+      next === 'FROZEN'
+        ? `确定冻结账号「${user.account}」？冻结后该账号将无法登录。`
+        : `确定解冻账号「${user.account}」？解冻后该账号可以正常登录。`,
+    title: `${actionText}账号`,
+    danger: next === 'FROZEN',
+  })
+  if (!ok) return
+
+  if (busyId.value) return
+  busyId.value = user.userId
+  try {
+    const { data } = await userApi.updateStatus(user.userId, { status: next })
+    if (!isOk(data)) {
+      showError(data?.message || `${actionText}失败`)
+      return
+    }
+    showSuccess(`${actionText}成功`)
+    // 冻结/解冻不改变总条数，直接刷新当前页即可（afterDelete 会再触发一次请求）
+    await load()
+  } catch (err) {
+    showError(resolveErrorMessage(err, `${actionText}失败`))
+  } finally {
+    busyId.value = ''
+  }
 }
 
+function formatTime(value) {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 19)
+}
+
+/* ---------- 4. 生命周期 ---------- */
 onMounted(load)
 </script>
 
 <template>
   <div class="space-y-4">
-    <h1 class="text-lg font-semibold text-gray-900">用户管理</h1>
+    <!-- 筛选区：不加卡片 -->
+    <el-form inline class="bg-white p-4 rounded-lg" @submit.prevent>
+      <el-form-item label="关键词">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索账号 / 昵称"
+          clearable
+          style="width: 220px"
+          @keyup.enter="search"
+          @clear="search"
+        />
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" @click="search">查询</el-button>
+        <el-button @click="resetFilters">重置</el-button>
+      </el-form-item>
+    </el-form>
 
-    <div class="flex items-center gap-2">
-      <input
-        v-model="keyword"
-        type="text"
-        placeholder="搜索账号/昵称"
-        class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md"
-        @keyup.enter="search"
-      />
-      <button
-        class="px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
-        @click="search"
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <span class="text-base font-medium">用户列表</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '条') }}</span>
+        </div>
+      </template>
+
+      <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
+        <template #extra>
+          <el-button type="primary" @click="load">重试</el-button>
+        </template>
+      </el-result>
+
+      <UiTable
+        v-else
+        :columns="columns"
+        :data="users"
+        :loading="loading"
+        row-key="userId"
+        empty-text="暂无用户"
+        show-actions
+        actions-width="110"
       >
-        搜索
-      </button>
-    </div>
+        <template #role="{ row }">
+          <div class="flex items-center justify-center gap-1">
+            <el-select
+              :model-value="roleValue(row)"
+              size="small"
+              style="width: 100px"
+              :disabled="isSelf(row) || busyId === row.userId"
+              :teleported="true"
+              @change="(value) => changeRole(row, value)"
+            >
+              <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value" />
+            </el-select>
+            <el-tag v-if="isSelf(row)" size="small" type="info">本人</el-tag>
+          </div>
+        </template>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+        <template #status="{ row }">
+          <el-tag :type="userStatusTag(row.status)" size="small">
+            {{ userStatusText(row.status) }}
+          </el-tag>
+        </template>
+
+        <template #actions="{ row }">
+          <el-button
+            link
+            size="small"
+            :type="row.status === 'ACTIVE' ? 'danger' : 'primary'"
+            :loading="busyId === row.userId"
+            :disabled="!!busyId && busyId !== row.userId"
+            @click="toggleStatus(row)"
+          >
+            {{ row.status === 'ACTIVE' ? '冻结' : '解冻' }}
+          </el-button>
+        </template>
+
+        <template #pagination>
+          <el-pagination
+            :current-page="page"
+            :page-size="size"
+            :total="total"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPageChange"
+            @size-change="onSizeChange"
+          />
+        </template>
+      </UiTable>
+    </el-card>
+
     <p class="text-xs text-gray-400">
       角色变更后，对方需要重新登录，新的角色才会随令牌生效；管理员不能变更自己的角色。
     </p>
-
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
-
-    <div v-else class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="text-left px-4 py-2.5 font-medium">账号</th>
-            <th class="text-left px-4 py-2.5 font-medium">昵称</th>
-            <th class="text-left px-4 py-2.5 font-medium">角色</th>
-            <th class="text-left px-4 py-2.5 font-medium">状态</th>
-            <th class="text-left px-4 py-2.5 font-medium">注册时间</th>
-            <th class="text-left px-4 py-2.5 font-medium">操作</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="u in users" :key="u.userId">
-            <td class="px-4 py-2.5 text-gray-900">{{ u.account }}</td>
-            <td class="px-4 py-2.5 text-gray-700">{{ u.nickname }}</td>
-            <td class="px-4 py-2.5 text-gray-700">
-              <select
-                :value="u.role"
-                class="px-2 py-1 text-xs border border-gray-300 rounded bg-white disabled:bg-gray-100 disabled:text-gray-400"
-                :disabled="isSelf(u)"
-                @change="changeRole(u, $event)"
-              >
-                <option v-for="r in roleOptions" :key="r.value" :value="r.value">
-                  {{ r.label }}
-                </option>
-              </select>
-              <span v-if="isSelf(u)" class="ml-1 text-xs text-gray-400">本人</span>
-            </td>
-            <td class="px-4 py-2.5">
-              <span
-                class="text-xs px-2 py-0.5 rounded"
-                :class="u.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
-              >
-                {{ u.status === 'ACTIVE' ? '正常' : '已冻结' }}
-              </span>
-            </td>
-            <td class="px-4 py-2.5 text-gray-500">{{ formatTime(u.createdAt) }}</td>
-            <td class="px-4 py-2.5">
-              <button
-                class="text-xs text-blue-600 hover:underline"
-                @click="toggleStatus(u)"
-              >
-                {{ u.status === 'ACTIVE' ? '冻结' : '解冻' }}
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div v-if="total > size" class="flex items-center justify-center gap-2">
-      <button
-        class="px-3 py-1 text-sm border border-gray-300 rounded-md"
-        :disabled="page === 1"
-        @click="page--; load()"
-      >
-        上一页
-      </button>
-      <span class="text-sm text-gray-500">{{ page }} / {{ Math.ceil(total / size) }}</span>
-      <button
-        class="px-3 py-1 text-sm border border-gray-300 rounded-md"
-        :disabled="page * size >= total"
-        @click="page++; load()"
-      >
-        下一页
-      </button>
-    </div>
   </div>
 </template>
