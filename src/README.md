@@ -140,6 +140,31 @@ docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
 
 本地逐个启动用 `src/scripts/dev.bat`，见 [一键启停说明](docs/一键启停说明.md)。
 
+### 冷启动后商品库为空是预期行为
+
+`src/docker/init-db.sql` 只创建五个空库，建表由各服务的 `schema.sql` 在启动时执行，分类种子在 `product-service` 的 `data.sql` 里，**没有任何商品种子**。所以从零部署后 `GET /api/products` 返回 `total=0` 是正常现象，不是服务异常。
+
+需要演示数据时手动运行（不随部署自动执行）。卖家口令通过环境变量传入并保持稳定，**同一账号 + 同一口令重复执行才是幂等的**：
+
+```bash
+cd src/docker
+
+# verify 部署：网关在 19000（脚本默认值）
+DEMO_SELLER_PASSWORD='自己定的演示口令' bash demo-init.sh
+
+# 普通 compose 部署：网关在 9000，必须显式指定（口令沿用上文导出的 DEMO_SELLER_PASSWORD，不在命令行写明文）
+bash demo-init.sh --gateway http://127.0.0.1:9000
+
+# 只预检，不写数据
+bash demo-init.sh --dry-run
+```
+
+口令统一通过环境变量 `DEMO_SELLER_PASSWORD` 传入（可先 `export` / `read -s` 隐藏输入再导出），**不建议把明文口令写在命令行上**——那会留在 shell 历史与进程列表里。
+
+口令未通过环境变量提供时，脚本在交互终端隐藏输入；非交互环境直接报错退出，不会随机生成，也不写 `.env`、不回显口令。管理员配置读同目录 `.env` 的 `ADMIN_BOOTSTRAP_ACCOUNT` / `ADMIN_BOOTSTRAP_PASSWORD`（**`.env` 需自行创建，仓库不含该文件也不含真实凭据**；不打印、不落盘）。依赖 `bash` + `curl` + `python3`；任一请求 HTTP 非 200 或业务 `code` 非 0、必需字段（`data.token` / `data.productId`）缺失都立即以退出码 `2` 停止，日志只留标签与码值、不打印响应体。
+
+脚本只负责**小型演示环境**的初始化：写入前先在单页里数出现有商品数与尚缺演示商品数，**现有 + 尚缺 > 96**（现有 + 尚缺 ≤ 96 < 100，包含新增后仍完整落一页；现有本身超过 100 件）也拒绝，在业务写入前以退出码 `3` 退出，因此已完整初始化的账号重跑仍成功；去重与归属校验只在 `size=100` 的**单页**内做（服务端 `/mine` 按 `ORDER BY created_at DESC` 排序、`created_at` 为秒级 `DATETIME` 且无稳定二级键，跨页比对会漏数据），并校验每次非过滤响应的 `list` 长度与 `total` 一致。账号被冻结（业务码 `20004`）时直接报冻结退出，不会被当作“账号不存在”去注册。审核只针对自己名下带 `[DEMO_SEED]-` 标记的 productId，不会碰到其他卖家的商品，也不会修改管理员账号。**不要并发运行，也不要指向与业务共用的卖家账号。**完整说明见根目录 [README](../README.md) 的「冷启动后商品列表为空是预期行为」。
+
 ### 构建与测试
 
 ```bash
