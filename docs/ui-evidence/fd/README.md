@@ -11,7 +11,7 @@
 | --- | --- | --- | --- |
 | F01 | 登录 | `src/web/src/views/Login.vue` | `el-form` / `el-form-item`、密码可见切换、提交 loading、就地错误提示；原字段、校验文案、`userApi.login`、`setLogin`、`redirectTarget` 全部保留 |
 | F02 | 注册 | `src/web/src/views/Register.vue` | 五个原字段换 `el-form-item`，原校验规则逐项显示；提交 loading 与防重复；修正 HTTP 200 业务失败被误报成功的问题 |
-| F03 | 收藏 | `src/web/src/views/Favorites.vue` | 保留原卡片网格与失效商品处理；加载/空/失败三态；取消收藏确认与逐项忙状态；`el-pagination` |
+| F03 | 收藏 | `src/web/src/views/Favorites.vue` | 保留原卡片网格与失效商品处理；加载/空/失败三态；取消收藏确认与逐项忙状态；分页统一用 `usePagination` + `el-pagination` |
 | F04 | 浏览足迹 | `src/web/src/views/BrowseHistory.vue` | 保留原列表顺序与失效商品处理；三态；单条删除与清空均走确认；数量选择改 `el-select` |
 
 四个页面统一使用 Element Plus 默认视觉风格（主色 `#409EFF`、4px 圆角），与已合并的 F01 试点及 `AdminUsers` 页面保持一致，未引入自定义主题或图标依赖。
@@ -34,7 +34,7 @@ pnpm dev        # http://localhost:5173
 pnpm run build  # 生产构建
 ```
 
-生产构建已通过（Vite 8.3.4，F01 984ms，F02–F04 971ms）。本地联调使用仓库外的临时 mock 网关（9000）模拟统一响应，未提交任何 mock 代码、演示账号或令牌。
+生产构建已通过（Vite 8.3.4，F01 984ms，F02–F04 971ms；分页复用 `usePagination` 后复验 1.00s，退出码 0）。本地联调使用仓库外的临时 mock 网关（9000）模拟统一响应，未提交任何 mock 代码、演示账号或令牌。
 
 ## 四、证据入口
 

@@ -4,14 +4,16 @@ import { useRouter } from 'vue-router'
 import { favoriteApi, isOk, unwrapResult } from '../api'
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
+import { usePagination } from '../composables/usePagination'
 import { formatPrice, formatTime } from '../utils/format'
 
 const router = useRouter()
 
 const list = ref([])
-const page = ref(1)
-const size = ref(12)
-const total = ref(0)
+const { page, size, total, onPageChange, afterDelete } = usePagination({
+  defaultSize: 12,
+  onChange: () => load(),
+})
 const loading = ref(true)
 const loadError = ref('')
 const removingId = ref(null)
@@ -39,11 +41,6 @@ async function load() {
   }
 }
 
-function changePage(next) {
-  page.value = next
-  load()
-}
-
 function openDetail(item) {
   if (item.invalid) return
   router.push({ name: 'product-detail', params: { id: item.productId } })
@@ -67,11 +64,7 @@ async function remove(item) {
       return
     }
     showSuccess('已取消收藏')
-    // 删掉当前页最后一条时回到上一页，避免停在空页
-    if (list.value.length === 1 && page.value > 1) {
-      page.value -= 1
-    }
-    await load()
+    afterDelete(total.value - 1)
   } catch (err) {
     showError(resolveErrorMessage(err, '取消收藏失败'))
   } finally {
@@ -165,12 +158,12 @@ onMounted(load)
 
       <div v-if="total > size" class="flex items-center justify-center">
         <el-pagination
-          v-model:current-page="page"
+          :current-page="page"
           :page-size="size"
           :total="total"
           layout="prev, pager, next"
           data-testid="favorites-pagination"
-          @current-change="changePage"
+          @current-change="onPageChange"
         />
       </div>
     </template>
