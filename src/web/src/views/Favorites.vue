@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { favoriteApi, isOk, unwrapResult } from '../api'
-import { formatTime } from '../utils/format'
+import { confirmAction } from '../components/ui/confirm'
+import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
+import { formatPrice, formatTime } from '../utils/format'
 
 const router = useRouter()
 
@@ -11,31 +13,35 @@ const page = ref(1)
 const size = ref(12)
 const total = ref(0)
 const loading = ref(true)
-const error = ref('')
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
+const loadError = ref('')
+const removingId = ref(null)
 
 async function load() {
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
     const { data } = await favoriteApi.list({ page: page.value, size: size.value })
     const payload = unwrapResult(data)
     if (!payload) {
-      error.value = data?.message || '加载收藏夹失败'
+      loadError.value = data?.message || '加载收藏夹失败'
+      list.value = []
+      total.value = 0
       return
     }
     list.value = payload.list || []
     total.value = payload.total || 0
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载收藏夹失败'
+    loadError.value = resolveErrorMessage(err, '加载收藏夹失败')
+    list.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
 }
 
-function formatPrice(cents) {
-  return (Number(cents || 0) / 100).toFixed(2)
+function changePage(next) {
+  page.value = next
+  load()
 }
 
 function openDetail(item) {
@@ -44,21 +50,32 @@ function openDetail(item) {
 }
 
 async function remove(item) {
-  if (!window.confirm(`取消收藏「${item.title}」？`)) return
-  error.value = ''
+  if (removingId.value !== null) return
+  const confirmed = await confirmAction({
+    title: '取消收藏',
+    message: `取消收藏「${item.title}」？`,
+    confirmButtonText: '取消收藏',
+    danger: true,
+  })
+  if (!confirmed) return
+
+  removingId.value = item.productId
   try {
     const { data } = await favoriteApi.remove(item.productId)
     if (!isOk(data)) {
-      error.value = data?.message || '取消收藏失败'
+      showError(data?.message || '取消收藏失败')
       return
     }
+    showSuccess('已取消收藏')
     // 删掉当前页最后一条时回到上一页，避免停在空页
     if (list.value.length === 1 && page.value > 1) {
       page.value -= 1
     }
     await load()
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '取消收藏失败'
+    showError(resolveErrorMessage(err, '取消收藏失败'))
+  } finally {
+    removingId.value = null
   }
 }
 
@@ -70,26 +87,33 @@ onMounted(load)
     <div class="flex items-center justify-between">
       <h1 class="text-lg font-semibold text-gray-900">
         我的收藏
-        <span class="text-sm text-gray-400 font-normal">共 {{ total }} 件</span>
+        <span v-if="!loadError" class="text-sm text-gray-400 font-normal">共 {{ total }} 件</span>
       </h1>
       <RouterLink :to="{ name: 'products' }" class="text-sm text-blue-600 hover:underline">
         去逛逛
       </RouterLink>
     </div>
 
-    <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+    <el-card v-if="loading" shadow="never">
+      <el-skeleton :rows="4" animated />
+    </el-card>
 
-    <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
+    <el-card v-else-if="loadError" shadow="never">
+      <el-result status="error" icon="error" title="加载收藏夹失败" :sub-title="loadError">
+        <template #extra>
+          <el-button type="primary" data-testid="favorites-retry" @click="load">重试</el-button>
+        </template>
+      </el-result>
+    </el-card>
+
+    <el-card v-else-if="!list.length" shadow="never">
+      <el-empty description="收藏夹还是空的">
+        <el-button type="primary" @click="router.push({ name: 'products' })">去逛逛</el-button>
+      </el-empty>
+    </el-card>
 
     <template v-else>
-      <div v-if="!list.length" class="py-16 text-center text-gray-400 text-sm space-y-3">
-        <p>收藏夹还是空的</p>
-        <RouterLink :to="{ name: 'products' }" class="text-blue-600 hover:underline">
-          去看看有什么值得收藏的商品
-        </RouterLink>
-      </div>
-
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         <article
           v-for="item in list"
           :key="item.favoriteId"
@@ -123,30 +147,31 @@ onMounted(load)
             <p class="text-red-600 font-medium text-sm">¥{{ formatPrice(item.price) }}</p>
             <div class="flex items-center justify-between text-xs text-gray-400 pt-1">
               <span>{{ formatTime(item.createdAt) }}</span>
-              <button class="text-red-500 hover:underline" @click.stop="remove(item)">
+              <el-button
+                link
+                type="danger"
+                size="small"
+                :loading="removingId === item.productId"
+                :disabled="removingId !== null && removingId !== item.productId"
+                :data-testid="`favorites-remove-${item.productId}`"
+                @click.stop="remove(item)"
+              >
                 取消收藏
-              </button>
+              </el-button>
             </div>
           </div>
         </article>
       </div>
 
-      <div v-if="totalPages > 1" class="flex items-center justify-center gap-2">
-        <button
-          class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-          :disabled="page === 1"
-          @click="page--; load()"
-        >
-          上一页
-        </button>
-        <span class="text-sm text-gray-500">{{ page }} / {{ totalPages }}</span>
-        <button
-          class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-          :disabled="page === totalPages"
-          @click="page++; load()"
-        >
-          下一页
-        </button>
+      <div v-if="total > size" class="flex items-center justify-center">
+        <el-pagination
+          v-model:current-page="page"
+          :page-size="size"
+          :total="total"
+          layout="prev, pager, next"
+          data-testid="favorites-pagination"
+          @current-change="changePage"
+        />
       </div>
     </template>
   </div>
