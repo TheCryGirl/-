@@ -41,8 +41,6 @@ const remaining = computed(() => {
   return Math.max(0, (payment.value.amount || 0) - (payment.value.refundedAmount || 0))
 })
 
-const showRemaining = computed(() => payment.value?.status === 'SUCCESS')
-
 const canApply = computed(() => {
   if (!order.value || !payment.value) return false
   if (payment.value.status !== 'SUCCESS') return false
@@ -262,7 +260,7 @@ onMounted(loadAll)
               <el-tag :type="statusTag(ORDER_STATUS_TAG, order.status)" size="small">
                 {{ statusText(ORDER_STATUS_MAP, order.status) }}
               </el-tag>
-              <span v-if="showRemaining">剩余可退 ¥{{ formatPrice(remaining) }}</span>
+              <span v-if="payment">剩余可退 ¥{{ formatPrice(remaining) }}</span>
             </span>
           </div>
         </template>

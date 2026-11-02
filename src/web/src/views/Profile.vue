@@ -186,14 +186,16 @@ function openEdit(addr) {
 
 async function submitAddress() {
   if (saving.value) return
+  // 校验期间也算「提交中」，否则双击会并发两次 create
+  saving.value = true
   try {
     await addressFormRef.value?.validate()
   } catch {
+    saving.value = false
     return
   }
 
   const isEditing = Boolean(editingId.value)
-  saving.value = true
   try {
     const payload = { ...form }
     const res = isEditing

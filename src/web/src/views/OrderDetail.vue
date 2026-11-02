@@ -158,6 +158,10 @@ async function handleEvalFiles(event) {
   const files = Array.from(event.target.files || [])
   event.target.value = ''
   if (!files.length || evalUploading.value) return
+  if (evalImages.value.length + files.length > 3) {
+    evalError.value = '最多上传 3 张图片'
+    return
+  }
 
   evalError.value = ''
   evalUploading.value = true
