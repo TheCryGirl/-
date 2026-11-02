@@ -25,7 +25,7 @@
 
 列表总量文案（#95 后续要求）单独一个提交：`0d75217`，见第三节之后的「补充：#95 列表总量文案」。
 
-diff 统计：代码部分 `11 files changed, 1696 insertions(+), 1186 deletions(-)`（相对 `7978202`），仅上述 11 个文件；加上证据目录后总计 69 个文件（57+9 张截图 + 1 个 md），无 `src/api/`、`src/stores/`、`src/router/`、`package.json`、`pnpm-lock.yaml`、公共组件改动。
+diff 统计：代码部分 `11 files changed, 1696 insertions(+), 1186 deletions(-)`（相对 `7978202`），仅上述 11 个文件；加上证据目录后总计 78 个文件（11 个 vue + 66 张截图 + 1 个 md），无 `src/api/`、`src/stores/`、`src/router/`、`package.json`、`pnpm-lock.yaml`、公共组件改动。
 
 ---
 
