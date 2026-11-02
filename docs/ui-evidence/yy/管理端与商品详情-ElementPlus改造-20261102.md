@@ -1,9 +1,9 @@
 # #79 管理端 10 页 + 商品详情 Element Plus 改造 —— 验收证据
 
-> 验收人：yynqycq｜日期：2026-11-02 09:35 CST
+> 验收人：yynqycq｜日期：2026-11-02 10:05 CST
 > 分支：`feature/ui-yy-admin`
-> 基线提交：`6d1ae51`（Merge pull request #91 from TheCryGirl/docs/recheck）
-> 提交范围：`a7d3274`、`e0245b5`、`1ae9aea`、`d5e5abd`、`9bff928`
+> 基线提交：`7978202`（docs: 新增真实后端闭环冒烟证据（2026-11-02）；改造首版基于 `6d1ae51`，后已 rebase 到 `7978202`）
+> 提交范围：`f3a51ed`、`eac145e`、`56e09e1`、`30e30f7`、`8888539`、`824888b`、`0d75217`
 
 ---
 
@@ -11,19 +11,21 @@
 
 | 任务ID | 文件 | 提交 | 说明 |
 | --- | --- | --- | --- |
-| Y01 | `src/web/src/views/admin/AdminUsers.vue` | `a7d3274` | 试点页：用户列表、角色变更、冻结/解冻 |
-| Y02 | `src/web/src/views/admin/AdminShops.vue` | `e0245b5` | 店铺列表、停用/恢复营业 |
-| Y03 | `src/web/src/views/admin/AdminProducts.vue` | `e0245b5` | 待审核商品（保留卡片结构） |
-| Y04 | `src/web/src/views/admin/AdminEvaluations.vue` | `1ae9aea` | 评价列表、隐藏/恢复 |
-| Y05 | `src/web/src/views/admin/AdminRefunds.vue` | `1ae9aea` | 退款单列表、复核裁定 |
-| Y06 | `src/web/src/views/admin/AdminAfterSales.vue` | `1ae9aea` | 售后仲裁（保留卡片结构） |
-| Y07 | `src/web/src/views/admin/AdminAuditLogs.vue` | `d5e5abd` | 审计日志、日期筛选、分页 |
-| Y08 | `src/web/src/views/admin/AdminConfig.vue` | `d5e5abd` | 超时配置、整数边界、配置历史 |
-| Y09 | `src/web/src/views/admin/AdminFinance.vue` | `d5e5abd` | 财务统计、按日对账 |
-| Y10 | `src/web/src/views/admin/AdminRisk.vue` | `d5e5abd` | 风控统计、风险明细 |
-| Y11 | `src/web/src/views/ProductDetail.vue` | `9bff928` | 商品详情、SKU、加购、收藏 |
+| Y01 | `src/web/src/views/admin/AdminUsers.vue` | `f3a51ed` | 试点页：用户列表、角色变更、冻结/解冻 |
+| Y02 | `src/web/src/views/admin/AdminShops.vue` | `eac145e` | 店铺列表、停用/恢复营业 |
+| Y03 | `src/web/src/views/admin/AdminProducts.vue` | `eac145e` | 待审核商品（保留卡片结构） |
+| Y04 | `src/web/src/views/admin/AdminEvaluations.vue` | `56e09e1` | 评价列表、隐藏/恢复 |
+| Y05 | `src/web/src/views/admin/AdminRefunds.vue` | `56e09e1` | 退款单列表、复核裁定 |
+| Y06 | `src/web/src/views/admin/AdminAfterSales.vue` | `56e09e1` | 售后仲裁（保留卡片结构） |
+| Y07 | `src/web/src/views/admin/AdminAuditLogs.vue` | `30e30f7` | 审计日志、日期筛选、分页 |
+| Y08 | `src/web/src/views/admin/AdminConfig.vue` | `30e30f7` | 超时配置、整数边界、配置历史 |
+| Y09 | `src/web/src/views/admin/AdminFinance.vue` | `30e30f7` | 财务统计、按日对账 |
+| Y10 | `src/web/src/views/admin/AdminRisk.vue` | `30e30f7` | 风控统计、风险明细 |
+| Y11 | `src/web/src/views/ProductDetail.vue` | `8888539` | 商品详情、SKU、加购、收藏 |
 
-diff 统计：`11 files changed, 1672 insertions(+), 1185 deletions(-)`，仅上述 11 个文件，无 `src/api/`、`src/stores/`、`src/router/`、`package.json`、`pnpm-lock.yaml`、公共组件改动。
+列表总量文案（#95 后续要求）单独一个提交：`0d75217`，见第三节之后的「补充：#95 列表总量文案」。
+
+diff 统计：代码部分 `11 files changed, 1696 insertions(+), 1186 deletions(-)`（相对 `7978202`），仅上述 11 个文件；加上证据目录后总计 69 个文件（57+9 张截图 + 1 个 md），无 `src/api/`、`src/stores/`、`src/router/`、`package.json`、`pnpm-lock.yaml`、公共组件改动。
 
 ---
 
@@ -228,6 +230,38 @@ mock 数据规模（仅供截图可读性）：12 用户、8 店铺、30 商品�
 
 ---
 
+### 补充：#95 列表总量文案（提交 `0d75217`）
+
+issue #79 最新评论（`TheCryGirl`，2026-11-01）要求按 #95 / PR #100 的处理方式，把列表总量文案改成如实标注可见范围。`src/web/src/utils/format.js` 已由基础层提供：
+
+```js
+formatTotal(total, unit = '条', shown)  // shown >= total → 「共 N 单位」
+                                        // 否则 → 「共 N 单位，当前显示前 M 单位」
+```
+
+9 个含列表的管理页统一改为 `formatTotal`，位置仍在 `el-card` header 右侧：
+
+| 页面 | 量词 | 调用 |
+| --- | --- | --- |
+| `AdminUsers.vue` | 条 | `formatTotal(total, '条')`（有分页，不传 shown） |
+| `AdminShops.vue` | 家 | `formatTotal(total, '家')`（有分页） |
+| `AdminProducts.vue` | 件 | `formatTotal(total, '件', products.length)`（无分页，`size:100` 一次取完） |
+| `AdminEvaluations.vue` | 条 | `formatTotal(total, '条')`（有分页） |
+| `AdminRefunds.vue` | 笔 | `formatTotal(total, '笔', refunds.length)` |
+| `AdminAfterSales.vue` | 单 | `formatTotal(total, '单', tickets.length)` |
+| `AdminAuditLogs.vue` | 条 | `formatTotal(total, '条')`（有分页） |
+| `AdminFinance.vue` | 天 | `formatTotal(daily.length, '天')` |
+| `AdminRisk.vue` | 条 | `formatTotal(risks.length, '条')` |
+
+- `AdminConfig.vue` 没有列表，未改。
+- `AdminProducts` / `AdminRefunds` / `AdminAfterSales` 原来只显示 `list.length`（当前可见条数），现补 `total` 状态：加载成功取 `payload?.total ?? list.length`，失败/异常分支置 0，避免把「只取到前 N 条」说成「共 N 条」。
+- 有分页的页面只传 `total`：`total` 是后端返回的总数，当前页条数不代表可见范围，传 `shown` 反而会误导。
+- 浏览器实测 header 文案：users「共 12 条」、shops「共 8 家」、products「共 3 件」、evaluations「共 6 条」、refunds「共 8 笔」、after-sales「共 4 单」、audit-logs「共 26 条」、finance「共 9 天」、risk「共 10 条」；空数据时 users 显示「共 0 条」。
+- 截图：`yy-t01-users-total-v3.png`、`yy-t02-shops-total-v3.png`、`yy-t03-products-total-v3.png`、`yy-t04-evaluations-total-v3.png`、`yy-t05-refunds-total-v3.png`、`yy-t06-aftersales-total-v3.png`、`yy-t07-auditlogs-total-v3.png`、`yy-t09-finance-total-v3.png`、`yy-t10-risk-total-v3.png`。
+- 量词单测（Node 直接 import `utils/format.js`）：`formatTotal(8,'笔',8)` → 「共 8 笔」；`formatTotal(128,'笔',50)` → 「共 128 笔，当前显示前 50 笔」；`formatTotal(0,'条',0)` → 「共 0 条」。
+
+---
+
 ## 四、敏感操作验证汇总
 
 | 页面 | 目标 ID | 取消 | 重复点击 | 失败 |
@@ -267,14 +301,16 @@ mock 数据规模（仅供截图可读性）：12 用户、8 店铺、30 商品�
 
 ```
 $ npx vite build
-✓ built in 739ms
-dist/assets/AdminAuditLogs-Cmz_6LBx.js   114.13 kB │ gzip: 31.54 kB
-dist/assets/ProductDetail-BuISF6Ax.js     21.89 kB │ gzip:  8.32 kB
-dist/assets/api-CK-3Nor5.js              129.11 kB │ gzip: 48.10 kB
+✓ built in 830ms
+dist/assets/AdminAuditLogs-BsdBDk8D.js   114.36 kB │ gzip: 31.58 kB
+dist/assets/ProductDetail-ClqXKzIy.js     11.00 kB │ gzip:  4.51 kB
+dist/assets/api-BXBThS1l.js              145.36 kB │ gzip: 54.39 kB
 …
 ```
 
-退出码 0，11 个目标页 chunk 全部产出。
+退出码 0，11 个目标页 chunk 全部产出：`AdminUsers-DIVlGOLa.js` 5.89 kB、`AdminShops-Byzxm50k.js` 5.35 kB、`AdminProducts-BXizVo2A.js` 3.53 kB、`AdminEvaluations-BD3vj-io.js` 5.57 kB、`AdminRefunds-Bvo7bKGV.js` 5.79 kB、`AdminAfterSales-DCZnz4fK.js` 5.01 kB、`AdminAuditLogs-BsdBDk8D.js` 111.68 kB、`AdminConfig-CHy-sMtB.js` 4.79 kB、`AdminFinance-Cvj3iSm_.js` 6.43 kB、`AdminRisk-Bg6B8z8c.js` 5.77 kB、`ProductDetail-ClqXKzIy.js` 10.75 kB（均为未 gzip 体积；`AdminAuditLogs` 较大是因为内置了日期选择器依赖）。
+
+构建会用 `unplugin-auto-import` / `unplugin-vue-components` 改写 `src/web/src/auto-imports.d.ts`、`src/web/src/components.d.ts`，这两个文件不在白名单内，每次构建后都已 `git checkout --` 还原，未进入提交。
 
 说明：`pnpm build` 在本机会先尝试 `pnpm install` 并因沙箱无法打开 pnpm 全局 store 锁而告警（`ERR_PNPM_STORE_DIR_OPEN_OPERATION_LOCK`），随后 `$ vite build` 正常执行并通过。这是本机环境问题，与代码无关；CI / 正常开发机上 `pnpm build` 应可直接通过。
 
