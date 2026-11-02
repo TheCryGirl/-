@@ -1,16 +1,18 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { productApi } from '../api'
+import { isOk, productApi, unwrapResult } from '../api'
 import ProductCard from '../components/ProductCard.vue'
+import { resolveErrorMessage } from '../components/ui/message'
+import { formatTotal } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
 
 const products = ref([])
 const categories = ref([])
-const loading = ref(false)
-const error = ref('')
+const loading = ref(true)
+const loadError = ref('')
 const filterError = ref('')
 
 const keyword = ref('')
@@ -29,15 +31,17 @@ const sortOptions = [
   { value: 'price_desc', label: '价格从高到低' },
 ]
 
+function hasPrice(value) {
+  return value !== '' && value !== null && value !== undefined
+}
+
 /** 当前生效的筛选条件，空结果时告诉用户到底筛了什么（#50） */
 const activeFilters = computed(() => {
   const list = []
   if (keyword.value.trim()) list.push(`关键词「${keyword.value.trim()}」`)
   if (categoryId.value) list.push(`分类「${categoryName(categoryId.value)}」`)
-  if (priceRange.value.min !== '' && priceRange.value.min !== null)
-    list.push(`最低价 ¥${priceRange.value.min}`)
-  if (priceRange.value.max !== '' && priceRange.value.max !== null)
-    list.push(`最高价 ¥${priceRange.value.max}`)
+  if (hasPrice(priceRange.value.min)) list.push(`最低价 ¥${priceRange.value.min}`)
+  if (hasPrice(priceRange.value.max)) list.push(`最高价 ¥${priceRange.value.max}`)
   return list
 })
 
@@ -56,10 +60,8 @@ function syncQuery() {
   if (keyword.value.trim()) query.keyword = keyword.value.trim()
   if (categoryId.value) query.categoryId = categoryId.value
   if (sort.value !== 'default') query.sort = sort.value
-  if (priceRange.value.min !== '' && priceRange.value.min !== null)
-    query.minPrice = String(priceRange.value.min)
-  if (priceRange.value.max !== '' && priceRange.value.max !== null)
-    query.maxPrice = String(priceRange.value.max)
+  if (hasPrice(priceRange.value.min)) query.minPrice = String(priceRange.value.min)
+  if (hasPrice(priceRange.value.max)) query.maxPrice = String(priceRange.value.max)
   if (page.value > 1) query.page = String(page.value)
   router.replace({ name: 'products', query })
 }
@@ -79,14 +81,8 @@ function readQuery() {
 }
 
 function validatePrice() {
-  const min =
-    priceRange.value.min === '' || priceRange.value.min === null
-      ? null
-      : Number(priceRange.value.min)
-  const max =
-    priceRange.value.max === '' || priceRange.value.max === null
-      ? null
-      : Number(priceRange.value.max)
+  const min = hasPrice(priceRange.value.min) ? Number(priceRange.value.min) : null
+  const max = hasPrice(priceRange.value.max) ? Number(priceRange.value.max) : null
   if ((min !== null && (Number.isNaN(min) || min < 0)) || (max !== null && (Number.isNaN(max) || max < 0))) {
     filterError.value = '价格必须是不小于 0 的数字'
     return false
@@ -103,23 +99,33 @@ async function load(resetPage = true) {
   if (resetPage) page.value = 1
   if (!validatePrice()) return
   loading.value = true
-  error.value = ''
+  loadError.value = ''
   try {
+    // 价格在界面按元输入，接口契约按分传递
     const params = { page: page.value, size: size.value, sort: sort.value }
     if (keyword.value.trim()) params.keyword = keyword.value.trim()
     if (categoryId.value) params.categoryId = categoryId.value
-    if (priceRange.value.min !== '' && priceRange.value.min !== null)
+    if (hasPrice(priceRange.value.min))
       params.minPrice = Math.round(Number(priceRange.value.min) * 100)
-    if (priceRange.value.max !== '' && priceRange.value.max !== null)
+    if (hasPrice(priceRange.value.max))
       params.maxPrice = Math.round(Number(priceRange.value.max) * 100)
 
     const { data } = await productApi.list(params)
-    const payload = data?.data ?? data
-    products.value = Array.isArray(payload) ? payload : payload?.list || []
-    total.value = payload?.total ?? products.value.length
+    if (!isOk(data)) {
+      loadError.value = data?.message || '加载商品失败'
+      products.value = []
+      total.value = 0
+      return
+    }
+    const payload = unwrapResult(data)
+    products.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = Array.isArray(payload)
+      ? payload.length
+      : payload?.total ?? products.value.length
   } catch (err) {
-    error.value = err.response?.data?.message || err.message || '加载失败'
+    loadError.value = resolveErrorMessage(err, '加载商品失败')
     products.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -128,15 +134,21 @@ async function load(resetPage = true) {
 async function loadCategories() {
   try {
     const { data } = await productApi.categories()
-    const payload = data?.data ?? data
-    categories.value = Array.isArray(payload) ? payload : payload?.list || []
+    if (!isOk(data)) {
+      categories.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    categories.value = Array.isArray(payload) ? payload : payload?.list ?? []
   } catch {
+    // 分类加载失败不阻断商品列表，筛选区仍可用关键词与价格
     categories.value = []
   }
 }
 
 /** 筛选条件变化后：回第一页、重新查询、同步地址栏 */
 function applyFilters() {
+  clearSearchTimer()
   load(true)
   syncQuery()
 }
@@ -164,145 +176,167 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value
 
 let searchTimer = null
 
+function clearSearchTimer() {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+}
+
 onMounted(() => {
   readQuery()
   // 先按地址栏恢复条件再监听输入，避免初始化时把 ?page=2 重置回第一页
   watch(keyword, () => {
-    if (searchTimer) clearTimeout(searchTimer)
+    clearSearchTimer()
     searchTimer = setTimeout(() => applyFilters(), 400)
   })
   loadCategories()
   load(false)
 })
 
-onBeforeUnmount(() => {
-  if (searchTimer) clearTimeout(searchTimer)
-})
+onBeforeUnmount(clearSearchTimer)
 </script>
 
 <template>
-  <div class="space-y-5">
-    <!-- 搜索与筛选 -->
-    <section class="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-      <div class="flex flex-wrap items-center gap-2">
-        <input
+  <div class="space-y-4">
+    <!-- 筛选区：不加卡片 -->
+    <el-form inline class="bg-white rounded-lg p-4" @submit.prevent>
+      <el-form-item label="关键词">
+        <el-input
           v-model="keyword"
-          type="text"
           placeholder="搜索商品名称"
-          class="flex-1 min-w-50 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          clearable
+          style="width: 220px"
+          data-testid="product-list-keyword"
+          @keyup.enter="applyFilters"
         />
-        <select
+      </el-form-item>
+      <el-form-item label="分类">
+        <el-select
           v-model="categoryId"
-          class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="全部分类"
+          clearable
+          style="width: 180px"
+          data-testid="product-list-category"
           @change="applyFilters"
         >
-          <option value="">全部分类</option>
-          <option v-for="c in categories" :key="c.categoryId" :value="c.categoryId">
-            {{ categoryLabel(c) }}
-          </option>
-        </select>
-        <select
+          <el-option label="全部分类" value="" />
+          <el-option
+            v-for="c in categories"
+            :key="c.categoryId"
+            :label="categoryLabel(c)"
+            :value="c.categoryId"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="排序">
+        <el-select
           v-model="sort"
-          class="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style="width: 160px"
+          data-testid="product-list-sort"
           @change="applyFilters"
         >
-          <option v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
+          <el-option v-for="opt in sortOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="价格（元）">
+        <div class="flex items-center gap-2">
+          <el-input
+            v-model="priceRange.min"
+            type="number"
+            min="0"
+            placeholder="最低"
+            style="width: 100px"
+            data-testid="product-list-min-price"
+            @keyup.enter="applyFilters"
+          />
+          <span class="text-gray-400">—</span>
+          <el-input
+            v-model="priceRange.max"
+            type="number"
+            min="0"
+            placeholder="最高"
+            style="width: 100px"
+            data-testid="product-list-max-price"
+            @keyup.enter="applyFilters"
+          />
+        </div>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" data-testid="product-list-search" @click="applyFilters">查询</el-button>
+        <el-button data-testid="product-list-reset" @click="resetFilters">重置</el-button>
+      </el-form-item>
+    </el-form>
 
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="text-gray-500">价格区间（元）</span>
-        <input
-          v-model.number="priceRange.min"
-          type="number"
-          min="0"
-          placeholder="最低"
-          class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <span class="text-gray-400">—</span>
-        <input
-          v-model.number="priceRange.max"
-          type="number"
-          min="0"
-          placeholder="最高"
-          class="w-24 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          class="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
-          @click="applyFilters"
-        >
-          查询
-        </button>
-        <button
-          class="px-4 py-2 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50"
-          @click="resetFilters"
-        >
-          重置
-        </button>
-      </div>
+    <p v-if="filterError" class="text-sm text-red-600">{{ filterError }}</p>
 
-      <p v-if="filterError" class="text-sm text-red-600">{{ filterError }}</p>
-    </section>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h1 class="text-lg font-semibold text-gray-900">商品市场</h1>
+      <span v-if="!loadError" class="text-xs text-gray-400">
+        {{ formatTotal(total, '件') }}
+      </span>
+    </div>
 
-    <!-- 结果 -->
-    <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-base font-medium text-gray-800">
-          商品市场
-          <span class="text-sm text-gray-400 font-normal">共 {{ total }} 件</span>
-        </h2>
-      </div>
+    <!-- 失败态与空态严格分开 -->
+    <el-result
+      v-if="loadError && !loading"
+      status="error"
+      title="加载商品失败"
+      :sub-title="loadError"
+    >
+      <template #extra>
+        <el-button type="primary" data-testid="product-list-retry" @click="load(false)">重试</el-button>
+      </template>
+    </el-result>
 
-      <div v-if="loading" class="py-16 text-center text-gray-400 text-sm">加载中…</div>
+    <div
+      v-else-if="loading"
+      v-loading="true"
+      class="min-h-60 flex items-center justify-center text-sm text-gray-400"
+    >
+      正在加载商品…
+    </div>
 
-      <div v-else-if="error" class="py-16 text-center text-red-500 text-sm">
-        {{ error }}
-        <button class="ml-2 text-blue-600 underline" @click="load()">重试</button>
-      </div>
-
-      <div v-else-if="!products.length" class="py-16 text-center text-gray-400 text-sm space-y-3">
-        <p class="text-gray-600">没有找到符合条件的商品</p>
+    <el-empty v-else-if="!products.length" description="没有找到符合条件的商品">
+      <div class="space-y-2 text-center">
         <p v-if="activeFilters.length" class="text-xs text-gray-500">
           当前筛选：{{ activeFilters.join('、') }}
         </p>
         <p class="text-xs text-gray-400">可以试着换个关键词，或者放宽价格区间</p>
-        <button
-          class="px-4 py-2 rounded-md border border-blue-600 text-blue-600 text-sm hover:bg-blue-50"
-          @click="resetFilters"
-        >
+        <el-button type="primary" plain data-testid="product-list-clear-filters" @click="resetFilters">
           清空筛选条件
-        </button>
+        </el-button>
       </div>
+    </el-empty>
 
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        <ProductCard
-          v-for="p in products"
-          :key="p.productId"
-          :product="p"
-          @click="openDetail"
-        />
-      </div>
+    <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <ProductCard
+        v-for="p in products"
+        :key="p.productId"
+        :product="p"
+        @click="openDetail"
+      />
+    </div>
 
-      <!-- 分页 -->
-      <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 mt-6">
-        <button
-          class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-          :disabled="page === 1"
-          @click="goPage(page - 1)"
-        >
-          上一页
-        </button>
-        <span class="text-sm text-gray-500">{{ page }} / {{ totalPages }}</span>
-        <button
-          class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-          :disabled="page === totalPages"
-          @click="goPage(page + 1)"
-        >
-          下一页
-        </button>
-      </div>
-    </section>
+    <div v-if="!loading && !loadError && totalPages > 1" class="flex justify-center pt-2">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :current-page="page"
+        :page-size="size"
+        :total="total"
+        :pager-count="5"
+        data-testid="product-list-pagination"
+        @current-change="goPage"
+      />
+    </div>
   </div>
 </template>
+
+<style scoped>
+/* Element Plus 按钮默认不显示焦点环，键盘操作时需要可见反馈 */
+.el-button:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+</style>
