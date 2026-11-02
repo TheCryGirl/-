@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { isOk, orderApi, paymentApi, unwrapResult } from '../../api'
 import { ORDER_STATUS_MAP, statusText } from '../../constants/status'
 import { resolveErrorMessage } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /**
  * 资金对账：按订单口径核对「应收 / 已收 / 已退」。
@@ -217,7 +218,7 @@ onMounted(load)
         <template #header>
           <div class="flex items-center justify-between">
             <span class="text-base font-medium">按日对账</span>
-            <span class="text-xs text-gray-400">共 {{ daily.length }} 天</span>
+            <span class="text-xs text-gray-400">{{ formatTotal(daily.length, '天') }}</span>
           </div>
         </template>
 

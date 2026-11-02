@@ -5,6 +5,7 @@ import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
 import { usePagination } from '../../composables/usePagination'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const list = ref([])
@@ -163,7 +164,7 @@ onMounted(load)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">评价列表</span>
-          <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 条</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '条') }}</span>
         </div>
       </template>
 

@@ -4,6 +4,7 @@ import { isOk, paymentApi, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
+import { formatTotal } from '../../utils/format'
 
 /**
  * 退款复核：管理员视角复核全平台退款单。
@@ -13,6 +14,7 @@ import UiTable from '../../components/ui/UiTable.vue'
  */
 /* ---------- 1. 状态 ---------- */
 const refunds = ref([])
+const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
 const status = ref('ALL')
@@ -75,13 +77,16 @@ async function load() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载退款单失败'
       refunds.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     refunds.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? refunds.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载退款单失败')
     refunds.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -174,11 +179,14 @@ onMounted(load)
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <span class="text-base font-medium">退款单</span>
-          <el-radio-group v-model="status" size="small" @change="switchTab">
-            <el-radio-button v-for="t in STATUS_TABS" :key="t.key" :value="t.key">
-              {{ t.label }}
-            </el-radio-button>
-          </el-radio-group>
+          <div class="flex items-center gap-3">
+            <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '笔', refunds.length) }}</span>
+            <el-radio-group v-model="status" size="small" @change="switchTab">
+              <el-radio-button v-for="t in STATUS_TABS" :key="t.key" :value="t.key">
+                {{ t.label }}
+              </el-radio-button>
+            </el-radio-group>
+          </div>
         </div>
       </template>
 

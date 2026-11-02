@@ -4,9 +4,11 @@ import { isOk, productApi, unwrapResult } from '../../api'
 import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '../../constants/status'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const products = ref([])
+const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
 /** 行级忙状态：正在审核的商品 ID */
@@ -25,14 +27,17 @@ async function load() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载待审核商品失败'
       products.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     // 兼容分页结构 { list, total } 与直接返回数组两种形式
     products.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? products.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载待审核商品失败')
     products.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -83,7 +88,7 @@ onMounted(load)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">待审核商品</span>
-          <span v-if="!loadError" class="text-xs text-gray-400">共 {{ products.length }} 条</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '件', products.length) }}</span>
         </div>
       </template>
 

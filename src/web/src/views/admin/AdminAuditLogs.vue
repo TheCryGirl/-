@@ -4,6 +4,7 @@ import { auditApi, isOk, unwrapResult } from '../../api'
 import { resolveErrorMessage } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
 import { usePagination } from '../../composables/usePagination'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const logs = ref([])
@@ -144,7 +145,7 @@ onMounted(load)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">审计记录</span>
-          <span v-if="!loadError" class="text-xs text-gray-400">共 {{ total }} 条</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '条') }}</span>
         </div>
       </template>
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { isOk, orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../api'
 import { resolveErrorMessage } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /**
  * 基础风控：用一组可解释的规则扫描全平台数据，列出需要人工关注的记录。
@@ -208,7 +209,7 @@ onMounted(load)
         <template #header>
           <div class="flex items-center justify-between">
             <span class="text-base font-medium">风险明细</span>
-            <span v-if="!loadError" class="text-xs text-gray-400">共 {{ risks.length }} 条</span>
+            <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(risks.length, '条') }}</span>
           </div>
         </template>
 

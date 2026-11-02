@@ -3,9 +3,11 @@ import { onMounted, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
+import { formatTotal } from '../../utils/format'
 
 /* ---------- 1. 状态 ---------- */
 const tickets = ref([])
+const total = ref(0)
 const loading = ref(false)
 const loadError = ref('')
 /** 按退款单号裁定的输入值 */
@@ -22,13 +24,16 @@ async function load() {
     if (!isOk(data)) {
       loadError.value = data?.message || '加载待仲裁售后单失败'
       tickets.value = []
+      total.value = 0
       return
     }
     const payload = unwrapResult(data)
     tickets.value = Array.isArray(payload) ? payload : payload?.list ?? []
+    total.value = payload?.total ?? tickets.value.length
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载待仲裁售后单失败')
     tickets.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -132,7 +137,7 @@ onMounted(load)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">待仲裁售后单</span>
-          <span v-if="!loadError" class="text-xs text-gray-400">共 {{ tickets.length }} 条</span>
+          <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '单', tickets.length) }}</span>
         </div>
       </template>
 
