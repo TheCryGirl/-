@@ -77,6 +77,19 @@ cd src/web
 VITE_GATEWAY_TARGET=http://localhost:19000 pnpm dev
 ```
 
+> **注意：这条 `up -d` 跑的是镜像内的 jar，不是你在 `src/<服务>/target/` 下构建出的包。**
+>
+> 若要容器运行本次构建的产物，需先把 jar 放到部署目录对应的 `target/` 路径，再以只读 bind mount 方式挂进容器（实测形态：`/opt/mall/src/<服务>/target/<服务>-1.0.0-SNAPSHOT.jar → /app/app.jar`，`Cmd: java -jar app.jar`，`WorkingDir: /app`），并 **`--force-recreate` 重建容器**——单纯 `restart` 可能仍绑定旧文件句柄。
+>
+> 上述挂载路径来自 2026-11-02 对运行中容器的只读核查；**部署目录与仓库的对应关系、原始部署脚本尚未确认**，此处不给出未经证实的命令。详见 [src/README](src/README.md)。
+
+> **已知现象：容器会被反复重置**
+>
+> 在 WSL 环境下曾多次观测到：`docker ps` 中所有容器状态反复显示 `Up N seconds`（N 很小）、`StartedAt` 刷新，而 `RestartCount` 仍为 0；网关短时报 `503 Unable to find instance for <service>`。
+>
+> 这是 **WSL 实例被重建导致容器连带重启，不是容器自身崩溃，也不是业务代码问题**。具体触发原因尚未证实。遇到时等待服务重新注册完成后再访问即可。
+
+
 访问地址：前端 http://localhost:5173 ，网关 http://localhost:19000 ，Nacos 控制台 http://localhost:18848/nacos ，MySQL 端口 13306。
 
 **管理员账号**通过环境变量初始化，不写入默认值。**`src/docker/.env` 需要你自己创建**（仓库里没有这个文件，也不含任何真实凭据），创建后填写：
@@ -167,6 +180,24 @@ dev.bat stop       :: 停止全部
 $env:DB_PASSWORD = "你的 MySQL 口令"
 $env:JWT_SECRET  = "至少32位的随机字符串"   # 网关与 user-service 必须一致
 ```
+
+> **实测要点（2026-11-02，Windows 原生环境）**
+>
+> 1. **`DB_PASSWORD` 必须注入，否则四个业务服务启动即失败。** `application.yaml` 中 `password: ${DB_PASSWORD:}` 默认为空字符串，未设该变量时 HikariCP 连不上 MySQL，服务启动报错退出。这是本地启动最常见的失败原因。
+> 2. **`dev.ps1` 需要能找得到 Nacos。** 脚本在以下位置查找 `bin\startup.cmd`：`%LOCALAPPDATA%\Programs\nacos`、`C:\nacos`、`<仓库根>\nacos`。三者都没有时会跳过 Nacos，随后各业务服务因无法注册而失败。
+>    若手上只有 `nacos-server.jar`（例如从容器内取得），可直接用 JDK 17 启动：
+>    ```bat
+>    set MODE=standalone
+>    "%JAVA_HOME%\bin\java.exe" -Xms512m -Xmx512m -Dnacos.standalone=true -jar nacos-server.jar
+>    ```
+> 3. **`dev.ps1 -Only` 参数在实测中未能只启停单个组件**（触发的是全停/全启）。需要单独操作某个服务时，建议直接看端口与进程，不要依赖该参数。
+> 4. **JDK 版本**：本项目要求 JDK 17。若系统 `JAVA_HOME` 指向更高版本，启动前需显式指定 17。
+> 5. **老库升级必须跑 `migration-reconcile.sql`。** 若 `mall_payment.payment` 表是早期版本（缺 `reconciled_at` 列），创建支付单会报「系统繁忙」，服务端日志为 `Unknown column 'reconciled_at'`。执行 `src/payment-service/src/main/resources/migration-reconcile.sql` 即可补列并建索引，脚本幂等可重复执行。
+>
+> 完整启动顺序：Nacos(8848) → 网关(9000) → 五个业务服务(9001–9005) → 前端(5173，`VITE_GATEWAY_TARGET=http://localhost:9000`)。
+>
+> 6. **前端幂等键在非安全上下文下需兜底。** 浏览器只在 `https` 或 `localhost` 下提供 `crypto.randomUUID`。若通过局域网 IP 访问 dev server，该 API 为 `undefined`，直接调用会让下单按钮静默失败。项目统一走 `src/web/src/utils/idempotency.js` 的 `createIdempotencyKey()`，不要直接调用 `crypto.randomUUID()`。
+
 
 ## 构建与测试
 

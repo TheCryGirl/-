@@ -103,7 +103,9 @@ public class ProductController {
     @PostMapping
     public Result<ProductDetailResponse> create(
             @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody CreateProductRequest request) {
+        requireSeller(role, "无权限创建商品");
         return Result.success(productService.create(sellerId, request));
     }
 
@@ -150,7 +152,9 @@ public class ProductController {
     public Result<SkuResponse> addSku(
             @PathVariable String productId,
             @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody CreateSkuRequest request) {
+        requireSeller(role, "无权限新增 SKU");
         return Result.success(productService.addSku(productId, sellerId, request));
     }
 
@@ -169,5 +173,15 @@ public class ProductController {
 
     private static String suffix(String remark) {
         return remark == null || remark.isBlank() ? "" : "：" + remark;
+    }
+
+    /**
+     * 商品写操作的经营角色校验（缺陷修复：此前 create / addSku 只认 X-User-Id，BUYER 可越权创建商品）。
+     * 角色头缺失或非法一律拒绝，不默认放行。
+     */
+    private static void requireSeller(String role, String message) {
+        if (!"SELLER".equalsIgnoreCase(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, message);
+        }
     }
 }
