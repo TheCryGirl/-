@@ -10,6 +10,7 @@ import {
 } from '../constants/status'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice, formatTime, formatTotal } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 import {
   afterSaleStatusClass,
   afterSaleStatusLabel,
@@ -53,8 +54,7 @@ const selectedTypeHint = computed(
 )
 
 function makeKey() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return createIdempotencyKey()
 }
 
 async function loadOrder() {

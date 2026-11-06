@@ -181,6 +181,24 @@ $env:DB_PASSWORD = "你的 MySQL 口令"
 $env:JWT_SECRET  = "至少32位的随机字符串"   # 网关与 user-service 必须一致
 ```
 
+> **实测要点（2026-11-02，Windows 原生环境）**
+>
+> 1. **`DB_PASSWORD` 必须注入，否则四个业务服务启动即失败。** `application.yaml` 中 `password: ${DB_PASSWORD:}` 默认为空字符串，未设该变量时 HikariCP 连不上 MySQL，服务启动报错退出。这是本地启动最常见的失败原因。
+> 2. **`dev.ps1` 需要能找得到 Nacos。** 脚本在以下位置查找 `bin\startup.cmd`：`%LOCALAPPDATA%\Programs\nacos`、`C:\nacos`、`<仓库根>\nacos`。三者都没有时会跳过 Nacos，随后各业务服务因无法注册而失败。
+>    若手上只有 `nacos-server.jar`（例如从容器内取得），可直接用 JDK 17 启动：
+>    ```bat
+>    set MODE=standalone
+>    "%JAVA_HOME%\bin\java.exe" -Xms512m -Xmx512m -Dnacos.standalone=true -jar nacos-server.jar
+>    ```
+> 3. **`dev.ps1 -Only` 参数在实测中未能只启停单个组件**（触发的是全停/全启）。需要单独操作某个服务时，建议直接看端口与进程，不要依赖该参数。
+> 4. **JDK 版本**：本项目要求 JDK 17。若系统 `JAVA_HOME` 指向更高版本，启动前需显式指定 17。
+> 5. **老库升级必须跑 `migration-reconcile.sql`。** 若 `mall_payment.payment` 表是早期版本（缺 `reconciled_at` 列），创建支付单会报「系统繁忙」，服务端日志为 `Unknown column 'reconciled_at'`。执行 `src/payment-service/src/main/resources/migration-reconcile.sql` 即可补列并建索引，脚本幂等可重复执行。
+>
+> 完整启动顺序：Nacos(8848) → 网关(9000) → 五个业务服务(9001–9005) → 前端(5173，`VITE_GATEWAY_TARGET=http://localhost:9000`)。
+>
+> 6. **前端幂等键在非安全上下文下需兜底。** 浏览器只在 `https` 或 `localhost` 下提供 `crypto.randomUUID`。若通过局域网 IP 访问 dev server，该 API 为 `undefined`，直接调用会让下单按钮静默失败。项目统一走 `src/web/src/utils/idempotency.js` 的 `createIdempotencyKey()`，不要直接调用 `crypto.randomUUID()`。
+
+
 ## 构建与测试
 
 ```bash

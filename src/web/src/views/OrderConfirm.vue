@@ -5,6 +5,7 @@ import { addressApi, isOk, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 
 const router = useRouter()
 const items = ref([])
@@ -86,7 +87,7 @@ async function submit() {
   try {
     const cartItemIds = items.value.map((i) => i.cartItemId)
     // 与原实现一致：每次提交尝试生成一个幂等键，失败后可安全重试
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = createIdempotencyKey()
     const { data } = await orderApi.create(
       { addressId: selectedAddressId.value, cartItemIds },
       idempotencyKey,

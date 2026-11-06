@@ -12,6 +12,7 @@ import {
 } from '../constants/status'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 
 const route = useRoute()
 const router = useRouter()
@@ -56,7 +57,7 @@ async function createPayment() {
   if (paying.value) return
   paying.value = true
   try {
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = createIdempotencyKey()
     const { data } = await paymentApi.create({ orderId, channel: 'MOCK' }, idempotencyKey)
     if (!isOk(data)) {
       showError(data?.message || '创建支付单失败')
