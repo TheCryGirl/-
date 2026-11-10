@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { onMounted, ref } from 'vue'
 import { isOk, unwrapResult, userApi } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
@@ -182,6 +183,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="用户管理"
+      subtitle="查看账号信息、调整角色与冻结状态"
+      icon="user"
+      tone="indigo"
+    />
     <!-- 筛选区：不加卡片 -->
     <el-form inline class="bg-white p-4 rounded-lg" @submit.prevent>
       <el-form-item label="关键词">

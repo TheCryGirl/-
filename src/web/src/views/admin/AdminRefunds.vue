@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { computed, onMounted, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
@@ -156,6 +157,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="退款复核"
+      subtitle="复核退款金额与原因，处理争议退款"
+      icon="refresh"
+      tone="amber"
+    />
     <div v-if="!loadError" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <el-card shadow="never">
         <p class="text-xs text-gray-500">退款单总数</p>

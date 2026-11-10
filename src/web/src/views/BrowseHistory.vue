@@ -5,6 +5,7 @@ import { historyApi, isOk, unwrapResult } from '../api'
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { formatPrice, formatTime } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 
 const router = useRouter()
 
@@ -103,12 +104,16 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg font-semibold text-gray-900">
-        浏览足迹
-        <span v-if="!loadError" class="text-sm text-gray-400 font-normal">{{ list.length }} 条</span>
-      </h1>
-      <div class="flex items-center gap-2">
+    <PageHero
+      title="浏览足迹"
+      subtitle="最近看过的商品都记在这里，方便回头比较"
+      icon="clock"
+      tone="teal"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">{{ list.length }} 条记录</span>
+      </template>
+      <template #actions>
         <el-select
           v-model="limit"
           style="width: 140px"
@@ -126,8 +131,8 @@ onMounted(load)
         >
           清空足迹
         </el-button>
-      </div>
-    </div>
+      </template>
+    </PageHero>
 
     <el-card v-if="loading" shadow="never">
       <el-skeleton :rows="5" animated />
@@ -147,21 +152,22 @@ onMounted(load)
       </el-empty>
     </el-card>
 
-    <ul v-else class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+    <ul v-else class="bg-white rounded-[14px] border border-[var(--jd-line)] divide-y divide-gray-100 overflow-hidden">
       <li
         v-for="item in list"
         :key="item.historyId"
-        class="flex items-center gap-4 p-3"
-        :class="item.invalid ? 'opacity-60' : 'cursor-pointer hover:bg-gray-50'"
+        class="group flex items-center gap-4 p-3 transition-colors"
+        :class="item.invalid ? 'opacity-60' : 'cursor-pointer hover:bg-[#fff8f6]'"
         @click="openDetail(item)"
       >
-        <img
-          v-if="item.mainImage"
-          :src="item.mainImage"
-          :alt="item.title"
-          class="w-16 h-16 rounded object-cover bg-gray-100"
-          :class="item.invalid ? 'grayscale' : ''"
-        />
+        <span v-if="item.mainImage" class="block overflow-hidden rounded-lg shrink-0">
+          <img
+            :src="item.mainImage"
+            :alt="item.title"
+            class="w-16 h-16 rounded-lg object-cover bg-gray-100 transition-transform duration-500 group-hover:scale-105"
+            :class="item.invalid ? 'grayscale' : ''"
+          />
+        </span>
         <div
           v-else
           class="w-16 h-16 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400"
@@ -195,3 +201,4 @@ onMounted(load)
     </ul>
   </div>
 </template>
+

@@ -76,6 +76,8 @@ export const userApi = {
   list: (params) => http.get('/users', { params }),
   updateStatus: (userId, payload) => http.put(`/users/${userId}/status`, payload),
   updateRole: (userId, role) => http.put(`/users/${userId}/role`, { role }),
+  /** 普通用户自助开通卖家身份：后端把角色升级为 SELLER 并返回新令牌 */
+  activateSeller: () => http.post('/users/me/seller'),
   uploadAvatar: (formData) =>
     http.post('/users/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

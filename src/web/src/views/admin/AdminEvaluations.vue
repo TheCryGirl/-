@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { onMounted, ref } from 'vue'
 import { evaluationApi, isOk, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
@@ -136,6 +137,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="评价管理"
+      subtitle="查看买家评价，隐藏违规内容"
+      icon="star"
+      tone="amber"
+    />
     <el-form inline class="bg-white p-4 rounded-lg" @submit.prevent>
       <el-form-item label="状态">
         <el-select v-model="status" style="width: 140px" @change="search">

@@ -4,6 +4,7 @@ import { addressApi, isOk, userApi, unwrapResult } from '../api'
 import { auth, setUser } from '../stores/auth'
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
+import PageHero from '../components/store/PageHero.vue'
 
 const profile = reactive({ nickname: '', phone: '', avatar: '' })
 const profileSaving = ref(false)
@@ -268,7 +269,13 @@ onMounted(() => {
 
 <template>
   <div class="max-w-4xl mx-auto space-y-4">
-    <h1 class="text-lg font-semibold text-gray-900">个人中心</h1>
+    <PageHero
+      title="个人中心"
+      subtitle="维护头像、昵称与收货地址，账号安全与角色权益都在这里"
+      icon="user"
+      tone="indigo"
+      image="/media/bg/profile-cover.jpg"
+    />
 
     <!-- 个人资料 -->
     <el-card shadow="never">
@@ -539,3 +546,4 @@ onMounted(() => {
   outline-offset: 2px;
 }
 </style>
+

@@ -6,6 +6,7 @@ import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import UiTable from '../components/ui/UiTable.vue'
 import { formatPrice } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 
 const router = useRouter()
 const cart = ref({ items: [] })
@@ -24,6 +25,11 @@ const selectedTotal = computed(() =>
 const selectedCount = computed(() =>
   selectedItems.value.reduce((sum, i) => sum + i.quantity, 0),
 )
+/** 合计金额按「整数 + 小数」拆开，配合大号价格排版 */
+const selectedTotalParts = computed(() => {
+  const [int, dec] = ((Number(selectedTotal.value) || 0) / 100).toFixed(2).split('.')
+  return { int, dec }
+})
 
 const columns = computed(() => [
   { key: 'select', label: '', width: 54, align: 'center', slot: 'select' },
@@ -163,10 +169,11 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg font-semibold text-gray-900">购物车</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">共 {{ cart.items.length }} 件商品</span>
-    </div>
+    <PageHero title="购物车" subtitle="核对规格与数量，选中商品后一起结算" icon="cart" tone="red">
+      <template #actions>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">共 {{ cart.items.length }} 件商品</span>
+      </template>
+    </PageHero>
 
     <!-- 加载失败不与空购物车混淆 -->
     <el-result v-if="loadError" status="error" title="加载购物车失败" :sub-title="loadError">
@@ -276,13 +283,18 @@ onMounted(load)
         </UiTable>
       </el-card>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-4">
-        <span class="text-sm text-gray-600">
-          已选 {{ selectedCount }} 件，合计
-          <span class="text-lg font-semibold text-red-600">¥{{ formatPrice(selectedTotal) }}</span>
+      <div class="jd-cart-summary">
+        <span class="jd-cart-summary__text">
+          已选 <strong>{{ selectedCount }}</strong> 件，合计
+          <span class="jd-price jd-cart-summary__price">
+            <span class="jd-price__symbol">¥</span>
+            <span class="jd-price__int">{{ selectedTotalParts.int }}</span>
+            <span class="jd-price__dec">.{{ selectedTotalParts.dec }}</span>
+          </span>
         </span>
         <el-button
           type="primary"
+          size="large"
           :disabled="!selectedItems.length"
           data-testid="cart-checkout"
           @click="checkout"
@@ -300,4 +312,42 @@ onMounted(load)
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
+
+/* 结算条：贴底并带一点渐变，滚动时始终可见 */
+.jd-cart-summary {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid #ffe0dc;
+  background: linear-gradient(110deg, #fff, #fff6f4 60%, #fff);
+  box-shadow: 0 14px 34px -26px rgba(17, 24, 39, 0.6);
+}
+.jd-cart-summary__text {
+  font-size: 13px;
+  color: var(--jd-ink-3);
+}
+.jd-cart-summary__text strong {
+  color: var(--jd-red);
+  font-size: 15px;
+  margin: 0 2px;
+}
+.jd-cart-summary__price {
+  margin-left: 6px;
+  font-size: 18px;
+}
+.jd-cart-summary__price .jd-price__int {
+  font-size: 1.5em;
+}
+.jd-cart-summary :deep(.el-button) {
+  min-width: 132px;
+  height: 42px;
+  border-radius: 999px;
+}
 </style>
+

@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 /**
  * 卖家退款审核（#81 T04）
  *
@@ -100,10 +101,17 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">退款审核</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">待审核{{ formatTotal(total, '笔', list.length) }}</span>
-    </div>
+
+    <PageHero
+      title="退款审核"
+      subtitle="审核买家退款申请并回填处理意见"
+      icon="refresh"
+      tone="red"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">{{ formatTotal(total, '笔', list.length) }}</span>
+      </template>
+    </PageHero>
 
     <!-- 按退款单号审核：原入口保留 -->
     <el-card shadow="never">

@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { onMounted, ref } from 'vue'
 import { isOk, paymentApi, unwrapResult } from '../../api'
 import { confirmAction } from '../../components/ui/confirm'
@@ -91,6 +92,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="售后仲裁"
+      subtitle="按退款单号裁定争议，保障买卖双方权益"
+      icon="headset"
+      tone="indigo"
+    />
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">

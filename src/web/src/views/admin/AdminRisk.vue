@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { computed, onMounted, ref } from 'vue'
 import { isOk, orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../api'
 import { resolveErrorMessage } from '../../components/ui/message'
@@ -170,6 +171,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="基础风控"
+      subtitle="高频下单、异常退款与账号风险扫描"
+      icon="shield"
+      tone="red"
+    />
     <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
       <template #extra>
         <el-button type="primary" @click="load">重试</el-button>

@@ -10,6 +10,7 @@ import {
 } from '../constants/status'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice, formatTime, formatTotal } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 import {
   afterSaleStatusClass,
@@ -231,15 +232,18 @@ onMounted(loadAll)
 
 <template>
   <div class="max-w-4xl mx-auto space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div>
-        <h1 class="text-lg font-semibold text-gray-900">我的售后</h1>
-        <p class="text-xs text-gray-400 mt-1">仅退款、退货退款与换货均在此申请和跟踪</p>
-      </div>
-      <RouterLink :to="{ name: 'orders' }" class="text-sm text-blue-600 hover:text-blue-700">
-        返回订单
-      </RouterLink>
-    </div>
+    <PageHero
+      title="我的售后"
+      subtitle="仅退款、退货退款与换货均在此申请和跟踪"
+      icon="refresh"
+      tone="amber"
+    >
+      <template #actions>
+        <RouterLink :to="{ name: 'orders' }" class="jd-link-btn">
+          返回订单
+        </RouterLink>
+      </template>
+    </PageHero>
 
     <div
       v-if="loading"
@@ -494,3 +498,4 @@ onMounted(loadAll)
   outline-offset: 2px;
 }
 </style>
+

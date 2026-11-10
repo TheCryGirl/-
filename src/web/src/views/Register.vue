@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isOk, userApi } from '../api'
+import AuthShell from '../components/store/AuthShell.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -81,12 +82,14 @@ async function submit() {
 </script>
 
 <template>
-  <div class="max-w-lg mx-auto mt-8 px-4">
-    <el-card shadow="never">
-      <h1 class="text-lg font-semibold text-gray-900 mb-1">注册</h1>
-      <p class="text-sm text-gray-500 mb-5">带 * 的为必填项</p>
-
-      <el-form label-position="top" class="grid sm:grid-cols-2 gap-x-4" @submit.prevent="submit">
+  <AuthShell
+    wide
+    badge="创建账号"
+    title="加入校园商城"
+    subtitle="注册即为普通用户：既能下单购买，也能在登录后一键开通卖家身份发布商品。带 * 的为必填项。"
+    :bullets="['一个账号同时满足购买与售卖需求', '开通卖家后可设置价格、库存与商品配图', '账号仅用于课程实验，不收集无关信息']"
+  >
+    <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="账号" for="register-account" required :error="errors.account">
           <el-input
             id="register-account"
@@ -139,7 +142,7 @@ async function submit() {
           />
         </el-form-item>
 
-        <el-form-item label="手机号" for="register-phone" class="sm:col-span-2" :error="errors.phone">
+        <el-form-item label="手机号" for="register-phone" :error="errors.phone">
           <el-input
             id="register-phone"
             v-model="form.phone"
@@ -153,7 +156,7 @@ async function submit() {
 
         <el-alert
           v-if="error"
-          class="sm:col-span-2 mb-4"
+          class="mb-4"
           type="error"
           :title="error"
           :closable="false"
@@ -162,7 +165,7 @@ async function submit() {
         />
         <el-alert
           v-if="ok"
-          class="sm:col-span-2 mb-4"
+          class="mb-4"
           type="success"
           :title="ok"
           :closable="false"
@@ -173,7 +176,7 @@ async function submit() {
         <el-button
           type="primary"
           native-type="submit"
-          class="sm:col-span-2 w-full"
+          class="w-full"
           :loading="loading"
           :disabled="!!ok"
           data-testid="register-submit"
@@ -182,12 +185,11 @@ async function submit() {
         </el-button>
       </el-form>
 
-      <p class="text-sm text-gray-500 mt-4 text-center">
-        已有账号？
-        <RouterLink :to="{ name: 'login' }" class="text-blue-600 hover:underline">
-          去登录
-        </RouterLink>
-      </p>
-    </el-card>
-  </div>
+    <template #footer>
+      已有账号？
+      <RouterLink :to="{ name: 'login' }">立即登录</RouterLink>
+    </template>
+  </AuthShell>
 </template>
+
+
