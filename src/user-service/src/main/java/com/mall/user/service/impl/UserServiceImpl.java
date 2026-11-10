@@ -99,6 +99,27 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public LoginResponse activateSeller(String userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BizException(ErrorCode.USER_NOT_FOUND, "用户不存在");
+        }
+        if (user.getStatus() == UserStatus.FROZEN) {
+            throw new BizException(ErrorCode.ACCOUNT_FROZEN, "账号已被冻结");
+        }
+        if (user.getRole() == Role.BUYER) {
+            userMapper.updateRoleById(userId, Role.SELLER.name(), userId);
+            user.setRole(Role.SELLER);
+            log.info("用户自助开通卖家身份, userId={}", userId);
+        }
+
+        LoginResponse response = new LoginResponse();
+        response.setToken(jwtUtil.generateToken(user.getUserId(), user.getRole()));
+        response.setUser(toResponse(user));
+        return response;
+    }
+
+    @Override
     public UserResponse getCurrentUser(String userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {

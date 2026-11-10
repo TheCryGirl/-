@@ -66,6 +66,17 @@ public class UserController {
     }
 
     /**
+     * 开通卖家身份。
+     *
+     * <p>普通用户可以买卖一体：调用后角色由 BUYER 升级为 SELLER，并返回新令牌，
+     * 前端替换登录态后即可进入卖家工作台发布商品。
+     */
+    @PostMapping("/me/seller")
+    public Result<LoginResponse> activateSeller(@RequestHeader("X-User-Id") String userId) {
+        return Result.success(userService.activateSeller(userId));
+    }
+
+    /**
      * 上传头像（#51）。
      *
      * <p>文件落到本地目录并静态映射为 {@code /avatars/**}，与商品图片同一套方案；
