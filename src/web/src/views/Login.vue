@@ -13,16 +13,16 @@ const password = ref('')
 const loading = ref(false)
 const error = ref('')
 
-/** 登录身份只有两种：普通用户（可买可卖）与管理员 */
+/** 登录身份只有两种：用户与管理员；卖家由管理员开通 */
 const role = ref('BUYER')
 const roleOptions = [
-  { value: 'BUYER', label: '用户', desc: '购买 · 发布商品', icon: 'user' },
+  { value: 'BUYER', label: '用户', desc: '购买 · 已开通卖家可售卖', icon: 'user' },
   { value: 'ADMIN', label: '管理员', desc: '审核 · 风控 · 对账', icon: 'shield' },
 ]
 
 const roleHint = computed(() => {
   if (role.value === 'ADMIN') return '管理员账号由部署环境变量初始化，普通注册账号没有管理权限。'
-  return '注册即为普通用户，既能下单购买，也能开通卖家身份发布商品。'
+  return '注册默认为买家；需要售卖商品时请联系管理员开通，开通后重新登录。'
 })
 
 const submitLabel = computed(() => {
@@ -55,7 +55,7 @@ async function submit() {
     setLogin(token, user)
     const actualRole = user.role || 'BUYER'
     if (actualRole !== role.value) {
-      const actualLabel = roleOptions.find((o) => o.value === actualRole)?.label || '买家'
+      const actualLabel = roleOptions.find((o) => o.value === actualRole)?.label || (actualRole === 'SELLER' ? '卖家' : '买家')
       showInfo(`该账号的实际角色是「${actualLabel}」，已为你切换到对应入口`)
     }
     router.push(landingFor(actualRole))
@@ -72,8 +72,8 @@ async function submit() {
   <AuthShell
     badge="账号登录"
     title="欢迎回来"
-    subtitle="普通用户既能购买商品，也能开通卖家身份发布商品；管理员负责审核与运营。"
-    :bullets="['注册即为普通用户，买与卖使用同一个账号', '卖家身份一键开通，无需重新注册', '演示环境支持 MOCK 支付，不产生真实扣款']"
+    subtitle="普通用户可购买商品；卖家身份由管理员开通，管理员负责审核与运营。"
+    :bullets="['注册默认为买家', '联系管理员开通卖家后重新登录', '演示环境支持 MOCK 支付，不产生真实扣款']"
   >
     <div class="role-tabs" role="tablist" aria-label="登录身份">
       <button

@@ -18,14 +18,6 @@ public interface UserService {
 
     LoginResponse login(LoginRequest request);
 
-    /**
-     * 用户自助开通卖家身份。
-     *
-     * <p>业务规则调整后，普通用户既能买也能卖：首次进入卖家工作台时调用本方法，
-     * 把 BUYER 升级为 SELLER 并重新签发令牌，避免用户退出重登。
-     */
-    LoginResponse activateSeller(String userId);
-
     UserResponse getCurrentUser(String userId);
 
     UserResponse updateProfile(String userId, UpdateProfileRequest request);

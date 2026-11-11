@@ -86,8 +86,8 @@ async function submit() {
     wide
     badge="创建账号"
     title="加入校园商城"
-    subtitle="注册即为普通用户：既能下单购买，也能在登录后一键开通卖家身份发布商品。带 * 的为必填项。"
-    :bullets="['一个账号同时满足购买与售卖需求', '开通卖家后可设置价格、库存与商品配图', '账号仅用于课程实验，不收集无关信息']"
+    subtitle="注册默认为买家，可下单购买；需要售卖商品时，请联系管理员开通卖家身份后重新登录。带 * 的为必填项。"
+    :bullets="['注册不自动授予卖家权限', '管理员开通卖家后可发布商品', '账号仅用于课程实验，不收集无关信息']"
   >
     <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="账号" for="register-account" required :error="errors.account">

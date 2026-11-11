@@ -1,9 +1,9 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, productApi, unwrapResult, userApi } from '../api'
-import { auth, isAdmin, isLoggedIn, isSeller, logout, setLogin } from '../stores/auth'
-import { showError, showSuccess, resolveErrorMessage } from './ui/message'
+import { cartApi, productApi, unwrapResult } from '../api'
+import { auth, isAdmin, isLoggedIn, isSeller, logout } from '../stores/auth'
+import { showInfo } from './ui/message'
 import { hotKeywords } from '../data/showcase'
 import StoreIcon from './store/StoreIcon.vue'
 
@@ -19,7 +19,6 @@ const categories = ref([])
 const keyword = ref('')
 const cartCount = ref(0)
 const scrolled = ref(false)
-const activating = ref(false)
 
 const navItems = [
   { name: 'products', label: '商品市场', icon: 'grid' },
@@ -103,10 +102,10 @@ function searchHot(word) {
   goSearch(word)
 }
 
-/** 普通用户点击「我要卖」：先开通卖家身份（后端升级角色并换新令牌）再进入工作台 */
-async function goSell() {
+/** Seller access remains administrator-approved; this entry never mutates account roles. */
+function goSell() {
   if (!isLoggedIn.value) {
-    sessionStorage.setItem('redirectAfterLogin', '/seller/products')
+    sessionStorage.setItem('redirectAfterLogin', '/products')
     router.push({ name: 'login' })
     return
   }
@@ -114,23 +113,7 @@ async function goSell() {
     router.push({ name: 'seller-products' })
     return
   }
-  if (activating.value) return
-  activating.value = true
-  try {
-    const { data } = await userApi.activateSeller()
-    const payload = unwrapResult(data)
-    if (!payload?.token || !payload?.user) {
-      showError(data?.message || '开通卖家身份失败')
-      return
-    }
-    setLogin(payload.token, payload.user)
-    showSuccess('已开通卖家身份，可以发布商品了')
-    router.push({ name: 'seller-products' })
-  } catch (err) {
-    showError(resolveErrorMessage(err, '开通卖家身份失败'))
-  } finally {
-    activating.value = false
-  }
+  showInfo('售卖商品需由管理员开通卖家身份，请联系管理员；开通后重新登录即可进入卖家工作台。')
 }
 
 function goCategory(categoryId) {
@@ -348,17 +331,16 @@ onBeforeUnmount(() => {
           {{ item.label }}
         </RouterLink>
 
-        <!-- 普通用户：一键开通卖家身份，买卖一体 -->
+        <!-- 普通用户：展示管理员开通指引，不自行升级角色 -->
         <button
           v-if="isLoggedIn && !isSeller"
           type="button"
           class="jd-nav__link jd-nav__link--sell"
-          :disabled="activating"
           data-testid="header-sell-entry"
           @click="goSell"
         >
           <StoreIcon name="tag" :size="15" />
-          {{ activating ? '开通中…' : '我要卖' }}
+          我要卖
         </button>
 
         <div v-if="isSeller" class="jd-nav__group" :class="{ 'is-open': sellerOpen }">
@@ -836,7 +818,7 @@ onBeforeUnmount(() => {
   color: var(--jd-red);
   font-weight: 600;
 }
-/* 「我要卖」入口：和普通导航区分开，点一次即可开通卖家身份 */
+/* 「我要卖」入口：和普通导航区分开，展示管理员开通指引 */
 .jd-nav__link--sell {
   color: var(--jd-red);
   font-weight: 600;
