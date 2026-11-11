@@ -32,6 +32,14 @@ class TokenRevocationIntegrationTest {
     String admin() { String id=register("a");mapper.updateRoleById(id,"ADMIN","TEST");return id; }
     long version(String id) { return mapper.selectAuthState(id).tokenVersion(); }
 
+    @Test void authSnapshotUsesOnlyTheRequestedUsersVersionAndRejectsMissingUsers() {
+        String first=register("c"),second=register("d");
+        assertEquals(0L,version(first));
+        mapper.ensureAuthVersion(second);mapper.bumpAuthVersion(second);
+        assertEquals(0L,version(first));assertEquals(1L,version(second));
+        assertNull(mapper.selectAuthState("missing-auth-user"));
+    }
+
     @Test void freezeAndUnfreezeNeverRevivesTheOldToken() {
         String admin=admin(), id=register("f");
         String old=login(id);long first=((Number)jwt.parseToken(old).get("tokenVersion")).longValue();

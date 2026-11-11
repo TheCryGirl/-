@@ -49,12 +49,12 @@ const showAccount = computed(() => isLoggedIn.value)
           <div class="jd-footer__logo">
             <span class="jd-footer__mark">商城</span>
             <div>
-              <strong>校园商城</strong>
-              <small>CAMPUS MALL</small>
+              <strong>在线商城</strong>
+              <small>ONLINE MALL</small>
             </div>
           </div>
           <p>
-            面向校园场景的在线商城示例：注册登录、商品浏览、购物车、下单支付、售后与评价全链路。
+            云原生微服务架构的在线商城教学项目：注册登录、商品浏览、购物车、下单支付、售后与评价全链路。
           </p>
           <div class="jd-footer__badges">
             <span><StoreIcon name="verified" :size="14" /> 正品保障</span>
@@ -89,7 +89,7 @@ const showAccount = computed(() => isLoggedIn.value)
       </div>
 
       <div class="jd-footer__bottom">
-        <span>© {{ year }} 校园商城 · 软件工程课程实验</span>
+        <span>© {{ year }} 在线商城 · 软件工程课程实验</span>
         <span class="jd-footer__sep">|</span>
         <span>本站为教学演示项目，不提供真实交易</span>
         <span class="jd-footer__sep">|</span>

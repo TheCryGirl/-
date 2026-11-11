@@ -36,8 +36,12 @@
     </select>
 
     <select id="selectAuthState" resultType="com.mall.user.dto.response.UserAuthState">
-        SELECT u.user_id, u.role, u.status, COALESCE(v.token_version, 0) AS token_version
-        FROM `user` u LEFT JOIN user_auth_version v ON u.user_id = v.user_id
+        <!-- Compare each indexed ID to the bound parameter, never two differently collated legacy/new columns.
+             A single SELECT preserves the auth-state snapshot and missing version still means zero. -->
+        SELECT u.user_id, u.role, u.status,
+               COALESCE((SELECT v.token_version FROM user_auth_version v WHERE v.user_id = #{userId}), 0)
+                   AS token_version
+        FROM `user` u
         WHERE u.user_id = #{userId} AND u.is_deleted = 0
     </select>
 

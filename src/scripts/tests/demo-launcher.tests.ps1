@@ -97,12 +97,27 @@ try {
         $got = Get-Content -LiteralPath (Join-Path $temp 'args.out.log') -Raw -Encoding UTF8 | ConvertFrom-Json
         for ($i=0; $i -lt 3; $i++) { Assert-Equal $got[$i] $values[$i] "Argument $i" }
     }
+    Test-Case 'Mixed-case inherited environment does not block child startup' {
+        $exe = Join-Path $PSHOME 'powershell.exe'
+        if (-not (Test-Path $exe)) { $exe = Join-Path $PSHOME 'pwsh.exe' }
+        $env:DEMO_PROXY_CASE = 'upper-value'
+        $env:demo_proxy_case = 'lower-value'
+        try {
+            $p = Start-DemoChild -FilePath $exe -Arguments @('-NoProfile','-Command','Write-Output "child started"') -WorkingDirectory $temp -LogPrefix (Join-Path $temp 'proxycase') -Environment @{ DEMO_TEST_X = 'v' }
+            $p.WaitForExit()
+            Assert-Equal $p.ExitCode 0 'Child starts despite duplicate-case inherited variables'
+            Assert-Equal ([Environment]::GetEnvironmentVariable('DEMO_TEST_X','Process')) $null 'Temporary injection removed from parent'
+        } finally {
+            Remove-Item Env:\DEMO_PROXY_CASE -ErrorAction SilentlyContinue
+            Remove-Item Env:\demo_proxy_case -ErrorAction SilentlyContinue
+        }
+    }
     Test-Case 'Credential environment is child-only and parent value is restored' {
         $exe = Join-Path $PSHOME 'powershell.exe'
         if (-not (Test-Path $exe)) { $exe = Join-Path $PSHOME 'pwsh.exe' }
         $env:DEMO_TEST_SECRET = 'parent-value'
         $secret = [guid]::NewGuid().ToString('N')
-        $p = Start-DemoChild -FilePath $exe -Arguments @('-NoProfile','-Command','if ($env:DEMO_TEST_SECRET -eq "parent-value") { exit 8 }; if (-not $env:DEMO_TEST_SECRET) { exit 9 }; Write-Output "child environment present"') -WorkingDirectory $temp -LogPrefix (Join-Path $temp 'env') -Environment @{ DEMO_TEST_SECRET = $secret }
+        $p = Start-DemoChild -FilePath $exe -Arguments @('-NoProfile','-Command','if ($env:DEMO_TEST_SECRET -eq "parent-value") { exit 8 }; if (-not $env:DEMO_TEST_SECRET) { exit 9 }; Write-Output "child environment present"') -WorkingDirectory $temp -LogPrefix (Join-Path $temp 'env') -Environment @{ DEMO_TEST_SECRET = $secret } -RestoreParentTemporaryVariables
         $p.WaitForExit()
         Assert-Equal $p.ExitCode 0 'Child inherited temporary env'
         Assert-Equal $env:DEMO_TEST_SECRET 'parent-value' 'Parent env restored'

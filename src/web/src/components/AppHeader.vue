@@ -213,11 +213,11 @@ onBeforeUnmount(() => {
     <!-- 主搜索区 -->
     <div class="jd-head">
       <div class="jd-container jd-head__inner">
-        <RouterLink to="/products" class="jd-logo" aria-label="校园商城首页">
+        <RouterLink to="/products" class="jd-logo" aria-label="在线商城首页">
           <span class="jd-logo__mark">商城</span>
           <span class="jd-logo__text">
-            <strong>校园商城</strong>
-            <small>CAMPUS MALL</small>
+            <strong>在线商城</strong>
+            <small>ONLINE MALL</small>
           </span>
         </RouterLink>
 

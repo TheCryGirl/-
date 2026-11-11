@@ -2,7 +2,7 @@
 import StoreIcon from './StoreIcon.vue'
 
 defineProps({
-  badge: { type: String, default: '校园商城' },
+  badge: { type: String, default: '在线商城' },
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
   image: { type: String, default: '/media/bg/auth-panel.jpg' },
@@ -20,12 +20,12 @@ defineProps({
         <div class="auth-shell__brand">
           <span class="auth-shell__mark">商城</span>
           <div>
-            <strong>校园商城</strong>
-            <small>CAMPUS MALL</small>
+            <strong>在线商城</strong>
+            <small>ONLINE MALL</small>
           </div>
         </div>
 
-        <h2 class="auth-shell__slogan">把好物与校园生活<br />放进同一个购物车</h2>
+        <h2 class="auth-shell__slogan">把好物与品质生活<br />放进同一个购物车</h2>
 
         <ul class="auth-shell__bullets">
           <li v-for="item in bullets" :key="item">

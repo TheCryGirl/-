@@ -156,11 +156,31 @@ function ConvertTo-DemoArgument {
 
 function Start-DemoChild {
     param([string]$FilePath, [AllowEmptyCollection()][string[]]$Arguments,
-          [string]$WorkingDirectory, [string]$LogPrefix, [hashtable]$Environment = @{})
-    $saved = @{}
+          [string]$WorkingDirectory, [string]$LogPrefix, [hashtable]$Environment = @{},
+          [switch]$RestoreParentTemporaryVariables)
+    $saved = New-Object System.Collections.ArrayList
+    $collapsed = New-Object System.Collections.ArrayList
+    $overridden = New-Object System.Collections.ArrayList
     try {
+        if ($RestoreParentTemporaryVariables) {
+            foreach ($key in $Environment.Keys) {
+                $null = $saved.Add([pscustomobject]@{ Name = [string]$key; Value = [Environment]::GetEnvironmentVariable($key, 'Process') })
+            }
+        }
+        # Windows process environment is case-insensitive: duplicate case variants share one value,
+        # so clear each duplicated key once to avoid Start-Process dictionary collisions.
+        $seen = @{}
+        foreach ($name in @([Environment]::GetEnvironmentVariables('Process').Keys)) {
+            $lower = ([string]$name).ToLowerInvariant()
+            if ($seen.ContainsKey($lower)) { continue }
+            $seen[$lower] = $true
+            $variants = @(@([Environment]::GetEnvironmentVariables('Process').Keys) | Where-Object { ([string]$_).ToLowerInvariant() -eq $lower })
+            if ($variants.Length -le 1) { continue }
+            [Environment]::SetEnvironmentVariable([string]$variants[0], $null, 'Process')
+            $null = $collapsed.Add([string]$variants[0])
+        }
         foreach ($key in $Environment.Keys) {
-            $saved[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+            $null = $overridden.Add($key)
             [Environment]::SetEnvironmentVariable($key, [string]$Environment[$key], 'Process')
         }
         $argsText = (@($Arguments | ForEach-Object { ConvertTo-DemoArgument $_ }) -join ' ')
@@ -171,8 +191,11 @@ function Start-DemoChild {
         $null = $p.Handle
         return $p
     } finally {
-        foreach ($key in $saved.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $saved[$key], 'Process')
+        foreach ($key in $overridden) {
+            [Environment]::SetEnvironmentVariable($key, $null, 'Process')
+        }
+        foreach ($item in $saved) {
+            [Environment]::SetEnvironmentVariable([string]$item.Name, [string]$item.Value, 'Process')
         }
     }
 }
