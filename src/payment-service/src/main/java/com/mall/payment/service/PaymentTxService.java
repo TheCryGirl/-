@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>uk_order_status：同一订单同一状态只允许一条，并发下至多一个 PENDING</li>
  * </ul>
  * 唯一键冲突时读取已存在的支付单返回，不再二次插入。
+ * 回读到的候选单必须先经 {@link PaymentReuseGuard} 校验：候选单不属于本次请求
+ * （买家、订单或渠道不一致）时直接拒绝，不再尝试下一个候选。
  */
 @Slf4j
 @Service
@@ -36,13 +38,16 @@ public class PaymentTxService {
                     ? null
                     : paymentMapper.selectByIdempotencyKey(payment.getIdempotencyKey());
             if (byKey != null) {
-                log.info("幂等键重复，返回已有支付单, key={}, paymentId={}",
-                        payment.getIdempotencyKey(), byKey.getPaymentId());
+                PaymentReuseGuard.requireReusable(byKey, payment.getBuyerId(), payment.getOrderId(),
+                        payment.getChannel());
+                log.info("幂等键重复，返回已有支付单, paymentId={}", byKey.getPaymentId());
                 return byKey;
             }
 
             Payment pending = paymentMapper.selectPendingByOrderId(payment.getOrderId());
             if (pending != null) {
+                PaymentReuseGuard.requireReusable(pending, payment.getBuyerId(), payment.getOrderId(),
+                        payment.getChannel());
                 log.info("订单已有待支付单，返回已有支付单, orderId={}, paymentId={}",
                         payment.getOrderId(), pending.getPaymentId());
                 return pending;
@@ -51,6 +56,8 @@ public class PaymentTxService {
             Payment latest = paymentMapper.selectLatestByOrderId(payment.getOrderId());
             if (latest != null && (latest.getStatus() == PaymentStatus.SUCCESS
                     || latest.getStatus() == PaymentStatus.REFUNDED)) {
+                PaymentReuseGuard.requireReusable(latest, payment.getBuyerId(), payment.getOrderId(),
+                        payment.getChannel());
                 log.info("订单已支付或已退款，返回已有支付单, orderId={}, paymentId={}",
                         payment.getOrderId(), latest.getPaymentId());
                 return latest;

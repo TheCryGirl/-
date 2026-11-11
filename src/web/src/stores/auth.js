@@ -1,5 +1,6 @@
 import { computed, reactive, readonly } from 'vue'
 import { userApi, unwrapResult } from '../api'
+import { canManageProducts } from '../utils/roleAccess'
 
 /**
  * 全局登录态。用 reactive 而非 Pinia，项目规模还小，一个文件足够，
@@ -69,7 +70,7 @@ export const isLoggedIn = computed(() => Boolean(state.token && state.user))
 export const currentUserId = computed(() => state.user?.userId || '')
 export const currentRole = computed(() => state.user?.role || 'GUEST')
 export const isAdmin = computed(() => currentRole.value === 'ADMIN')
-export const isSeller = computed(() => currentRole.value === 'SELLER' || currentRole.value === 'ADMIN')
+export const isSeller = computed(() => canManageProducts(currentRole.value))
 
 /** 登录后默认跳到当初想去的页面 */
 export function redirectTarget() {

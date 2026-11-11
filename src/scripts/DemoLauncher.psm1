@@ -37,6 +37,20 @@ function Find-DemoServiceJar {
     return $found[0].FullName
 }
 
+function Assert-DemoSecureJar {
+    param([string]$Path)
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $entry = $zip.GetEntry('BOOT-INF/classes/security-boundary.version')
+        if (-not $entry) { throw 'Old backend jar detected. Rebuild all six services with JDK 17: mvn -B package.' }
+        $reader = New-Object IO.StreamReader($entry.Open())
+        try { $version = $reader.ReadToEnd().Trim() } finally { $reader.Dispose() }
+        if ($version -ne '1') { throw 'Backend security revision is unsupported. Rebuild all six services.' }
+    } finally { $zip.Dispose() }
+}
+
 function Get-DemoPortAction {
     param([bool]$Listening, [bool]$Owned, [bool]$Ready, [bool]$PendingProcess = $false)
     if (-not $Listening -and $PendingProcess -and $Owned) { return 'wait' }
@@ -44,6 +58,38 @@ function Get-DemoPortAction {
     if (-not $Owned) { throw 'Port is occupied by another or unverified process. It will not be stopped.' }
     if ($Ready) { return 'reuse' }
     return 'wait'
+}
+
+function Get-DemoInternalToken {
+    param([string]$RunDirectory, [string]$ExplicitToken = '',
+          [ValidateSet('demo-internal-token.xml','demo-jwt-secret.xml')][string]$FileName = 'demo-internal-token.xml')
+    if ($ExplicitToken) {
+        if ($ExplicitToken.Length -lt 32) { throw 'INTERNAL_TOKEN must contain at least 32 characters.' }
+        return $ExplicitToken
+    }
+    $path = Join-Path $RunDirectory $FileName
+    if (Test-Path -LiteralPath $path) {
+        $secure = Import-Clixml -LiteralPath $path
+        try { $value = (New-Object System.Net.NetworkCredential('', $secure)).Password }
+        finally { if ($secure -is [Security.SecureString]) { $secure.Dispose() } }
+        if ($value.Length -lt 32) { throw 'Stored internal token is invalid; do not reuse existing services.' }
+        return $value
+    }
+    $bytes = New-Object byte[] 32
+    $random = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $random.GetBytes($bytes) } finally { $random.Dispose() }
+    $value = [Convert]::ToBase64String($bytes)
+    $secure = ConvertTo-SecureString -String $value -AsPlainText -Force
+    try { $secure | Export-Clixml -LiteralPath $path -Encoding UTF8 }
+    finally { $secure.Dispose() }
+    return $value
+}
+
+function Get-DemoTextDigest {
+    param([string]$Value)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value)))).Replace('-', '') }
+    finally { $hash.Dispose() }
 }
 
 function Read-DemoProcessRecords {
@@ -198,4 +244,4 @@ function Get-DemoCommandLine {
     return ''
 }
 
-Export-ModuleMember -Function Find-DemoJava17,Find-DemoNacos,Find-DemoServiceJar,Get-DemoPortAction,Read-DemoProcessRecords,Get-DemoRecordedProcessId,Test-DemoFrontendBinding,Test-DemoCommandOwnership,Start-DemoChild,Wait-DemoReady,Get-DemoHttpJson,Test-DemoServiceHealth,Test-DemoNacosReady,Test-DemoFrontendReady,Get-DemoListener,Get-DemoCommandLine
+Export-ModuleMember -Function Find-DemoJava17,Find-DemoNacos,Find-DemoServiceJar,Assert-DemoSecureJar,Get-DemoPortAction,Get-DemoInternalToken,Get-DemoTextDigest,Read-DemoProcessRecords,Get-DemoRecordedProcessId,Test-DemoFrontendBinding,Test-DemoCommandOwnership,Start-DemoChild,Wait-DemoReady,Get-DemoHttpJson,Test-DemoServiceHealth,Test-DemoNacosReady,Test-DemoFrontendReady,Get-DemoListener,Get-DemoCommandLine

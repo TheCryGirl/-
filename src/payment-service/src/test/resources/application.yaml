@@ -38,6 +38,13 @@ mybatis:
 payment:
   mock-secret: test-mock-secret
   internal-token: test-internal-token
+  reconcile:
+    # Explicit reconcile() tests retain all behavior; only automatic background scheduling is disabled.
+    enabled: false
+  refund-notification:
+    # 测试里关闭定时扫描：后台线程会与用例的 Mockito 调用计数、任务状态互相干扰，
+    # 调度逻辑一律通过显式调用 dispatchDue / scheduledDispatch 验证。
+    enabled: false
 
 services:
   order-url: http://127.0.0.1:1

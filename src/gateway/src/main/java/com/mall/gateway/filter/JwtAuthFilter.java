@@ -83,6 +83,19 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     /** 签名密钥，启动时从环境变量 JWT_SECRET 注入并校验，不提供硬编码默认值 */
     private final SecretKey key;
 
+    @Value("${gateway.internal-token:${INTERNAL_TOKEN:}}")
+    private String internalToken = "";
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.mall.gateway.auth.UserAuthStateVerifier authStateVerifier;
+
+    /** Never publish service-only state transitions through the user gateway. */
+    private boolean isInternalOperation(String path) {
+        return path.contains("/internal/") || path.startsWith("/api/internal/")
+                || path.matches("/api/products/skus/(reserve|release|confirm|refund-restock)/?")
+                || path.matches("/api/orders/[^/]+/(paid|refunded)/?");
+    }
+
     public JwtAuthFilter(@Value("${jwt.secret}") String jwtSecret) {
         if (jwtSecret == null || jwtSecret.length() < 32) {
             throw new IllegalArgumentException("JWT_SECRET 长度至少 32 位，请通过环境变量配置后再启动网关");
@@ -94,6 +107,20 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
+        if (isInternalOperation(path)) {
+            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+            return exchange.getResponse().setComplete();
+        }
+        // Clear client-controlled trust headers before every branch, including anonymous/invalid JWT.
+        request = request.mutate().headers(headers -> {
+            headers.remove(HEADER_USER_ID);
+            headers.remove(HEADER_USER_ROLE);
+            headers.remove("X-Internal-Token");
+            if (internalToken != null && !internalToken.isBlank()) {
+                headers.set("X-Internal-Token", internalToken);
+            }
+        }).build();
+        exchange = exchange.mutate().request(request).build();
 
         // 1. 白名单直接放行（按方法与路径精确判定）
         //    但若请求带了令牌，仍然解析并注入身份——否则 /api/products/{id} 这类
@@ -104,9 +131,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             if (whitelistAuth != null && whitelistAuth.startsWith("Bearer ")) {
                 Claims claims = tryParse(whitelistAuth.substring(7), path);
                 if (claims != null) {
-                    return chain.filter(exchange.mutate()
-                            .request(withIdentity(request, claims))
-                            .build());
+                    return forwardCurrentIdentity(exchange, chain, request, claims, true);
                 }
             }
             return chain.filter(exchange);
@@ -138,7 +163,18 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return reject(exchange, ErrorCode.UNAUTHORIZED, "令牌内容不完整");
         }
 
-        return chain.filter(exchange.mutate().request(withIdentity(request, claims)).build());
+        return forwardCurrentIdentity(exchange, chain, request, claims, false);
+    }
+
+    private Mono<Void> forwardCurrentIdentity(ServerWebExchange exchange, GatewayFilterChain chain,
+            ServerHttpRequest request, Claims claims, boolean publicPath) {
+        Mono<Boolean> current = authStateVerifier == null ? Mono.just(false) : authStateVerifier.isCurrent(claims);
+        // Recover verification errors before flatMap: downstream business errors must not trigger a second request.
+        return current.onErrorReturn(false).defaultIfEmpty(false).flatMap(valid -> {
+            if (valid) return chain.filter(exchange.mutate().request(withIdentity(request, claims)).build());
+            if (publicPath) return chain.filter(exchange);
+            return reject(exchange, ErrorCode.UNAUTHORIZED, "登录权限已变更或暂不可验证，请重新登录");
+        });
     }
 
     /** 解析令牌；失败返回 null（白名单场景下按匿名处理，不报错） */

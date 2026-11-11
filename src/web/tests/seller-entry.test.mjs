@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
 // Execute the real SFC script with boundary stubs, not a duplicate seller-policy implementation.
-function header(loggedIn, seller) {
+function header(loggedIn, seller, admin = false) {
   const source = readFileSync(new URL('../src/components/AppHeader.vue', import.meta.url), 'utf8')
   const script = source.match(/<script setup>([\s\S]*?)<\/script>/)[1]
     .replace(/^import .* from .*$/gm, '')
@@ -12,7 +12,7 @@ function header(loggedIn, seller) {
   const context={
     ref:v=>({value:v}),computed:fn=>({get value(){return fn()}}),watch:()=>{},onMounted:()=>{},onBeforeUnmount:()=>{},
     useRoute:()=>({query:{},path:'/products',fullPath:'/products'}),useRouter:()=>({push:r=>routes.push(r)}),
-    auth:{user:{role:seller?'SELLER':'BUYER'}},isAdmin:{value:false},isLoggedIn:{value:loggedIn},isSeller:{value:seller},
+    auth:{user:{role:admin?'ADMIN':seller?'SELLER':'BUYER'}},isAdmin:{value:admin},isLoggedIn:{value:loggedIn},isSeller:{value:seller},
     logout:()=>{},setLogin:()=>calls.push('setLogin'),
     showInfo:m=>notices.push(m),showError:m=>notices.push(m),showSuccess:m=>notices.push(m),resolveErrorMessage:e=>e.message,
     userApi:{activateSeller:async()=>{calls.push('activateSeller');return {data:{code:0,data:{token:'fake',user:{}}}}}},
@@ -28,6 +28,9 @@ test('BUYER asks administrator instead of changing role or calling self-activati
 })
 test('existing seller opens workbench without role mutation',async()=>{
   const h=header(true,true);await h.run();assert.equal(h.routes[0].name,'seller-products');assert.equal(h.calls.length,0)
+})
+test('administrator opens review center instead of seller operations',async()=>{
+  const h=header(true,false,true);await h.run();assert.equal(h.routes[0].name,'admin-products');assert.equal(h.calls.length,0)
 })
 test('anonymous entry goes to login without changing any role',async()=>{
   const h=header(false,false);await h.run();assert.equal(h.routes[0].name,'login');assert.equal(h.calls.length,0)

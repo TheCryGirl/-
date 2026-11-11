@@ -1,10 +1,13 @@
 package com.mall.order.controller;
 
+import com.mall.order.common.BizException;
+import com.mall.order.common.ErrorCode;
 import com.mall.order.common.PageResult;
 import com.mall.order.common.Result;
 import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.dto.request.CreateOrderRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
+import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.CreateOrderResponse;
 import com.mall.order.dto.response.OrderDetailResponse;
 import com.mall.order.dto.response.OrderListItem;
@@ -45,6 +48,25 @@ public class OrderController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return Result.success(orderService.list(userId, role, status, page, size));
+    }
+
+    /**
+     * 管理员资金/风控汇总（订单口径）。
+     *
+     * <p>必须带 X-User-Id 与 X-User-Role: ADMIN，且角色严格等于 ADMIN；
+     * 不接受 query 参数授权。路径写在 /{orderId} 之前，避免被详情路由吞掉。
+     */
+    @GetMapping("/admin/finance-summary")
+    public Result<AdminFinanceSummaryResponse> adminFinanceSummary(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"ADMIN".equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "仅管理员可查看资金汇总");
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+        }
+        return Result.success(orderService.adminFinanceSummary());
     }
 
     @GetMapping("/{orderId}")

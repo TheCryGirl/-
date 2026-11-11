@@ -44,12 +44,17 @@ public class JwtUtil {
      * @return JWT 字符串
      */
     public String generateToken(String userId, Role role) {
+        return generateToken(userId, role, 0L);
+    }
+
+    public String generateToken(String userId, Role role, long tokenVersion) {
         Instant now = Instant.now();
         Instant expire = now.plus(expirationHours, ChronoUnit.HOURS);
         return Jwts.builder()
                 .subject(userId)
                 .claim("userId", userId)
                 .claim("role", role.name())
+                .claim("tokenVersion", tokenVersion)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expire))
                 .signWith(key)

@@ -3,33 +3,28 @@
 services:
   nacos:
     ports: !override
-      - "18848:8848"
-      - "19848:9848"
+      - "127.0.0.1:18848:8848"
+      - "127.0.0.1:19848:9848"
 
   mysql:
     ports: !override
-      - "13306:3306"
+      - "127.0.0.1:13306:3306"
 
   gateway:
     ports: !override
-      - "19000:9000"
+      - "127.0.0.1:19000:9000"
 
   user-service:
-    ports: !override
-      - "19001:9001"
+    ports: !override []
 
   product-service:
-    ports: !override
-      - "19002:9002"
+    ports: !override []
 
   cart-service:
-    ports: !override
-      - "19003:9003"
+    ports: !override []
 
   order-service:
-    ports: !override
-      - "19004:9004"
+    ports: !override []
 
   payment-service:
-    ports: !override
-      - "19005:9005"
+    ports: !override []

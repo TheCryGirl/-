@@ -1,3 +1,4 @@
+import { canAccessRoleRoute } from '../utils/roleAccess'
 import { createRouter, createWebHistory } from 'vue-router'
 import { isLoggedIn, currentRole } from '../stores/auth'
 
@@ -157,12 +158,6 @@ const routes = [
     meta: { title: '售后仲裁', requiresAuth: true, role: 'ADMIN' },
   },
     {
-      path: '/admin/shops',
-      name: 'admin-shops',
-      component: () => import('../views/admin/AdminShops.vue'),
-      meta: { title: '店铺管理', requiresAuth: true, role: 'ADMIN' },
-    },
-    {
       path: '/admin/refunds',
       name: 'admin-refunds',
       component: () => import('../views/admin/AdminRefunds.vue'),
@@ -230,7 +225,7 @@ router.beforeEach((to) => {
   if (to.meta.guestOnly && isLoggedIn.value) {
     return { name: 'products' }
   }
-  if (to.meta.role && currentRole.value !== 'ADMIN' && currentRole.value !== to.meta.role) {
+  if (!canAccessRoleRoute(to.meta.role, currentRole.value)) {
     return { name: 'products' }
   }
   return true

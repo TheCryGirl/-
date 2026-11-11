@@ -26,8 +26,8 @@ services:
       JVM_XMX: 512m
       JVM_XMN: 256m
     ports:
-      - "8848:8848"   # 控制台与 OpenAPI
-      - "9848:9848"   # gRPC
+      - "127.0.0.1:8848:8848"   # 控制台与 OpenAPI
+      - "127.0.0.1:9848:9848"   # gRPC
     volumes:
       - nacos-data:/home/nacos/data
       - nacos-logs:/home/nacos/logs
@@ -43,10 +43,10 @@ services:
     image: mysql:8.0
     container_name: mall-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       TZ: Asia/Shanghai
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -56,7 +56,7 @@ services:
       # 相对本文件所在目录（src/docker/），因此是 ./init-db.sql
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-123456}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:?Set DB_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -73,13 +73,15 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
-      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
       TZ: Asia/Shanghai
     volumes:
       - ../gateway/target/gateway-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     depends_on:
       nacos:
         condition: service_healthy
@@ -91,11 +93,12 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-please-change-in-production-0123456789}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
       AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       # 初始管理员：注册接口只创建 BUYER，没有管理员就无法审核商品、开通卖家角色，
@@ -107,8 +110,8 @@ services:
     volumes:
       - ../user-service/target/user-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
       - user-uploads:/app/uploads
-    ports:
-      - "9001:9001"
+    expose:
+      - "9001"
     depends_on:
       nacos:
         condition: service_healthy
@@ -122,18 +125,19 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
       AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       TZ: Asia/Shanghai
     volumes:
       - ../product-service/target/product-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
       - product-uploads:/app/uploads
-    ports:
-      - "9002:9002"
+    expose:
+      - "9002"
     depends_on:
       nacos:
         condition: service_healthy
@@ -147,15 +151,16 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
       TZ: Asia/Shanghai
     volumes:
       - ../cart-service/target/cart-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
-    ports:
-      - "9003:9003"
+    expose:
+      - "9003"
     depends_on:
       nacos:
         condition: service_healthy
@@ -169,16 +174,17 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
       ORDER_TIMEOUT_MINUTES: ${ORDER_TIMEOUT_MINUTES:-30}
       TZ: Asia/Shanghai
     volumes:
       - ../order-service/target/order-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
-    ports:
-      - "9004:9004"
+    expose:
+      - "9004"
     depends_on:
       nacos:
         condition: service_healthy
@@ -192,18 +198,19 @@ services:
     working_dir: /app
     command: ["java", "-jar", "app.jar"]
     environment:
+      SERVER_ADDRESS: 0.0.0.0
       NACOS_ADDR: nacos:8848
       DB_HOST: mysql
-      DB_PASSWORD: ${DB_PASSWORD:-123456}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?Set a nonempty shared INTERNAL_TOKEN}
       MOCK_SECRET: ${MOCK_SECRET:-mock-pay-secret}
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-}
       AUDIT_ENABLED: ${AUDIT_ENABLED:-true}
       TZ: Asia/Shanghai
     volumes:
       - ../payment-service/target/payment-service-1.0.0-SNAPSHOT.jar:/app/app.jar:ro
-    ports:
-      - "9005:9005"
+    expose:
+      - "9005"
     depends_on:
       nacos:
         condition: service_healthy

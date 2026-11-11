@@ -159,6 +159,32 @@ try {
         Assert-Equal (Test-DemoFrontendBinding -Record $got['frontend']) $true 'Frontend target restored'
         Assert-Equal (Get-DemoRecordedProcessId -Record $got['nacos'] -Artifact 'C:\fixture\nacos.jar') $PID 'Nacos identity restored'
     }
+    Test-Case 'Internal cluster token persists only as user-encrypted XML and is stable across launches' {
+        $tokenDir = Join-Path $temp 'token-state'
+        New-Item -ItemType Directory -Path $tokenDir -Force | Out-Null
+        $one = Get-DemoInternalToken -RunDirectory $tokenDir
+        $two = Get-DemoInternalToken -RunDirectory $tokenDir
+        Assert-Equal $one $two 'Stable local cluster token'
+        Assert-Equal ($one.Length -ge 32) $true 'Random token length'
+        $stored = Get-Content -LiteralPath (Join-Path $tokenDir 'demo-internal-token.xml') -Raw
+        Assert-Equal ($stored.Contains($one)) $false 'No plaintext token on disk'
+        Assert-Throws { Get-DemoInternalToken -RunDirectory $tokenDir -ExplicitToken 'short' } '32'
+    }
+    Test-Case 'Launcher rejects old jars and accepts the secured artifact marker' {
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $jar = Join-Path $temp 'fixture.jar'
+        $zip = [IO.Compression.ZipFile]::Open($jar, [IO.Compression.ZipArchiveMode]::Create)
+        $zip.Dispose()
+        Assert-Throws { Assert-DemoSecureJar -Path $jar } 'Old backend'
+        $zip = [IO.Compression.ZipFile]::Open($jar, [IO.Compression.ZipArchiveMode]::Update)
+        try {
+            $entry = $zip.CreateEntry('BOOT-INF/classes/security-boundary.version')
+            $w = New-Object IO.StreamWriter($entry.Open())
+            try { $w.Write('1') } finally { $w.Dispose() }
+        } finally { $zip.Dispose() }
+        Assert-DemoSecureJar -Path $jar
+    }
     Write-Host "RESULT $passed tests passed"
 } finally {
     if (Test-Path $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }

@@ -109,6 +109,10 @@ function goSell() {
     router.push({ name: 'login' })
     return
   }
+  if (isAdmin.value) {
+    router.push({ name: 'admin-products' })
+    return
+  }
   if (isSeller.value) {
     router.push({ name: 'seller-products' })
     return
@@ -333,7 +337,7 @@ onBeforeUnmount(() => {
 
         <!-- 普通用户：展示管理员开通指引，不自行升级角色 -->
         <button
-          v-if="isLoggedIn && !isSeller"
+          v-if="isLoggedIn && !isSeller && !isAdmin"
           type="button"
           class="jd-nav__link jd-nav__link--sell"
           data-testid="header-sell-entry"

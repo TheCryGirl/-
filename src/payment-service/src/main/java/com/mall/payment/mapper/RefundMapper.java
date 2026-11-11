@@ -1,6 +1,7 @@
 package com.mall.payment.mapper;
 
 import com.mall.payment.common.RefundStatus;
+import com.mall.payment.dto.response.FinanceSummaryRows;
 import com.mall.payment.entity.Refund;
 import org.apache.ibatis.annotations.Param;
 
@@ -39,4 +40,10 @@ public interface RefundMapper {
                     @Param("auditedBy") String auditedBy,
                     @Param("auditRemark") String auditRemark,
                     @Param("auditedAt") LocalDateTime auditedAt);
+
+    /** 管理员资金汇总：成功退款与待审退款的金额口径（一条 SQL，不分页）。 */
+    FinanceSummaryRows.Totals selectFinanceTotals();
+
+    /** 管理员资金汇总：成功退款按 audited_at 归日金额（全量）。 */
+    List<FinanceSummaryRows.DailyRefund> selectFinanceDaily();
 }

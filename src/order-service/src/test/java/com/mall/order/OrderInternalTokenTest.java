@@ -41,12 +41,12 @@ class OrderInternalTokenTest {
     }
 
     @Test
-    void emptyConfiguredTokenKeepsDevelopmentCallsOpen() {
+    void emptyConfiguredTokenRejectsInternalCalls() {
         OrderService orderService = mock(OrderService.class);
         OrderController controller = new OrderController(orderService, verifier(""));
 
-        assertThatCode(() -> controller.paid("O1", null)).doesNotThrowAnyException();
-        assertThatCode(() -> controller.refunded("O1", "any-token")).doesNotThrowAnyException();
+        assertForbidden(() -> controller.paid("O1", null));
+        assertForbidden(() -> controller.refunded("O1", "any-token"));
     }
 
     private static InternalTokenVerifier verifier(String expectedToken) {

@@ -23,7 +23,9 @@ import com.mall.order.common.TimeUtils;
 import com.mall.order.dto.request.CreateOrderRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
 import com.mall.order.dto.response.AddressSnapshot;
+import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.CreateOrderResponse;
+import com.mall.order.dto.response.FinanceSummaryRows;
 import com.mall.order.dto.response.OrderDetailResponse;
 import com.mall.order.dto.response.OrderItemResponse;
 import com.mall.order.dto.response.OrderListItem;
@@ -45,6 +47,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -412,10 +415,41 @@ public class OrderService {
         List<OrderListItem> items = orderMapper.selectList(buyerId, sellerId, trimToNull(status),
                         (safePage - 1) * safeSize, safeSize)
                 .stream()
-                .map(this::toListItem)
+                .map(order -> toListItem(order, sellerId != null))
                 .toList();
         long total = orderMapper.countList(buyerId, sellerId, trimToNull(status));
         return PageResult.of(items, total, safePage, safeSize);
+    }
+
+    /**
+     * 管理员资金/风控汇总（订单口径）。全部统计在 SQL 里完成，一次取回全量口径，
+     * 不读实体、不分页；口径对所有 is_deleted = 0 的订单生效。
+     */
+    public AdminFinanceSummaryResponse adminFinanceSummary() {
+        FinanceSummaryRows.Totals totals = orderMapper.selectFinanceTotals();
+        AdminFinanceSummaryResponse response = new AdminFinanceSummaryResponse();
+        if (totals != null) {
+            response.setGmv(nullToZero(totals.getGmv()));
+            response.setOrderCount(nullToZero(totals.getOrderCount()));
+            response.setPaidCount(nullToZero(totals.getPaidCount()));
+            response.setPaidAmount(nullToZero(totals.getPaidAmount()));
+            response.setCancelledCount(nullToZero(totals.getCancelledCount()));
+        }
+        List<AdminFinanceSummaryResponse.StatusCount> byStatus = new ArrayList<>();
+        for (FinanceSummaryRows.StatusCount row : orderMapper.selectFinanceByStatus()) {
+            byStatus.add(new AdminFinanceSummaryResponse.StatusCount(row.getStatus(),
+                    nullToZero(row.getCount())));
+        }
+        response.setByStatus(byStatus);
+
+        List<AdminFinanceSummaryResponse.DailyAmount> daily = new ArrayList<>();
+        for (FinanceSummaryRows.DailyPaid row : orderMapper.selectFinanceDaily()) {
+            String day = row.getDay() == null ? null : row.getDay().format(DateTimeFormatter.ISO_LOCAL_DATE);
+            daily.add(new AdminFinanceSummaryResponse.DailyAmount(day, nullToZero(row.getCount()),
+                    nullToZero(row.getAmount())));
+        }
+        response.setDaily(daily);
+        return response;
     }
 
     public OrderDetailResponse detail(String orderId, String userId, String role) {
@@ -708,6 +742,39 @@ public class OrderService {
         item.setItems(orderItemMapper.selectByOrderId(order.getOrderId()).stream()
                 .map(this::toItemResponse).toList());
         return item;
+    }
+
+    /**
+     * 列表项。卖家视角需要按订单发货，因此附带收货信息，但只给脱敏摘要：
+     * 收货人姓名 + 手机号前 3 后 4 掩码，不返回完整地址。买家视角不附带任何收货快照，
+     * 完整地址仍只在订单详情里按归属返回。
+     */
+    private OrderListItem toListItem(Order order, boolean sellerView) {
+        OrderListItem item = toListItem(order);
+        if (sellerView) {
+            item.setAddressSnapshot(new AddressSnapshot(order.getReceiver(),
+                    maskPhone(order.getReceiverPhone()), null));
+        }
+        return item;
+    }
+
+    /**
+     * 手机号脱敏：保留前 3 后 4，中间用 **** 替代；长度不足 8 位时整体掩码，
+     * 避免短号码被反推出原值。
+     */
+    static String maskPhone(String phone) {
+        if (phone == null) {
+            return null;
+        }
+        String value = phone.trim();
+        if (value.length() < 8) {
+            return "*".repeat(Math.max(1, value.length()));
+        }
+        return value.substring(0, 3) + "****" + value.substring(value.length() - 4);
+    }
+
+    private static long nullToZero(Long value) {
+        return value == null ? 0L : value;
     }
 
     private OrderItemResponse toItemResponse(OrderItem item) {

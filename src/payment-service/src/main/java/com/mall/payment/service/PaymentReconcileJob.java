@@ -50,7 +50,15 @@ public class PaymentReconcileJob {
     @Value("${payment.reconcile.lookback-hours:72}")
     private int lookbackHours;
 
+    @Value("${payment.reconcile.enabled:true}")
+    private boolean scheduledEnabled;
+
     @Scheduled(fixedDelayString = "${payment.reconcile.interval-ms:60000}")
+    public void scheduledReconcile() {
+        if (scheduledEnabled) reconcile();
+    }
+
+    /** Explicit entry for deterministic retries/tests; the scheduler switch affects only automatic execution. */
     public void reconcile() {
         LocalDateTime from = LocalDateTime.now().minusHours(Math.max(1, lookbackHours));
         List<Payment> pending;
@@ -100,7 +108,11 @@ public class PaymentReconcileJob {
         if (order == null) {
             return false;
         }
-        if (order.getStatus() == OrderStatus.PAID) {
+        // Fulfilment may proceed after order notification succeeded but stock confirmation failed.
+        // Never replay PAID backwards over a valid later fulfilment state; stock still needs reconciliation.
+        if (order.getStatus() == OrderStatus.PAID
+                || order.getStatus() == OrderStatus.SHIPPED
+                || order.getStatus() == OrderStatus.COMPLETED) {
             return true;
         }
         if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.REFUNDED) {

@@ -43,7 +43,7 @@ class InternalCartControllerTest {
     @Test
     void rejectsMissingToken() throws Exception {
         mockMvc.perform(get("/internal/cart").header("X-User-Id", USER_ID))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(10003));
     }
 
@@ -52,7 +52,7 @@ class InternalCartControllerTest {
         mockMvc.perform(get("/internal/cart")
                         .header("X-User-Id", USER_ID)
                         .header("X-Internal-Token", "wrong-token"))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(10003));
     }
 
@@ -83,7 +83,7 @@ class InternalCartControllerTest {
     void rejectsDeleteWithoutToken() throws Exception {
         mockMvc.perform(delete("/internal/cart/items/{id}", ITEM_ID)
                         .header("X-User-Id", USER_ID))
-                .andExpect(status().isOk())
+                .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(10003));
 
         Integer deleted = jdbcTemplate.queryForObject(

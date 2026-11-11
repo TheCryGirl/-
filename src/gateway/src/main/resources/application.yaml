@@ -1,4 +1,5 @@
 server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: 9000
 
 spring:
@@ -7,6 +8,7 @@ spring:
   cloud:
     nacos:
       discovery:
+        ip: ${NACOS_DISCOVERY_IP:}
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:public}
         # 开发期 Nacos 未就绪时不阻塞启动，方便单独调试网关。
