@@ -12,6 +12,7 @@ import {
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { formatPrice, formatTime } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -241,12 +242,18 @@ onMounted(load)
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg font-semibold text-gray-900">订单详情</h1>
-      <el-button link type="primary" data-testid="order-detail-back" @click="goOrders">
-        返回订单列表
-      </el-button>
-    </div>
+    <PageHero
+      title="订单详情"
+      subtitle="订单状态、商品明细与售后入口集中在这一页"
+      icon="truck"
+      tone="indigo"
+    >
+      <template #actions>
+        <el-button link type="primary" data-testid="order-detail-back" @click="goOrders">
+          返回订单列表
+        </el-button>
+      </template>
+    </PageHero>
 
     <el-result v-if="loadError" status="error" title="加载订单失败" :sub-title="loadError">
       <template #extra>
@@ -522,3 +529,4 @@ onMounted(load)
   outline-offset: 2px;
 }
 </style>
+

@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { computed, onMounted, ref } from 'vue'
 import { isOk, orderApi, paymentApi, unwrapResult } from '../../api'
 import { ORDER_STATUS_MAP, statusText } from '../../constants/status'
@@ -144,6 +145,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="资金对账"
+      subtitle="订单、支付与退款金额的核对视图"
+      icon="coupon"
+      tone="amber"
+    />
     <el-result v-if="loadError" status="error" icon="error" :sub-title="loadError">
       <template #extra>
         <el-button type="primary" @click="load">重试</el-button>

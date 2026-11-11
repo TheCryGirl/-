@@ -12,6 +12,11 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AppHeader: typeof import('./components/AppHeader.vue')['default']
+    AuthShell: typeof import('./components/store/AuthShell.vue')['default']
+    BackToTop: typeof import('./components/store/BackToTop.vue')['default']
+    CategoryGrid: typeof import('./components/store/CategoryGrid.vue')['default']
+    CountdownTimer: typeof import('./components/store/CountdownTimer.vue')['default']
+    CuratedShowcase: typeof import('./components/store/CuratedShowcase.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
     ElBreadcrumb: typeof import('element-plus/es')['ElBreadcrumb']
     ElBreadcrumbItem: typeof import('element-plus/es')['ElBreadcrumbItem']
@@ -22,6 +27,7 @@ declare module 'vue' {
     ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDivider: typeof import('element-plus/es')['ElDivider']
+    ElDrawer: typeof import('element-plus/es')['ElDrawer']
     ElEmpty: typeof import('element-plus/es')['ElEmpty']
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
@@ -42,9 +48,17 @@ declare module 'vue' {
     ElTable: typeof import('element-plus/es')['ElTable']
     ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTag: typeof import('element-plus/es')['ElTag']
+    FilterDrawer: typeof import('./components/store/FilterDrawer.vue')['default']
+    FlashSale: typeof import('./components/store/FlashSale.vue')['default']
+    HeroCarousel: typeof import('./components/store/HeroCarousel.vue')['default']
+    PageHero: typeof import('./components/store/PageHero.vue')['default']
     ProductCard: typeof import('./components/ProductCard.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ServiceDialog: typeof import('./components/store/ServiceDialog.vue')['default']
+    ServiceStrip: typeof import('./components/store/ServiceStrip.vue')['default']
+    StoreFooter: typeof import('./components/store/StoreFooter.vue')['default']
+    StoreIcon: typeof import('./components/store/StoreIcon.vue')['default']
     UiTable: typeof import('./components/ui/UiTable.vue')['default']
   }
   export interface GlobalDirectives {

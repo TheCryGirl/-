@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { onMounted, ref } from 'vue'
 import { auditApi, isOk, unwrapResult } from '../../api'
 import { resolveErrorMessage } from '../../components/ui/message'
@@ -100,6 +101,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="审计日志"
+      subtitle="按操作人、动作与时间追踪关键操作"
+      icon="clock"
+      tone="indigo"
+    />
     <el-form inline class="bg-white p-4 rounded-lg" @submit.prevent>
       <el-form-item label="操作人 ID">
         <el-input

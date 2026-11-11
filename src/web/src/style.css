@@ -38,13 +38,32 @@
 
   :where(body) {
     min-height: 100vh;
-    font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+    /* 中文优先用系统黑体族，西文与数字走系统 UI 字体，避免回退到宋体发虚 */
+    font-family: 'Inter', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
+      'Segoe UI', sans-serif;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #1f2937;
-    background-color: #f9fafb;
+    background-color: #f4f5f7;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 缺少 preflight 时浏览器会给所有 <a> 加下划线，导致 Logo、导航、页脚链接
+     以及卡片标题被错误地画上下划线。这里统一清掉，需要的下划线由页面显式声明。 */
+  :where(a) {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :where(a:hover) {
+    text-decoration: none;
+  }
+
+  /* 数字统一等宽，价格、统计、计数对齐更稳 */
+  :where(.jd-price, .el-pagination, .el-table, time) {
+    font-variant-numeric: tabular-nums;
   }
 
   :where(h1, h2, h3, h4, h5, h6) {
@@ -149,4 +168,479 @@
 /* 长内容区域内滚动，避免窄屏整页横向溢出 */
 .app-scroll-x {
   overflow-x: auto;
+}
+
+/* ============================================================
+   商城前台视觉层（京东风格）
+   ------------------------------------------------------------
+   只在商城前台页面（商品列表、首页模块）使用。后台管理端与卖家端
+   继续沿用 Element Plus 默认风格，不受这里的设计令牌影响。
+   ============================================================ */
+:root {
+  /* 主色：京东红；辅助色：暖金与深墨 */
+  --jd-red: #e1251b;
+  --jd-red-dark: #b81b13;
+  --jd-red-soft: #fff1f0;
+  --jd-amber: #f0a020;
+  --jd-amber-soft: #fff7e6;
+  --jd-ink: #111827;
+  --jd-ink-2: #303133;
+  --jd-ink-3: #606266;
+  --jd-ink-4: #909399;
+  --jd-line: #ebeef5;
+  --jd-bg: #f4f5f7;
+  --jd-radius-sm: 8px;
+  --jd-radius: 14px;
+  --jd-radius-lg: 20px;
+  --jd-shadow-card: 0 1px 3px rgba(17, 24, 39, 0.06), 0 8px 24px -18px rgba(17, 24, 39, 0.3);
+  --jd-shadow-lift: 0 18px 40px -20px rgba(17, 24, 39, 0.45);
+  --jd-shadow-red: 0 10px 24px -12px rgba(225, 37, 27, 0.65);
+  --jd-container: 1280px;
+}
+
+/* 商场内容容器：比全局 1200px 略宽，给瀑布流留呼吸感 */
+.jd-container {
+  width: 100%;
+  max-width: var(--jd-container);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* 隐藏滚动条但保留滚动能力（秒杀横向列表） */
+.jd-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.jd-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* 价格排版：¥ 小号、整数大号、小数小号，接近电商习惯 */
+.jd-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  color: var(--jd-red);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.jd-price__symbol {
+  font-size: 0.72em;
+  font-weight: 600;
+}
+.jd-price__int {
+  font-size: 1.28em;
+  line-height: 1;
+}
+.jd-price__dec {
+  font-size: 0.72em;
+  font-weight: 600;
+}
+
+/* 文本截断工具：商品标题固定两行，避免卡片高低不齐 */
+.jd-clamp-1,
+.jd-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.jd-clamp-1 {
+  -webkit-line-clamp: 1;
+}
+.jd-clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+/* ---------- 动效关键帧 ---------- */
+@keyframes jd-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes jd-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+@keyframes jd-shimmer {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 220% 0;
+  }
+}
+@keyframes jd-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes jd-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(225, 37, 27, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(225, 37, 27, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(225, 37, 27, 0);
+  }
+}
+@keyframes jd-shine {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  60%,
+  100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+@keyframes jd-count-pop {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 滚动进入视口的渐显；由 useReveal 指令加上 .is-visible */
+.jd-reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.jd-reveal.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* 骨架屏微光 */
+.jd-skeleton {
+  background-image: linear-gradient(100deg, #eef0f3 20%, #f7f8fa 40%, #eef0f3 60%);
+  background-size: 200% 100%;
+  animation: jd-shimmer 1.4s linear infinite;
+}
+
+/* 加购飞入购物车的小圆点（由 ProductList 动态创建） */
+.jd-fly-dot {
+  position: fixed;
+  z-index: 60;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #ff8a6d, var(--jd-red));
+  box-shadow: 0 4px 10px -2px rgba(225, 37, 27, 0.7);
+  pointer-events: none;
+}
+
+/* ============================================================
+   全站视觉增强层（前台 + 卖家端 + 管理端共用）
+   ------------------------------------------------------------
+   这里只做「外观与动效」：不改变任何页面的结构与数据流，
+   让 28 个业务页面共用同一套字体、圆角、阴影、悬停与过渡。
+   ============================================================ */
+
+/* ---------- 页面背景：渐变光斑 + 网格纹理 ---------- */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #f4f5f7;
+  background-image:
+    radial-gradient(60rem 32rem at 8% -6%, rgba(225, 37, 27, 0.1), transparent 62%),
+    radial-gradient(48rem 26rem at 96% 2%, rgba(255, 154, 61, 0.12), transparent 60%),
+    radial-gradient(52rem 30rem at 50% 108%, rgba(65, 105, 225, 0.08), transparent 62%),
+    url('/media/bg/pattern-grid.svg');
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-size: auto, auto, auto, 160px 160px;
+}
+
+/* 页面区块进入动画（配合 RouterView 的 transition） */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ---------- 页面主标题：统一字重、字号与红色竖条 ---------- */
+main h1:not(.jd-detail__title) {
+  position: relative;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #111827;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+main h1:not(.jd-detail__title)::before {
+  content: '';
+  width: 4px;
+  height: 1.05em;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff7a4d, var(--jd-red, #e1251b));
+  flex: none;
+}
+/* 页面主标题里的小字（如“共 16 件”）恢复常规字重 */
+main h1:not(.jd-detail__title) span {
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
+}
+
+/* ---------- 卡片 ---------- */
+.el-card.el-card {
+  border-radius: 14px;
+  border-color: #ebeef5;
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.05), 0 10px 26px -22px rgba(17, 24, 39, 0.42);
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease;
+  overflow: hidden;
+}
+.el-card.el-card:hover {
+  border-color: #e6e8ee;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.06), 0 22px 46px -30px rgba(17, 24, 39, 0.5);
+}
+.el-card.el-card .el-card__header {
+  padding: 14px 18px;
+  border-bottom-color: #eef0f4;
+  background: linear-gradient(180deg, #fcfcfd, #f8f9fb);
+}
+.el-card.el-card .el-card__header .text-base {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.el-card.el-card .el-card__body {
+  padding: 18px;
+}
+
+/* ---------- 表格：表头底色、行悬停、圆角 ---------- */
+.el-table .el-table__header th.el-table__cell {
+  background: #f7f8fa;
+  color: #303133;
+  font-weight: 600;
+  height: 44px;
+}
+.el-table .el-table__row {
+  transition: background-color 0.2s ease;
+}
+.el-table .el-table__row:hover > td.el-table__cell {
+  background: #fff7f6;
+}
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: #fff7f6;
+}
+.el-table .el-table__cell {
+  padding: 10px 0;
+}
+
+/* ---------- 按钮：圆角、悬停位移与主按钮微光 ---------- */
+.el-button {
+  border-radius: 8px;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.22s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+.el-button:not(.is-disabled):not(.is-link):hover {
+  transform: translateY(-1px);
+}
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link) {
+  background-image: linear-gradient(120deg, #ff6a4d, var(--jd-red, #e1251b));
+  border-color: transparent;
+  box-shadow: 0 8px 18px -12px rgba(225, 37, 27, 0.75);
+}
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
+  filter: brightness(1.03);
+  box-shadow: 0 12px 22px -12px rgba(225, 37, 27, 0.85);
+}
+/* 表格里的链接按钮保持轻量 */
+.el-button.is-link:hover {
+  transform: none;
+}
+
+/* ---------- 输入框 / 选择器：聚焦时柔和光晕 ---------- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+}
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 3px rgba(225, 37, 27, 0.12) inset, 0 0 0 1px var(--jd-red, #e1251b) inset;
+}
+
+/* ---------- 分页 / 标签 ---------- */
+.el-pagination.is-background .el-pager li {
+  border-radius: 8px;
+  transition: transform 0.18s ease;
+}
+.el-pagination.is-background .el-pager li:hover {
+  transform: translateY(-1px);
+}
+.el-tag {
+  border-radius: 6px;
+}
+
+/* ---------- 通用小工具 ---------- */
+.hover-lift {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.3s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 38px -26px rgba(17, 24, 39, 0.55);
+}
+
+/* 工作区（卖家端 / 管理端）内容更紧凑，给筛选区一点卡片感 */
+.workspace .el-form--inline {
+  border-radius: 14px;
+  border: 1px solid #ebeef5;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.05), 0 10px 26px -24px rgba(17, 24, 39, 0.45);
+}
+
+/* 页面标题右侧的轻量操作按钮（收藏、足迹等页面使用） */
+.jd-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid #ffd8d4;
+  background: #fff;
+  color: var(--jd-red, #e1251b);
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+.jd-link-btn:hover {
+  background: #fff1f0;
+  transform: translateY(-1px);
+}
+
+/* 工作区顶部面包屑：给管理/卖家页面一个「我在哪」的视觉锚点 */
+.workspace-crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: #909399;
+}
+.workspace-crumb__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff1f0;
+  color: var(--jd-red, #e1251b);
+  font-weight: 600;
+}
+.workspace-crumb__sep {
+  color: #d5d8de;
+}
+.workspace-crumb strong {
+  color: #303133;
+  font-weight: 600;
+}
+.workspace-crumb__hint {
+  margin-left: auto;
+  color: #b3b8c2;
+}
+
+/* 工作区卡片依次浮入，切换页面时更有节奏 */
+.workspace .el-card,
+.workspace .el-form--inline,
+.workspace .el-alert {
+  animation: jd-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.workspace .el-card:nth-of-type(2) {
+  animation-delay: 0.06s;
+}
+.workspace .el-card:nth-of-type(3) {
+  animation-delay: 0.12s;
+}
+
+/* 滚动条：与整体视觉一致 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d3d6dd transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d3d6dd;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #b9bdc7;
+}
+
+/* 尊重系统「减少动态效果」设置 */
+@media (prefers-reduced-motion: reduce) {
+  .jd-reveal,
+  .jd-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .jd-skeleton {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

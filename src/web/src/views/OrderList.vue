@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isOk, orderApi, unwrapResult } from '../api'
 import { isSeller } from '../stores/auth'
+import PageHero from '../components/store/PageHero.vue'
 import {
   ORDER_STATUS_MAP,
   ORDER_STATUS_TAG,
@@ -98,14 +99,17 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-baseline gap-3">
-        <h1 class="text-lg font-semibold text-gray-900">我的订单</h1>
-        <span v-if="!loadError" class="text-xs text-gray-400">
-          {{ formatTotal(total, '单') }}
-        </span>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
+    <PageHero
+      title="我的订单"
+      subtitle="买家订单与卖家订单分开查看，状态变化实时同步"
+      icon="truck"
+      tone="indigo"
+      image="/media/bg/page-band.jpg"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">{{ formatTotal(total, '单') }}</span>
+      </template>
+      <template #actions>
         <el-radio-group
           :model-value="role"
           data-testid="order-list-role-tabs"
@@ -124,8 +128,8 @@ onMounted(load)
         >
           <el-option v-for="opt in statusOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
         </el-select>
-      </div>
-    </div>
+      </template>
+    </PageHero>
 
     <!-- 加载失败不能展示成「暂无订单」 -->
     <el-result v-if="loadError" status="error" title="加载订单失败" :sub-title="loadError">
@@ -207,3 +211,4 @@ onMounted(load)
   outline-offset: 2px;
 }
 </style>
+

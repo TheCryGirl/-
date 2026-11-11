@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 /**
  * 卖家新建 / 编辑商品（#81 T02，最高风险页）
  *
@@ -6,7 +7,8 @@
  * - 新建：商品资料 + 可增删的初始 SKU 行（至少保留一行）
  * - 编辑：商品资料 + 已有 SKU 只能改库存、只能新增，不提供删除既有 SKU 的能力
  *
- * 主图保持 URL 字符串（与后端 mainImage 一致），不引入上传接口。
+ * 主图仍以 URL 字符串（与后端 mainImage 一致）保存；本页提供「上传图片」按钮，
+ * 选图后调用 /api/products/images 上传并回填地址，也允许手工填写外链地址。
  * 单价输入是元，提交前用 Math.round(Number(yuan) * 100) 转分；12.34 元 → 1234 分。
  * el-input-number 清空会得到 null，统一走 toCents / Math.floor 兜底，绝不提交 NaN。
  */
@@ -41,6 +43,10 @@ const form = reactive({
   mainImage: '',
   categoryId: '',
 })
+/** 配图上传：选择本地图片 → 调后端上传 → 回填主图地址 */
+const fileInput = ref(null)
+const uploading = ref(false)
+const imageError = ref('')
 const rules = {
   title: [{ required: true, message: '请填写商品标题', trigger: 'blur' }],
   categoryId: [{ required: true, message: '请选择商品分类', trigger: 'change' }],
@@ -64,6 +70,43 @@ const skuColumns = [
 const canSubmit = computed(() => (isEdit.value ? true : !categoryError.value && categories.value.length > 0))
 
 /* ---------- 3. 方法 ---------- */
+
+/** 选择图片后立即上传，成功即回填主图地址并给出预览 */
+async function handleImageChange(event) {
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    imageError.value = '请选择图片文件'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    imageError.value = '图片不能超过 5MB'
+    return
+  }
+  imageError.value = ''
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const { data } = await productApi.uploadImage(formData)
+    const payload = unwrapResult(data)
+    if (!isOk(data) || !payload?.url) {
+      showError(data?.message || '图片上传失败')
+      return
+    }
+    form.mainImage = payload.url
+    showSuccess('图片已上传，保存商品后生效')
+  } catch (err) {
+    showError(resolveErrorMessage(err, '图片上传失败'))
+  } finally {
+    uploading.value = false
+    if (fileInput.value) fileInput.value.value = ''
+  }
+}
+
+function pickImage() {
+  fileInput.value?.click()
+}
 async function loadCategories() {
   categoryLoading.value = true
   categoryError.value = ''
@@ -289,20 +332,27 @@ onMounted(() => {
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-3">
-        <h1 class="text-lg font-semibold text-gray-900">{{ isEdit ? '编辑商品' : '发布商品' }}</h1>
+
+    <PageHero
+      :title="isEdit ? '编辑商品' : '发布商品'"
+      subtitle="填写商品信息、规格与库存，提交后等待管理员审核"
+      icon="plus"
+      tone="amber"
+    >
+      <template #meta>
         <el-tag v-if="isEdit && productStatus" :type="statusTag(PRODUCT_STATUS_TAG, productStatus)" size="small">
           {{ statusText(PRODUCT_STATUS_MAP, productStatus) }}
         </el-tag>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="text-xs text-gray-400">{{ isEdit ? '修改后需重新审核上架' : '提交后进入管理员审核' }}</span>
+        <span class="text-xs text-[var(--jd-ink-4)]">
+          {{ isEdit ? '修改后需重新审核上架' : '提交后进入管理员审核' }}
+        </span>
+      </template>
+      <template #actions>
         <el-button link type="primary" data-testid="seller-product-back" @click="handleBack">
           返回商品管理
         </el-button>
-      </div>
-    </div>
+      </template>
+    </PageHero>
 
     <!-- 失败态：与空态严格区分，可重试 -->
     <el-result v-if="loadError" status="error" title="加载商品失败" :sub-title="loadError">
@@ -344,17 +394,39 @@ onMounted(() => {
           />
         </el-form-item>
 
-        <el-form-item label="主图地址">
-          <div class="w-full">
-            <el-input
-              v-model="form.mainImage"
-              maxlength="255"
-              placeholder="选填，例如 /images/xxx.jpg"
-              data-testid="seller-product-main-image"
-            />
-            <p class="mt-1 text-xs text-gray-400">
-              这里填写图片地址（与商品原有字段一致），本页不做上传，避免多出一次写请求。
-            </p>
+        <el-form-item label="商品主图">
+          <div class="w-full space-y-2">
+            <div class="flex flex-wrap items-center gap-3">
+              <input
+                ref="fileInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                data-testid="seller-product-image-file"
+                @change="handleImageChange"
+              />
+              <el-button :loading="uploading" data-testid="seller-product-image-upload" @click="pickImage">
+                {{ uploading ? '上传中…' : '上传图片' }}
+              </el-button>
+              <el-input
+                v-model="form.mainImage"
+                maxlength="255"
+                placeholder="也可以直接填写图片地址，例如 /images/xxx.jpg"
+                style="flex: 1; min-width: 240px"
+                data-testid="seller-product-main-image"
+              />
+            </div>
+            <p v-if="imageError" class="text-xs text-red-600">{{ imageError }}</p>
+            <div v-if="form.mainImage" class="flex items-center gap-3">
+              <img
+                :src="form.mainImage"
+                alt="商品主图预览"
+                class="w-24 h-24 rounded-lg object-cover border border-gray-200 bg-gray-100"
+                data-testid="seller-product-image-preview"
+              />
+              <span class="text-xs text-gray-400">图片预览，保存后买家即可看到</span>
+            </div>
+            <p v-else class="text-xs text-gray-400">支持 jpg / png / webp，大小不超过 5MB。</p>
           </div>
         </el-form-item>
 

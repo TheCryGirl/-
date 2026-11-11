@@ -11,6 +11,7 @@ import {
   unwrapResult,
 } from '../api'
 import { isLoggedIn } from '../stores/auth'
+import StoreIcon from '../components/store/StoreIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,6 +54,13 @@ const cover = computed(() => {
   if (!raw) return ''
   if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) return raw
   return `/images/${raw}`
+})
+
+/** 价格按「整数 + 小数」拆开排版，跟随所选规格变化 */
+const priceParts = computed(() => {
+  const cents = Number(selectedSku.value?.price ?? product.value?.price ?? 0)
+  const [int, dec] = (cents / 100).toFixed(2).split('.')
+  return { int, dec }
 })
 
 /** 当前 SKU 可购上限：库存与 999 取小，至少 1（库存为 0 时按钮禁用） */
@@ -308,63 +316,71 @@ onMounted(() => {
         <el-breadcrumb-item>{{ product.title }}</el-breadcrumb-item>
       </el-breadcrumb>
 
-      <div class="bg-white rounded-lg border border-gray-200 p-5 grid md:grid-cols-2 gap-6">
-        <div>
-          <img
-            v-if="cover"
-            :src="cover"
-            :alt="product.title"
-            class="w-full rounded-lg object-cover aspect-4/3 bg-gray-100"
-          />
-          <div
-            v-else
-            class="w-full rounded-lg aspect-4/3 bg-gray-100 flex items-center justify-center text-gray-400 text-sm"
-          >
-            暂无图片
+      <div class="jd-detail__top">
+        <!-- 左侧主图 -->
+        <div class="jd-detail__gallery">
+          <div class="jd-detail__figure">
+            <img v-if="cover" :src="cover" :alt="product.title" class="jd-detail__img" />
+            <div v-else class="jd-detail__img jd-detail__img--empty">暂无图片</div>
+          </div>
+          <div class="jd-detail__thumbs">
+            <span class="jd-detail__thumb is-active">
+              <img v-if="cover" :src="cover" :alt="product.title" />
+            </span>
+            <span class="jd-detail__thumb-note">更多实拍图由卖家上传后展示</span>
           </div>
         </div>
 
-        <div class="flex flex-col gap-3">
-          <h1 class="text-xl font-semibold text-gray-900">{{ product.title }}</h1>
-          <p class="text-sm text-gray-500">{{ product.subtitle }}</p>
-          <p class="text-2xl font-bold text-red-600">
-            ¥{{ formatPrice(selectedSku?.price ?? product.price ?? 0) }}
-          </p>
-
-          <dl class="grid grid-cols-[80px_1fr] gap-y-2 text-sm">
-            <dt class="text-gray-500">分类</dt>
-            <dd class="text-gray-800">{{ categoryLabel }}</dd>
-            <dt class="text-gray-500">卖家</dt>
-            <dd class="text-gray-800">{{ product.sellerId }}</dd>
-            <dt class="text-gray-500">商品 ID</dt>
-            <dd class="text-gray-800 break-all">{{ product.productId || route.params.id }}</dd>
-          </dl>
-
-          <div>
-            <el-button
-              :type="favorited ? 'danger' : ''"
-              :plain="!favorited"
-              :loading="favoriteBusy"
-              @click="toggleFavorite"
-            >
-              {{ favorited ? '已收藏' : '收藏' }}
-            </el-button>
+        <!-- 右侧信息 -->
+        <div class="jd-detail__info">
+          <div class="jd-detail__tags">
+            <span class="jd-detail__tag">包邮</span>
+            <span class="jd-detail__tag jd-detail__tag--soft">7 天无理由</span>
           </div>
 
-          <div v-if="product.skus?.length" class="space-y-2">
-            <span class="text-sm text-gray-600">规格</span>
-            <div class="flex flex-wrap gap-2">
-              <el-button
+          <h1 class="jd-detail__title">{{ product.title }}</h1>
+          <p class="jd-detail__subtitle">{{ product.subtitle }}</p>
+
+          <div class="jd-detail__pricebox">
+            <span class="jd-detail__pricelabel">商城价</span>
+            <span class="jd-price jd-detail__price">
+              <span class="jd-price__symbol">¥</span>
+              <span class="jd-price__int">{{ priceParts.int }}</span>
+              <span class="jd-price__dec">.{{ priceParts.dec }}</span>
+            </span>
+            <span class="jd-detail__tax">已含税 · 满 99 包邮</span>
+          </div>
+
+          <ul class="jd-detail__promises">
+            <li><StoreIcon name="shield" :size="15" /> 正品保障</li>
+            <li><StoreIcon name="truck" :size="15" /> 当日发货</li>
+            <li><StoreIcon name="refresh" :size="15" /> 7 天无理由</li>
+            <li><StoreIcon name="headset" :size="15" /> 客服 9:00-22:00</li>
+          </ul>
+
+          <dl class="jd-detail__meta">
+            <dt>分类</dt>
+            <dd>{{ categoryLabel }}</dd>
+            <dt>卖家</dt>
+            <dd>{{ product.sellerId }}</dd>
+            <dt>商品编号</dt>
+            <dd class="break-all">{{ product.productId || route.params.id }}</dd>
+          </dl>
+
+          <div v-if="product.skus?.length" class="jd-detail__section">
+            <span class="jd-detail__section-label">选择规格</span>
+            <div class="jd-detail__skus">
+              <button
                 v-for="sku in product.skus"
                 :key="sku.skuId"
-                size="small"
-                :type="selectedSku?.skuId === sku.skuId ? 'primary' : ''"
-                :plain="selectedSku?.skuId !== sku.skuId"
+                type="button"
+                class="jd-detail__sku"
+                :class="{ 'is-active': selectedSku?.skuId === sku.skuId }"
                 @click="selectedSku = sku"
               >
                 {{ sku.specName }}
-                <span class="text-xs opacity-70">（库存 {{ sku.stockAvailable ?? 0 }}）</span>
-              </el-button>
+                <em>库存 {{ sku.stockAvailable ?? 0 }}</em>
+              </button>
             </div>
           </div>
           <el-alert
@@ -376,8 +392,8 @@ onMounted(() => {
             description="商品未配置规格，暂时无法加入购物车或购买。"
           />
 
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="text-sm text-gray-600">数量</span>
+          <div class="jd-detail__section jd-detail__section--qty">
+            <span class="jd-detail__section-label">购买数量</span>
             <el-input-number
               v-model="quantity"
               :min="1"
@@ -388,29 +404,9 @@ onMounted(() => {
               size="small"
               style="width: 120px"
             />
-            <span class="text-xs text-gray-400">
+            <span class="jd-detail__stock">
               库存 {{ selectedSku?.stockAvailable ?? '—' }}
             </span>
-          </div>
-
-          <div class="mt-2 flex flex-wrap gap-2">
-            <el-button
-              type="primary"
-              :disabled="soldOut || !selectedSku"
-              :loading="buyBusy"
-              @click="buyNow"
-            >
-              立即购买
-            </el-button>
-            <el-button
-              type="primary"
-              plain
-              :disabled="soldOut || !selectedSku"
-              :loading="cartBusy"
-              @click="addToCart"
-            >
-              加入购物车
-            </el-button>
           </div>
 
           <el-alert
@@ -421,18 +417,53 @@ onMounted(() => {
             show-icon
             @close="notice = ''"
           />
+
+          <div class="jd-detail__actions">
+            <el-button
+              class="jd-detail__fav"
+              :type="favorited ? 'danger' : ''"
+              :plain="!favorited"
+              :loading="favoriteBusy"
+              @click="toggleFavorite"
+            >
+              <StoreIcon :name="favorited ? 'heart-filled' : 'heart'" :size="15" />
+              <span>{{ favorited ? '已收藏' : '收藏' }}</span>
+            </el-button>
+            <el-button
+              type="primary"
+              plain
+              class="jd-detail__btn"
+              :disabled="soldOut || !selectedSku"
+              :loading="cartBusy"
+              @click="addToCart"
+            >
+              加入购物车
+            </el-button>
+            <el-button
+              type="danger"
+              class="jd-detail__btn jd-detail__btn--main"
+              :disabled="soldOut || !selectedSku"
+              :loading="buyBusy"
+              @click="buyNow"
+            >
+              立即购买
+            </el-button>
+          </div>
         </div>
       </div>
 
-      <div class="bg-white rounded-lg border border-gray-200 p-5 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-semibold text-gray-900">
-            商品评价
-            <span class="text-sm font-normal text-gray-400">（{{ evalStats.total || 0 }}）</span>
-          </h2>
-          <div class="flex items-center gap-2 text-sm">
-            <span class="text-amber-500 tracking-wide">{{ stars(evalStats.average) }}</span>
-            <span class="text-gray-500">{{ Number(evalStats.average || 0).toFixed(1) }} 分</span>
+      <div class="jd-detail__reviews">
+        <div class="jd-detail__reviews-head">
+          <div class="jd-detail__reviews-title">
+            <h2>商品评价</h2>
+            <span>（{{ evalStats.total || 0 }} 条）</span>
+          </div>
+          <div class="jd-detail__score">
+            <strong>{{ Number(evalStats.average || 0).toFixed(1) }}</strong>
+            <div>
+              <span class="jd-detail__stars">{{ stars(evalStats.average) }}</span>
+              <small>综合评分</small>
+            </div>
           </div>
         </div>
 
@@ -481,3 +512,331 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 商品详情：与首页同一套视觉语言（京东风格），逻辑与接口调用保持原样 */
+
+.jd-detail__top {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 28px;
+  padding: 22px;
+  border-radius: var(--jd-radius-lg);
+  background: #fff;
+  border: 1px solid var(--jd-line);
+  box-shadow: var(--jd-shadow-card);
+}
+
+/* ---------- 左侧主图 ---------- */
+.jd-detail__gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.jd-detail__figure {
+  position: relative;
+  border-radius: var(--jd-radius);
+  overflow: hidden;
+  background: #f4f5f7;
+}
+.jd-detail__img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.jd-detail__figure:hover .jd-detail__img {
+  transform: scale(1.05);
+}
+.jd-detail__img--empty {
+  display: grid;
+  place-items: center;
+  color: #b8bcc4;
+  font-size: 13px;
+}
+.jd-detail__flag {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(120deg, #ff6a3d, var(--jd-red));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: var(--jd-shadow-red);
+}
+.jd-detail__thumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.jd-detail__thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid var(--jd-red);
+  background: #f4f5f7;
+}
+.jd-detail__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.jd-detail__thumb-note {
+  font-size: 11px;
+  color: var(--jd-ink-4);
+}
+
+/* ---------- 右侧信息 ---------- */
+.jd-detail__info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.jd-detail__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.jd-detail__tag {
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: var(--jd-red-soft);
+  color: var(--jd-red);
+  font-size: 11px;
+  font-weight: 600;
+}
+.jd-detail__tag--soft {
+  background: #f4f5f7;
+  color: var(--jd-ink-3);
+  font-weight: 500;
+}
+.jd-detail__title {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--jd-ink);
+  letter-spacing: 0.2px;
+}
+.jd-detail__subtitle {
+  font-size: 14px;
+  color: var(--jd-ink-3);
+}
+.jd-detail__pricebox {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: var(--jd-radius);
+  background: linear-gradient(100deg, #fff3f1, #fff9f2 70%, #fff);
+  border: 1px solid #ffe1dd;
+}
+.jd-detail__pricelabel {
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__price {
+  font-size: 22px;
+}
+.jd-detail__tax {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__promises {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--jd-ink-3);
+}
+.jd-detail__promises li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.jd-detail__promises svg {
+  color: var(--jd-red);
+}
+.jd-detail__meta {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px 12px;
+  padding: 12px 14px;
+  border-radius: var(--jd-radius-sm);
+  background: #fafbfc;
+  font-size: 13px;
+}
+.jd-detail__meta dt {
+  color: var(--jd-ink-4);
+}
+.jd-detail__meta dd {
+  color: var(--jd-ink-2);
+  min-width: 0;
+}
+
+/* 规格选择 */
+.jd-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.jd-detail__section-label {
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__skus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.jd-detail__sku {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--jd-line);
+  background: #fff;
+  font-size: 13px;
+  color: var(--jd-ink-2);
+  transition: all 0.2s ease;
+}
+.jd-detail__sku em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__sku:hover {
+  border-color: var(--jd-red);
+  color: var(--jd-red);
+}
+.jd-detail__sku.is-active {
+  border-color: var(--jd-red);
+  background: var(--jd-red-soft);
+  color: var(--jd-red);
+  font-weight: 600;
+}
+.jd-detail__section--qty {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.jd-detail__stock {
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+
+/* 操作区：桌面贴底，移动端吸底 */
+.jd-detail__actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px 0 2px;
+  background: #fff;
+}
+.jd-detail__actions :deep(.el-button) {
+  height: 44px;
+  border-radius: 999px;
+  padding: 0 26px;
+  font-weight: 600;
+}
+.jd-detail__fav :deep(span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.jd-detail__btn--main {
+  background: linear-gradient(120deg, #ff5b4a, var(--jd-red));
+  border-color: transparent;
+  box-shadow: var(--jd-shadow-red);
+}
+.jd-detail__btn--main:hover {
+  filter: brightness(1.04);
+}
+
+/* ---------- 评价区 ---------- */
+.jd-detail__reviews {
+  padding: 20px 22px 22px;
+  border-radius: var(--jd-radius-lg);
+  background: #fff;
+  border: 1px solid var(--jd-line);
+  box-shadow: var(--jd-shadow-card);
+}
+.jd-detail__reviews-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--jd-line);
+}
+.jd-detail__reviews-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.jd-detail__reviews-title h2 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--jd-ink);
+}
+.jd-detail__reviews-title span {
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.jd-detail__score strong {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--jd-amber);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.jd-detail__score div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.jd-detail__stars {
+  color: #ff9f1c;
+  letter-spacing: 1px;
+  font-size: 13px;
+}
+.jd-detail__score small {
+  font-size: 11px;
+  color: var(--jd-ink-4);
+}
+
+@media (max-width: 900px) {
+  .jd-detail__top {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .jd-detail__title {
+    font-size: 18px;
+  }
+  .jd-detail__actions {
+    position: sticky;
+    bottom: 0;
+    padding: 10px 0;
+    box-shadow: 0 -8px 20px -18px rgba(17, 24, 39, 0.6);
+  }
+  .jd-detail__actions :deep(.el-button) {
+    flex: 1;
+    padding: 0 12px;
+  }
+}
+</style>

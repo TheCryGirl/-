@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 /**
  * 卖家商品管理（#81 T01，试点页）
  *
@@ -120,10 +121,19 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">商品管理</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '件', list.length) }}</span>
-    </div>
+
+    <PageHero
+      title="商品管理"
+      subtitle="发布、编辑商品并调整库存与上下架"
+      icon="tag"
+      tone="red"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">
+          {{ formatTotal(total, '件', list.length) }}
+        </span>
+      </template>
+    </PageHero>
 
     <!-- 后端支持分页，但 api 层 mine() 未透传参数：超过一页时明确提示，避免以为商品丢了 -->
     <el-alert

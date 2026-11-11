@@ -10,6 +10,13 @@ const routes = [
     meta: { title: '商品列表' },
   },
   {
+    // 独立的搜索结果页：关键词结果 + 基于搜索历史的推荐
+    path: '/search',
+    name: 'search',
+    component: () => import('../views/SearchResults.vue'),
+    meta: { title: '搜索结果' },
+  },
+  {
     path: '/products/:id',
     name: 'product-detail',
     component: () => import('../views/ProductDetail.vue'),
@@ -197,7 +204,20 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 }),
+  /**
+   * 滚动策略：
+   * - 浏览器前进/后退恢复到原位置；
+   * - 带 hash 时定位到锚点；
+   * - 同一个页面只改查询参数（翻页、筛选、换关键词）时保持当前位置，
+   *   避免点「为你推荐」附近的按钮后被弹回页面顶部；
+   * - 真正切换页面才回到顶部。
+   */
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) return { el: to.hash, top: 96, behavior: 'smooth' }
+    if (to.path === from.path) return false
+    return { top: 0 }
+  },
 })
 
 router.beforeEach((to) => {

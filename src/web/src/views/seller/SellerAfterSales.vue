@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 /**
  * 卖家售后处理（#81 T05）
  *
@@ -168,10 +169,17 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">售后处理</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '单', list.length) }}</span>
-    </div>
+
+    <PageHero
+      title="售后处理"
+      subtitle="跟踪退货物流、确认收货与重新发货"
+      icon="headset"
+      tone="amber"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">{{ formatTotal(total, '单', list.length) }}</span>
+      </template>
+    </PageHero>
 
     <el-alert
       v-if="total > list.length"

@@ -6,6 +6,8 @@ import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { usePagination } from '../composables/usePagination'
 import { formatPrice, formatTime } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
+import StoreIcon from '../components/store/StoreIcon.vue'
 
 const router = useRouter()
 
@@ -77,15 +79,22 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">
-        我的收藏
-        <span v-if="!loadError" class="text-sm text-gray-400 font-normal">共 {{ total }} 件</span>
-      </h1>
-      <RouterLink :to="{ name: 'products' }" class="text-sm text-blue-600 hover:underline">
-        去逛逛
-      </RouterLink>
-    </div>
+    <PageHero
+      title="我的收藏"
+      subtitle="把心动好物先收藏起来，降价或补货后更容易找到"
+      icon="heart"
+      tone="red"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">共 {{ total }} 件</span>
+      </template>
+      <template #actions>
+        <RouterLink :to="{ name: 'products' }" class="jd-link-btn">
+          去逛逛
+          <StoreIcon name="chevron-right" :size="14" />
+        </RouterLink>
+      </template>
+    </PageHero>
 
     <el-card v-if="loading" shadow="never">
       <el-skeleton :rows="4" animated />
@@ -110,16 +119,16 @@ onMounted(load)
         <article
           v-for="item in list"
           :key="item.favoriteId"
-          class="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col"
-          :class="item.invalid ? 'opacity-60' : 'cursor-pointer hover:shadow-md transition-shadow'"
+          class="group bg-white rounded-[14px] border border-[var(--jd-line)] overflow-hidden flex flex-col hover-lift"
+          :class="item.invalid ? 'opacity-60' : 'cursor-pointer'"
           @click="openDetail(item)"
         >
-          <div class="relative">
+          <div class="relative overflow-hidden">
             <img
               v-if="item.mainImage"
               :src="item.mainImage"
               :alt="item.title"
-              class="w-full aspect-4/3 object-cover bg-gray-100"
+              class="w-full aspect-4/3 object-cover bg-gray-100 transition-transform duration-500 group-hover:scale-[1.06]"
               :class="item.invalid ? 'grayscale' : ''"
             />
             <div
@@ -169,3 +178,5 @@ onMounted(load)
     </template>
   </div>
 </template>
+
+

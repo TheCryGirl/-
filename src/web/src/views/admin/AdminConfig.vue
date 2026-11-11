@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { configApi, isOk, unwrapResult } from '../../api'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
@@ -141,6 +142,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="系统配置"
+      subtitle="调整交易规则，保存后对新订单生效"
+      icon="grid"
+      tone="teal"
+    />
     <el-result v-if="loadError && !loading" status="error" icon="error" :sub-title="loadError">
       <template #extra>
         <el-button type="primary" @click="load">重试</el-button>

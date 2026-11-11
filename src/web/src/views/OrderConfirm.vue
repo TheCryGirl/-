@@ -5,6 +5,7 @@ import { addressApi, isOk, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 
 const router = useRouter()
@@ -124,10 +125,12 @@ onMounted(load)
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg font-semibold text-gray-900">确认订单</h1>
-      <span class="text-xs text-gray-400">请核对收货地址与商品明细</span>
-    </div>
+    <PageHero
+      title="确认订单"
+      subtitle="请核对收货地址与商品明细，提交后进入支付"
+      icon="tag"
+      tone="teal"
+    />
 
     <el-result v-if="loadError" status="error" title="无法结算" :sub-title="loadError">
       <template #extra>
@@ -293,3 +296,4 @@ onMounted(load)
   outline-offset: 2px;
 }
 </style>
+

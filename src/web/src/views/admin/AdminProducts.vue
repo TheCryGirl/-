@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHero from '../../components/store/PageHero.vue'
 import { onMounted, ref } from 'vue'
 import { isOk, productApi, unwrapResult } from '../../api'
 import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '../../constants/status'
@@ -84,6 +85,13 @@ onMounted(load)
 
 <template>
   <div class="space-y-4">
+
+    <PageHero
+      title="商品审核"
+      subtitle="审核卖家提交的商品，通过后进入公开列表"
+      icon="tag"
+      tone="red"
+    />
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">

@@ -1,4 +1,5 @@
 <script setup>
+import PageHero from '../../components/store/PageHero.vue'
 /**
  * 卖家待发货（#81 T03）
  *
@@ -128,10 +129,17 @@ onMounted(fetchList)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-gray-900">待发货</h1>
-      <span v-if="!loadError" class="text-xs text-gray-400">{{ formatTotal(total, '单', list.length) }}</span>
-    </div>
+
+    <PageHero
+      title="待发货"
+      subtitle="确认订单后填写物流单号完成发货"
+      icon="truck"
+      tone="teal"
+    >
+      <template #meta>
+        <span v-if="!loadError" class="text-xs text-[var(--jd-ink-4)]">{{ formatTotal(total, '单', list.length) }}</span>
+      </template>
+    </PageHero>
 
     <el-alert
       v-if="total > list.length"

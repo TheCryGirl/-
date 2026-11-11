@@ -12,6 +12,7 @@ import {
 } from '../constants/status'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
+import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 
 const route = useRoute()
@@ -111,10 +112,12 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="max-w-xl mx-auto space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-lg font-semibold text-gray-900">支付订单</h1>
-      <span class="text-xs text-gray-400">当前仅支持 MOCK 模拟支付</span>
-    </div>
+    <PageHero
+      title="支付订单"
+      subtitle="当前仅支持 MOCK 模拟支付，不会产生真实扣款"
+      icon="shield"
+      tone="amber"
+    />
 
     <el-result v-if="loadError" status="error" title="加载支付信息失败" :sub-title="loadError">
       <template #extra>
@@ -221,3 +224,4 @@ onBeforeUnmount(() => {
   outline-offset: 2px;
 }
 </style>
+
