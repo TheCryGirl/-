@@ -54,14 +54,14 @@ class CartControllerTest {
 
     @Test
     void supportsGatewayPathAndInternalPath() throws Exception {
-        mockMvc.perform(post("/api/cart/items")
+        mockMvc.perform(post("/api/cart/items").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"skuId\":\"" + SKU_ID + "\",\"productId\":\"" + PRODUCT_ID + "\",\"quantity\":2}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
 
-        mockMvc.perform(get("/cart").header("X-User-Id", USER_ID))
+        mockMvc.perform(get("/cart").header("X-User-Id", USER_ID).header("X-Internal-Token", "test-internal-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
@@ -73,7 +73,7 @@ class CartControllerTest {
 
     @Test
     void togglesAndRemovesItem() throws Exception {
-        mockMvc.perform(post("/api/cart/items")
+        mockMvc.perform(post("/api/cart/items").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"skuId\":\"" + SKU_ID + "\",\"productId\":\"" + PRODUCT_ID + "\",\"quantity\":1}"))
@@ -82,34 +82,34 @@ class CartControllerTest {
         String cartItemId = jdbcTemplate.queryForObject(
                 "SELECT cart_item_id FROM cart_item WHERE is_deleted = 0", String.class);
 
-        mockMvc.perform(put("/api/cart/items/{id}/select", cartItemId)
+        mockMvc.perform(put("/api/cart/items/{id}/select", cartItemId).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"selected\":false}"))
                 .andExpect(jsonPath("$.code").value(0));
 
-        mockMvc.perform(get("/api/cart").header("X-User-Id", USER_ID))
+        mockMvc.perform(get("/api/cart").header("X-User-Id", USER_ID).header("X-Internal-Token", "test-internal-token"))
                 .andExpect(jsonPath("$.data.items[0].selected").value(false))
                 .andExpect(jsonPath("$.data.selectedTotal").value(0));
 
-        mockMvc.perform(delete("/api/cart/items/{id}", cartItemId)
+        mockMvc.perform(delete("/api/cart/items/{id}", cartItemId).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID))
                 .andExpect(jsonPath("$.code").value(0));
 
-        mockMvc.perform(get("/api/cart").header("X-User-Id", USER_ID))
+        mockMvc.perform(get("/api/cart").header("X-User-Id", USER_ID).header("X-Internal-Token", "test-internal-token"))
                 .andExpect(jsonPath("$.data.items.length()").value(0));
     }
 
     @Test
     void rejectsMissingUserHeader() throws Exception {
-        mockMvc.perform(get("/api/cart"))
+        mockMvc.perform(get("/api/cart").header("X-Internal-Token", "test-internal-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(10002));
     }
 
     @Test
     void rejectsInvalidQuantity() throws Exception {
-        mockMvc.perform(post("/api/cart/items")
+        mockMvc.perform(post("/api/cart/items").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"skuId\":\"" + SKU_ID + "\",\"productId\":\"" + PRODUCT_ID + "\",\"quantity\":0}"))
@@ -119,7 +119,7 @@ class CartControllerTest {
 
     @Test
     void returnsCartItemNotFoundForUnknownItem() throws Exception {
-        mockMvc.perform(delete("/api/cart/items/{id}", "I-not-exists")
+        mockMvc.perform(delete("/api/cart/items/{id}", "I-not-exists").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", USER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(40001));

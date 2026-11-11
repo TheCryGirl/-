@@ -14,6 +14,7 @@ import com.mall.payment.dto.response.CreatePaymentResponse;
 import com.mall.payment.dto.response.PaymentDetailResponse;
 import com.mall.payment.entity.Payment;
 import com.mall.payment.mapper.PaymentMapper;
+import com.mall.payment.service.PaymentReuseGuard;
 import com.mall.payment.service.PaymentService;
 import com.mall.payment.service.PaymentTxService;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         Payment byKey = paymentMapper.selectByIdempotencyKey(idempotencyKey);
         if (byKey != null) {
+            PaymentReuseGuard.requireReusable(byKey, buyerId, request.getOrderId(), request.getChannel());
             return toCreateResponse(byKey);
         }
 
@@ -58,6 +60,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (latest != null && (latest.getStatus() == PaymentStatus.PENDING
                 || latest.getStatus() == PaymentStatus.SUCCESS
                 || latest.getStatus() == PaymentStatus.REFUNDED)) {
+            PaymentReuseGuard.requireReusable(latest, buyerId, request.getOrderId(), request.getChannel());
             return toCreateResponse(latest);
         }
 

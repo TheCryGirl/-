@@ -145,7 +145,7 @@ onMounted(fetchList)
       type="info"
       :closable="false"
       show-icon
-      title="卖家订单列表依赖 GET /api/orders?role=seller，该参数尚未在《05-接口契约》中定义，待后端补充。"
+      title="仅展示当前卖家的订单；列表收货手机号已脱敏，完整地址请在订单详情核对。"
     />
 
     <el-card shadow="never">

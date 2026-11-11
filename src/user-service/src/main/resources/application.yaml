@@ -1,4 +1,5 @@
 server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: 9001
 
 spring:
@@ -24,6 +25,7 @@ spring:
   cloud:
     nacos:
       discovery:
+        ip: ${NACOS_DISCOVERY_IP:}
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:public}
         enabled: ${NACOS_ENABLED:true}

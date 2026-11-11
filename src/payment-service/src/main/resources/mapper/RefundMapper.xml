@@ -85,4 +85,26 @@
           AND status = 'PENDING'
           AND is_deleted = 0
     </update>
+
+    <!-- 管理员资金汇总：口径为全部 is_deleted = 0 的退款单，SQL 聚合、不分页。
+         refunded* 只认 status = SUCCESS；pending* 只认 status = PENDING（待审核）。 -->
+    <select id="selectFinanceTotals" resultType="com.mall.payment.dto.response.FinanceSummaryRows$Totals">
+        SELECT COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END), 0)    AS refunded_count,
+               COALESCE(SUM(CASE WHEN status = 'SUCCESS' THEN amount ELSE 0 END), 0) AS refunded_amount,
+               COALESCE(SUM(CASE WHEN status = 'PENDING' THEN amount ELSE 0 END), 0) AS pending_refund_amount
+        FROM refund
+        WHERE is_deleted = 0
+    </select>
+
+    <!-- 按审核时间归日（不是创建时间）；CAST 在 MySQL 与 H2 的 MySQL 模式下都可用 -->
+    <select id="selectFinanceDaily" resultType="com.mall.payment.dto.response.FinanceSummaryRows$DailyRefund">
+        SELECT CAST(audited_at AS DATE)     AS `day`,
+               COALESCE(SUM(amount), 0)     AS refund
+        FROM refund
+        WHERE is_deleted = 0
+          AND status = 'SUCCESS'
+          AND audited_at IS NOT NULL
+        GROUP BY CAST(audited_at AS DATE)
+        ORDER BY CAST(audited_at AS DATE)
+    </select>
 </mapper>

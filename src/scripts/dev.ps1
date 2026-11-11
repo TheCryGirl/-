@@ -184,6 +184,7 @@ function Start-ServiceJar([string]$Name) {
         return $false
     }
 
+    Assert-DemoSecureJar -Path $jar
     $java = Get-JavaExe
     $log = Join-Path $LogDir "$Name.log"
     $errLog = Join-Path $LogDir "$Name.err.log"
@@ -294,12 +295,14 @@ function Do-Start {
     $targets = @(Resolve-Targets)
     Write-Host "`n启动在线商城本地服务`n" -ForegroundColor Green
 
-    # JWT 签名密钥：配置文件不再内置默认值，本地启动时若未设置则注入开发用密钥。
-    # 子进程会继承当前进程的环境变量，所以在这里设置即可。
-    if (-not $env:JWT_SECRET) {
-        $env:JWT_SECRET = 'dev-only-secret-please-change-in-production-0123456789'
-        Write-Host '  提示: 未检测到 JWT_SECRET，本次使用开发用密钥启动（生产环境必须自行设置）' -ForegroundColor DarkGray
-    }
+    Import-Module (Join-Path $PSScriptRoot 'DemoLauncher.psm1') -Force
+    $env:JWT_SECRET = Get-DemoInternalToken -RunDirectory $RunDir -ExplicitToken $env:JWT_SECRET -FileName 'demo-jwt-secret.xml'
+
+    # Same encrypted local cluster token as the demo launcher; no empty-token fallback.
+    Import-Module (Join-Path $PSScriptRoot 'DemoLauncher.psm1') -Force
+    $env:INTERNAL_TOKEN = Get-DemoInternalToken -RunDirectory $RunDir -ExplicitToken $env:INTERNAL_TOKEN
+    $env:SERVER_ADDRESS = '127.0.0.1'
+    $env:NACOS_DISCOVERY_IP = '127.0.0.1'
 
     # Nacos 必须最先启动（其他服务要注册到它）
     $ordered = @('nacos') + ($targets | Where-Object { $_ -ne 'nacos' })

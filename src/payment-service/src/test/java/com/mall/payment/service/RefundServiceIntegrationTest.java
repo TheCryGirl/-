@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +46,9 @@ class RefundServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
     @MockBean
     private OrderClient orderClient;
 
@@ -53,6 +57,7 @@ class RefundServiceIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM refund_notification_task");
         jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");
@@ -231,6 +236,111 @@ class RefundServiceIntegrationTest {
         assertEquals(legacyRefundId, sellerPage.getList().get(0).getRefundId());
         assertEquals(SELLER_ID, jdbcTemplate.queryForObject(
                 "SELECT seller_id FROM refund WHERE refund_id = ?", String.class, legacyRefundId));
+    }
+
+    @Test
+    void fullRefundAuditPersistsBothNotificationTasks() {
+        RefundResponse refund = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(PAID_AMOUNT));
+
+        refundService.auditRefund(refund.getRefundId(), true, SELLER_ID, "同意");
+
+        assertEquals("REFUNDED", paymentStatus());
+        assertEquals(2, count("refund_notification_task"));
+        assertEquals(1, countTask(ORDER_ID, "ORDER_REFUNDED"));
+        assertEquals(1, countTask(ORDER_ID, "STOCK_RESTOCK"));
+        // 提交后立即投递：两个下游都被调用，任务落 DONE
+        verify(orderClient, times(1)).markRefunded(ORDER_ID);
+        verify(productClient, times(1)).refundRestock(any(StockConfirmRequest.class));
+        assertEquals("DONE", taskStatus(ORDER_ID, "ORDER_REFUNDED"));
+        assertEquals("DONE", taskStatus(ORDER_ID, "STOCK_RESTOCK"));
+    }
+
+    @Test
+    void failedDeliveryKeepsTaskForRetryInsteadOfOnlyLogging() {
+        when(orderClient.markRefunded(ORDER_ID))
+                .thenReturn(Result.fail(ErrorCode.SERVICE_UNAVAILABLE, "订单服务不可用"));
+        RefundResponse refund = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(PAID_AMOUNT));
+
+        refundService.auditRefund(refund.getRefundId(), true, SELLER_ID, "同意");
+
+        // 退款本身成功，通知失败不回滚
+        assertEquals("REFUNDED", paymentStatus());
+        assertEquals("SUCCESS", refundStatus(refund.getRefundId()));
+        assertEquals("PENDING", taskStatus(ORDER_ID, "ORDER_REFUNDED"));
+        assertEquals(1, taskAttempts(ORDER_ID, "ORDER_REFUNDED"));
+        assertNotNull(nextRetryAt(ORDER_ID, "ORDER_REFUNDED"));
+        // 另一个任务独立完成
+        assertEquals("DONE", taskStatus(ORDER_ID, "STOCK_RESTOCK"));
+    }
+
+    @Test
+    void rejectedRefundCreatesNoNotificationTask() {
+        RefundResponse refund = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(5000L));
+
+        refundService.auditRefund(refund.getRefundId(), false, SELLER_ID, "不符合条件");
+
+        assertEquals(0, count("refund_notification_task"));
+        verify(orderClient, never()).markRefunded(ORDER_ID);
+        verify(productClient, never()).refundRestock(any(StockConfirmRequest.class));
+    }
+
+    @Test
+    void failedAuditWritesNoNotificationTask() {
+        RefundResponse refund = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(PAID_AMOUNT));
+
+        BizException exception = assertThrows(BizException.class,
+                () -> refundService.auditRefund(refund.getRefundId(), true,
+                        OTHER_SELLER_ID, "SELLER", "越权"));
+
+        assertEquals(ErrorCode.FORBIDDEN, exception.getCode());
+        assertEquals(0, count("refund_notification_task"));
+        verify(orderClient, never()).markRefunded(ORDER_ID);
+    }
+
+    @Test
+    void auditRollbackLeavesNoNotificationTask() {
+        RefundResponse created=refundService.createRefund(BUYER_ID,PAYMENT_ID,refund(PAID_AMOUNT));
+        transactionTemplate.executeWithoutResult(status -> {
+            refundService.auditRefund(created.getRefundId(),true,SELLER_ID,"同意");
+            assertEquals(2,count("refund_notification_task"));
+            status.setRollbackOnly();
+        });
+        assertEquals(0,count("refund_notification_task"));
+        assertEquals("PENDING",refundStatus(created.getRefundId()));
+        assertEquals("SUCCESS",paymentStatus());
+        verify(orderClient,never()).markRefunded(ORDER_ID);
+        verify(productClient,never()).refundRestock(any(StockConfirmRequest.class));
+    }
+
+    private String taskStatus(String orderId, String eventType) {
+        return jdbcTemplate.queryForObject(
+                "SELECT status FROM refund_notification_task WHERE order_id = ? AND event_type = ?",
+                String.class, orderId, eventType);
+    }
+
+    private int taskAttempts(String orderId, String eventType) {
+        Integer value = jdbcTemplate.queryForObject(
+                "SELECT attempts FROM refund_notification_task WHERE order_id = ? AND event_type = ?",
+                Integer.class, orderId, eventType);
+        return value == null ? 0 : value;
+    }
+
+    private Object nextRetryAt(String orderId, String eventType) {
+        return jdbcTemplate.queryForObject(
+                "SELECT next_retry_at FROM refund_notification_task WHERE order_id = ? AND event_type = ?",
+                Object.class, orderId, eventType);
+    }
+
+    private int countTask(String orderId, String eventType) {
+        Integer value = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM refund_notification_task WHERE order_id = ? AND event_type = ?",
+                Integer.class, orderId, eventType);
+        return value == null ? 0 : value;
+    }
+
+    private String refundStatus(String refundId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT status FROM refund WHERE refund_id = ?", String.class, refundId);
     }
 
     private void insertPaidPayment() {

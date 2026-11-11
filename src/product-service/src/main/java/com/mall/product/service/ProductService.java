@@ -151,16 +151,21 @@ public class ProductService {
         if (target != ProductStatus.ON_SALE && target != ProductStatus.OFF_SHELF) {
             throw new BizException(ErrorCode.PARAM_INVALID, "卖家只能上架或下架商品");
         }
+        ProductStatus source = product.getStatus();
+        // Pending/rejected content must never acquire an approved-looking OFF_SHELF state.
+        // SUSPENDED remains controlled by shop visibility synchronization, not seller operations.
+        if (source != ProductStatus.ON_SALE && source != ProductStatus.OFF_SHELF) {
+            throw new BizException(ErrorCode.FORBIDDEN, "商品未经审核或店铺已停用，不能自行上下架");
+        }
         if (target == ProductStatus.ON_SALE) {
-            if (product.getStatus() == ProductStatus.PENDING || product.getStatus() == ProductStatus.REJECTED) {
-                throw new BizException(ErrorCode.FORBIDDEN, "商品尚未审核通过，不能上架");
-            }
             // 店铺被停用时卖家不能自行把商品放回在售（#49）
             if (!shopActive(sellerId)) {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已被停用，暂不能上架商品");
             }
         }
-        productMapper.updateStatus(productId, target, sellerId);
+        if (productMapper.updateSellerStatus(productId, source, target, sellerId) == 0) {
+            throw new BizException(ErrorCode.FORBIDDEN, "商品状态已变化，请刷新后重试");
+        }
         return detailForView(productId, sellerId, "SELLER");
     }
 

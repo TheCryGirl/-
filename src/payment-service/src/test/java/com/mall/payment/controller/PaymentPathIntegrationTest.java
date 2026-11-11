@@ -43,6 +43,7 @@ class PaymentPathIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM refund_notification_task");
         jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");
@@ -54,19 +55,19 @@ class PaymentPathIntegrationTest {
         insertPayment();
         insertRefund();
 
-        mockMvc.perform(get("/api/payments/" + PAYMENT_ID)
+        mockMvc.perform(get("/api/payments/" + PAYMENT_ID).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", BUYER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.paymentId").value(PAYMENT_ID))
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"));
 
-        mockMvc.perform(get("/payments/" + PAYMENT_ID)
+        mockMvc.perform(get("/payments/" + PAYMENT_ID).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", BUYER_ID))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
 
-        mockMvc.perform(get("/api/payments/refunds")
+        mockMvc.perform(get("/api/payments/refunds").header("X-Internal-Token", "test-internal-token")
                         .param("status", "PENDING")
                         .header("X-User-Id", "SELLER01")
                         .header("X-User-Role", "SELLER"))
@@ -78,14 +79,14 @@ class PaymentPathIntegrationTest {
                 .andExpect(jsonPath("$.data.list[0].refundId").value(REFUND_ID))
                 .andExpect(jsonPath("$.data.list[0].buyerId").value(BUYER_ID));
 
-        mockMvc.perform(get("/api/payments/refunds")
+        mockMvc.perform(get("/api/payments/refunds").header("X-Internal-Token", "test-internal-token")
                         .param("status", "PENDING")
                         .header("X-User-Id", "U9")
                         .header("X-User-Role", "BUYER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(0));
 
-        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID)
+        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER01")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
@@ -93,7 +94,7 @@ class PaymentPathIntegrationTest {
                 .andExpect(jsonPath("$.data.refundId").value(REFUND_ID))
                 .andExpect(jsonPath("$.data.sellerId").value("SELLER01"));
 
-        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID)
+        mockMvc.perform(get("/api/payments/refunds/" + REFUND_ID).header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER99")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
@@ -104,38 +105,38 @@ class PaymentPathIntegrationTest {
     void afterSaleEndpointsAreRoleFiltered() throws Exception {
         insertAfterSaleTicket();
 
-        mockMvc.perform(get("/api/payments/after-sales")
+        mockMvc.perform(get("/api/payments/after-sales").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", BUYER_ID)
                         .header("X-User-Role", "BUYER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        mockMvc.perform(get("/api/payments/after-sales")
+        mockMvc.perform(get("/api/payments/after-sales").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER01")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        mockMvc.perform(get("/api/payments/after-sales")
+        mockMvc.perform(get("/api/payments/after-sales").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER99")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(0));
 
-        mockMvc.perform(get("/api/payments/after-sales")
+        mockMvc.perform(get("/api/payments/after-sales").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "ADMIN01")
                         .header("X-User-Role", "ADMIN"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1));
 
-        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001")
+        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER99")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(10003));
 
-        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001")
+        mockMvc.perform(get("/api/payments/after-sales/ASTEST0000000000001").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", "SELLER01")
                         .header("X-User-Role", "SELLER"))
                 .andExpect(status().isOk())
@@ -159,7 +160,7 @@ class PaymentPathIntegrationTest {
         when(orderClient.getOrder("O50001", BUYER_ID))
                 .thenReturn(Result.success(order()));
 
-        mockMvc.perform(post("/api/payments")
+        mockMvc.perform(post("/api/payments").header("X-Internal-Token", "test-internal-token")
                         .header("X-User-Id", BUYER_ID)
                         .header("Idempotency-Key", "path-test-key")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -4,130 +4,53 @@ import { isOk, orderApi, paymentApi, unwrapResult } from '../../api'
 import { ORDER_STATUS_MAP, statusText } from '../../constants/status'
 import { resolveErrorMessage } from '../../components/ui/message'
 import { formatTotal } from '../../utils/format'
+import { combineFinanceSummaries } from '../../utils/adminFinance'
 
 /**
  * 资金对账：按订单口径核对「应收 / 已收 / 已退」。
  *
  * 数据来源：
- * - 订单列表：拿到全平台订单与应付金额、状态
- * - 退款单列表：拿到已成功的退款金额
+ * - 管理员SQL汇总：全部未删除订单，不按当前管理员的买家身份过滤
+ * - 管理员退款SQL汇总：全部未删除退款，不受页面大小限制
  *
  * 对账口径：
  * - 已收 = 状态为 PAID / SHIPPED / COMPLETED / REFUNDED 的订单金额之和
  * - 已退 = 退款单中状态 SUCCESS 的金额之和
  * - 净入账 = 已收 − 已退
  */
-/* ---------- 1. 状态 ---------- */
-const orders = ref([])
-const refunds = ref([])
 const loading = ref(false)
 const loadError = ref('')
-
-/** 这些状态的订单代表钱已实际到账 */
-const PAID_STATUS = ['PAID', 'SHIPPED', 'COMPLETED', 'REFUNDED']
-
-/* ---------- 2. 计算属性 ---------- */
-const stats = computed(() => {
-  let gmv = 0 // 全部下单金额
-  let paidCount = 0
-  let paidAmount = 0
-  let cancelledCount = 0
-  const byStatus = {}
-
-  for (const o of orders.value) {
-    const amount = o.payAmount || 0
-    gmv += amount
-    byStatus[o.status] = (byStatus[o.status] || 0) + 1
-    if (PAID_STATUS.includes(o.status)) {
-      paidCount++
-      paidAmount += amount
-    }
-    if (o.status === 'CANCELLED') cancelledCount++
-  }
-
-  let refundedAmount = 0
-  let refundedCount = 0
-  let pendingRefundAmount = 0
-  for (const r of refunds.value) {
-    if (r.status === 'SUCCESS') {
-      refundedCount++
-      refundedAmount += r.amount || 0
-    } else if (r.status === 'PENDING') {
-      pendingRefundAmount += r.amount || 0
-    }
-  }
-
-  return {
-    gmv,
-    orderCount: orders.value.length,
-    paidCount,
-    paidAmount,
-    cancelledCount,
-    refundedCount,
-    refundedAmount,
-    pendingRefundAmount,
-    netAmount: paidAmount - refundedAmount,
-    byStatus,
-  }
-})
-
-const statusRows = computed(() =>
-  Object.entries(stats.value.byStatus).map(([code, count]) => ({
-    code,
-    label: statusText(ORDER_STATUS_MAP, code, code),
-    count,
-  })),
-)
-
-/** 按天汇总净入账，用于发现某天资金异常 */
-const daily = computed(() => {
-  const map = new Map()
-  for (const o of orders.value) {
-    if (!PAID_STATUS.includes(o.status)) continue
-    const day = String(o.createdAt || '').slice(0, 10)
-    if (!day) continue
-    const cur = map.get(day) || { day, count: 0, amount: 0, refund: 0 }
-    cur.count++
-    cur.amount += o.payAmount || 0
-    map.set(day, cur)
-  }
-  for (const r of refunds.value) {
-    if (r.status !== 'SUCCESS') continue
-    const day = String(r.createdAt || '').slice(0, 10)
-    if (!day) continue
-    const cur = map.get(day) || { day, count: 0, amount: 0, refund: 0 }
-    cur.refund += r.amount || 0
-    map.set(day, cur)
-  }
-  return [...map.values()]
-    .map((d) => ({ ...d, net: d.amount - d.refund }))
-    .sort((a, b) => b.day.localeCompare(a.day))
-})
+const summary = ref(null)
+const emptyStats = { gmv: 0, orderCount: 0, paidCount: 0, paidAmount: 0,
+  cancelledCount: 0, refundedCount: 0, refundedAmount: 0, pendingRefundAmount: 0, netAmount: 0 }
+const stats = computed(() => summary.value?.stats || emptyStats)
+const daily = computed(() => summary.value?.daily || [])
+const statusRows = computed(() => Object.entries(summary.value?.byStatus || {}).map(([code, count]) => ({
+  code, label: statusText(ORDER_STATUS_MAP, code, code), count,
+})))
 
 /* ---------- 3. 方法 ---------- */
 async function load() {
+  if (loading.value) return
   loading.value = true
   loadError.value = ''
   try {
     const [orderRes, refundRes] = await Promise.all([
-      orderApi.list({ page: 1, size: 200 }),
-      paymentApi.refunds({ page: 1, size: 200 }),
+      orderApi.financeSummary(),
+      paymentApi.financeSummary(),
     ])
     if (!isOk(orderRes.data) || !isOk(refundRes.data)) {
       loadError.value =
         orderRes.data?.message || refundRes.data?.message || '加载对账数据失败'
-      orders.value = []
-      refunds.value = []
+      summary.value = null
       return
     }
     const o = unwrapResult(orderRes.data)
     const r = unwrapResult(refundRes.data)
-    orders.value = Array.isArray(o) ? o : o?.list ?? []
-    refunds.value = Array.isArray(r) ? r : r?.list ?? []
+    summary.value = combineFinanceSummaries(o, r)
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载对账数据失败')
-    orders.value = []
-    refunds.value = []
+    summary.value = null
   } finally {
     loading.value = false
   }
@@ -250,6 +173,8 @@ onMounted(load)
     <p class="text-xs text-gray-400">
       口径说明：已收金额按订单状态统计（已支付 / 已发货 / 已完成 / 已退款）；
       已退金额只统计审核通过（SUCCESS）的退款单，待审核退款单独列出。
+      全部数值由服务端对未删除记录汇总，不受100条分页限制；按日收款使用支付日期，退款使用审核日期。
+      两服务分别读取，非跨库同一时刻快照；本页为订单口径核对，不代表真实支付渠道账单。
     </p>
   </div>
 </template>

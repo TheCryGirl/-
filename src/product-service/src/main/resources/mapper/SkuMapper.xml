@@ -64,6 +64,7 @@
           )
     </update>
 
+    <!-- Existing reservation accounting survives catalog soft-deletion; reserve still rejects deleted SKUs/products. -->
     <update id="restore">
         UPDATE sku
         SET stock_locked = stock_locked - #{quantity},
@@ -71,7 +72,6 @@
             version = version + 1,
             updated_at = NOW()
         WHERE sku_id = #{skuId}
-          AND is_deleted = 0
           AND stock_locked &gt;= #{quantity}
     </update>
 
@@ -81,7 +81,6 @@
             version = version + 1,
             updated_at = NOW()
         WHERE sku_id = #{skuId}
-          AND is_deleted = 0
           AND stock_locked &gt;= #{quantity}
     </update>
 
@@ -92,7 +91,6 @@
             version = version + 1,
             updated_at = NOW()
         WHERE sku_id = #{skuId}
-          AND is_deleted = 0
     </update>
 
     <update id="softDeleteByProductId">

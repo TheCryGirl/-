@@ -95,9 +95,12 @@ VITE_GATEWAY_TARGET=http://localhost:19000 pnpm dev
 **管理员账号**通过环境变量初始化，不写入默认值。**`src/docker/.env` 需要你自己创建**（仓库里没有这个文件，也不含任何真实凭据），创建后填写：
 
 ```bash
-# src/docker/.env（自行创建，不提交）
+# src/docker/.env（自行创建，不提交；以下为说明性占位，请自行填写）
+DB_PASSWORD=你的数据库口令
+JWT_SECRET=你的至少32字符随机签名密钥
+INTERNAL_TOKEN=你的至少32字符全栈共享内部令牌
 ADMIN_BOOTSTRAP_ACCOUNT=admin
-ADMIN_BOOTSTRAP_PASSWORD=你的口令
+ADMIN_BOOTSTRAP_PASSWORD=你的管理员口令
 ```
 
 ### 冷启动后商品列表为空是预期行为
@@ -160,6 +163,10 @@ bash demo-init.sh --gateway http://127.0.0.1:9000
 可选参数：`--gateway <地址>`、`--env-file <路径>`、`--seller-account`、`--seller-nickname`、`--timeout`、`--dry-run`。旧的 `--seller-password <口令>` 仍可用，但会把口令留在 shell 历史里，**不建议在文档或命令中写明文口令**，请优先用 `DEMO_SELLER_PASSWORD`。
 
 **恢复 / 收尾**：脚本**不会自动清理**它创建的数据，也**不提供 SQL 或 `docker compose down -v` 之类的清理入口**。账号 `demo_seller`、其店铺与标题带 `[DEMO_SEED]-` 的商品虽然由脚本创建，但**数据可能已被其他业务引用**（例如演示期间产生的订单、库存锁定与预留记录），因此默认全部保留。确实需要清理时，请由你另行核对引用依赖并完成备份后，通过受支持的管理方式（如后台管理功能）处理；不要直接对数据库执行删除语句或清空数据卷。
+
+### 安全修复升级注意
+
+安全修复后的服务入口拒绝缺少内部令牌的直连请求；普通用户网关不公开库存确认/订单置已支付等内部操作。Compose只发布本机网关及基础设施端口，不发布五个业务服务宿主端口，并要求自行提供非空`DB_PASSWORD`、`JWT_SECRET`、`INTERNAL_TOKEN`。本机启动器随机生成并用当前Windows用户DPAPI加密保存JWT/内部令牌，数据库密码不保存。旧JAR和旧运行进程不会被当成已修复版本，请先自行关闭商城后端、用JDK17重新打包后再双击。完整边界见[第一批安全修复说明](docs/安全修复第一批-20261110.md)。
 
 ### 本机演示：双击启动前后端
 

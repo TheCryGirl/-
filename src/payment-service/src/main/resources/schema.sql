@@ -103,3 +103,23 @@ CREATE TABLE IF NOT EXISTS after_sale_ticket (
     KEY idx_status_created (status, created_at),
     KEY idx_payment_id (payment_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后单';
+
+-- 退款后的外部通知任务（order-service 退款完成、product-service 回补库存）。
+-- 与退款审核在同一个本地事务里落库，事务提交后立即投递；失败的任务由定时扫描
+-- 通过条件 UPDATE 原子抢占（status + 过期租约）后独立重试，不会静默丢弃。
+CREATE TABLE IF NOT EXISTS refund_notification_task (
+    event_id       BIGINT       NOT NULL AUTO_INCREMENT COMMENT '任务ID',
+    order_id       VARCHAR(32)  NOT NULL COMMENT '订单ID',
+    event_type     VARCHAR(32)  NOT NULL COMMENT '事件类型：ORDER_REFUNDED/STOCK_RESTOCK',
+    status         VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING/PROCESSING/DONE',
+    attempts       INT          NOT NULL DEFAULT 0 COMMENT '已尝试次数（含失败）',
+    next_retry_at  DATETIME     DEFAULT NULL COMMENT '下次可重试时间，为空表示立即可投递',
+    lease_until    DATETIME     DEFAULT NULL COMMENT '处理中租约到期时间，过期可被其他实例回收',
+    last_error     VARCHAR(255) DEFAULT NULL COMMENT '最近一次失败原因（不含凭据与堆栈）',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (event_id),
+    -- 同一订单的同一事件只允许一条任务，重复审核也不会重复通知
+    UNIQUE KEY uk_order_event (order_id, event_type),
+    KEY idx_status_retry (status, next_retry_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款通知任务';

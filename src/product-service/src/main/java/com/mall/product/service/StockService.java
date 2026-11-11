@@ -242,7 +242,10 @@ public class StockService {
             }
             List<StockReservationItem> items = reservationMapper.selectItems(reservation.getReservationId());
             for (StockReservationItem item : items) {
-                skuMapper.refundRestock(item.getSkuId(), item.getQuantity());
+                if (skuMapper.refundRestock(item.getSkuId(), item.getQuantity()) != 1) {
+                    throw new BizException(ErrorCode.SYSTEM_ERROR,
+                            "退款回补失败，历史SKU不存在: " + item.getSkuId());
+                }
             }
         });
     }

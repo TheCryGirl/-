@@ -50,6 +50,7 @@ class PaymentCreationIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcTemplate.update("DELETE FROM refund_notification_task");
         jdbcTemplate.update("DELETE FROM after_sale_ticket");
         jdbcTemplate.update("DELETE FROM refund");
         jdbcTemplate.update("DELETE FROM payment_callback");

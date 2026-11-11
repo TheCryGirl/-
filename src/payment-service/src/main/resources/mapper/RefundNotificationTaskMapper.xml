@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.RefundNotificationTaskMapper">
+
+    <sql id="columns">
+        event_id, order_id, event_type, status, attempts, next_retry_at, lease_until,
+        last_error, created_at, updated_at
+    </sql>
+
+    <!--
+        同一订单同一事件只允许一条（uk_order_event）。并发下使用 MySQL / H2(MySQL 模式)
+        都支持的 INSERT ... ON DUPLICATE KEY UPDATE，且只更新 status 一列：
+        DONE 不会被覆盖回 PENDING，attempts / last_error 也不被清空。
+        影响行数 1=新插入，2=命中已有行。
+    -->
+    <insert id="insert">
+        INSERT INTO refund_notification_task (order_id, event_type, status, attempts, next_retry_at)
+        VALUES (#{orderId}, #{eventType}, #{status}, 0, #{nextRetryAt,jdbcType=TIMESTAMP})
+        ON DUPLICATE KEY UPDATE status = status
+    </insert>
+
+    <select id="selectByOrderId" resultType="com.mall.payment.entity.RefundNotificationTask">
+        SELECT <include refid="columns"/>
+        FROM refund_notification_task
+        WHERE order_id = #{orderId}
+        ORDER BY event_id
+    </select>
+
+    <select id="selectDue" resultType="com.mall.payment.entity.RefundNotificationTask">
+        SELECT <include refid="columns"/>
+        FROM refund_notification_task
+        WHERE (status = 'PENDING'
+               AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now}))
+           OR (status = 'PROCESSING'
+               AND lease_until IS NOT NULL
+               AND lease_until &lt; #{now})
+        ORDER BY COALESCE(next_retry_at, created_at), event_id
+        LIMIT #{limit}
+    </select>
+
+    <!-- 条件 UPDATE：抢占成功才会把 attempts 加一，并发/多实例下只有一个能拿到 -->
+    <update id="claim">
+        UPDATE refund_notification_task
+        SET status = 'PROCESSING',
+            lease_until = #{leaseUntil},
+            attempts = attempts + 1,
+            updated_at = #{now}
+        WHERE event_id = #{eventId}
+          AND ((status = 'PENDING'
+                AND (next_retry_at IS NULL OR next_retry_at &lt;= #{now}))
+               OR (status = 'PROCESSING'
+                   AND lease_until IS NOT NULL
+                   AND lease_until &lt; #{now}))
+    </update>
+
+    <update id="markDone">
+        UPDATE refund_notification_task
+        SET status = 'DONE',
+            lease_until = NULL,
+            last_error = NULL,
+            updated_at = #{updatedAt}
+        WHERE event_id = #{eventId}
+          AND status = 'PROCESSING'
+          AND attempts = #{attempts}
+    </update>
+
+    <update id="markFailed">
+        UPDATE refund_notification_task
+        SET status = 'PENDING',
+            lease_until = NULL,
+            last_error = #{lastError,jdbcType=VARCHAR},
+            next_retry_at = #{nextRetryAt},
+            updated_at = #{updatedAt}
+        WHERE event_id = #{eventId}
+          AND status = 'PROCESSING'
+          AND attempts = #{attempts}
+    </update>
+</mapper>

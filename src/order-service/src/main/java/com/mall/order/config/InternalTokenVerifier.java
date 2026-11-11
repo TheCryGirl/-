@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Verifies the token used by trusted service-to-service calls.
- * Development deployments may leave the token empty to keep local calls open.
+ * An empty configured token denies all internal calls.
  */
 @Component
 public class InternalTokenVerifier {
@@ -16,8 +16,10 @@ public class InternalTokenVerifier {
     private String expectedToken;
 
     public void verify(String actualToken) {
-        if (expectedToken != null && !expectedToken.isBlank()
-                && !expectedToken.equals(actualToken)) {
+        if (expectedToken == null || expectedToken.isBlank()
+                || actualToken == null || !java.security.MessageDigest.isEqual(
+                    expectedToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    actualToken.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             throw new BizException(ErrorCode.FORBIDDEN, "内部调用令牌无效");
         }
     }

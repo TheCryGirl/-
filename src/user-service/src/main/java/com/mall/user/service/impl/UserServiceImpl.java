@@ -89,7 +89,11 @@ public class UserServiceImpl implements UserService {
             throw new BizException(ErrorCode.ACCOUNT_FROZEN, "账号已被冻结");
         }
 
-        String token = jwtUtil.generateToken(user.getUserId(), user.getRole());
+        var authState = userMapper.selectAuthState(user.getUserId());
+        if (authState == null || !"ACTIVE".equals(authState.status())) {
+            throw new BizException(ErrorCode.ACCOUNT_FROZEN, "账号当前不可登录");
+        }
+        String token = jwtUtil.generateToken(user.getUserId(), Role.valueOf(authState.role()), authState.tokenVersion());
         LoginResponse response = new LoginResponse();
         response.setToken(token);
         response.setUser(toResponse(user));
@@ -161,6 +165,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public void updateStatus(String operatorId, String targetUserId, UpdateStatusRequest request) {
         User operator = userMapper.selectById(operatorId);
         if (operator == null || !ROLE_ADMIN.equals(operator.getRole().name())) {
@@ -176,7 +181,9 @@ public class UserServiceImpl implements UserService {
         }
 
         UserStatus newStatus = UserStatus.valueOf(request.getStatus());
+        userMapper.ensureAuthVersion(targetUserId);
         userMapper.updateStatusById(targetUserId, newStatus.name());
+        userMapper.bumpAuthVersion(targetUserId);
         log.info("管理员变更用户状态, operatorId={}, targetUserId={}, status={}", operatorId, targetUserId, newStatus);
     }
 
@@ -200,7 +207,9 @@ public class UserServiceImpl implements UserService {
         if (target.getRole() == newRole) {
             return;
         }
+        userMapper.ensureAuthVersion(targetUserId);
         userMapper.updateRoleById(targetUserId, newRole.name(), operatorId);
+        userMapper.bumpAuthVersion(targetUserId);
         log.info("管理员变更用户角色, operatorId={}, targetUserId={}, role={}", operatorId, targetUserId, newRole);
     }
 

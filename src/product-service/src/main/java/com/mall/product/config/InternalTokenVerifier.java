@@ -12,11 +12,13 @@ public class InternalTokenVerifier {
     private String expectedToken;
 
     /**
-     * 开发期默认不校验；配置了 INTERNAL_TOKEN 后，内部接口必须携带匹配的请求头。
+     * 内部接口始终校验；空配置默认拒绝。
      */
     public void verify(String actualToken) {
-        if (expectedToken != null && !expectedToken.isBlank()
-                && !expectedToken.equals(actualToken)) {
+        if (expectedToken == null || expectedToken.isBlank()
+                || actualToken == null || !java.security.MessageDigest.isEqual(
+                    expectedToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    actualToken.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             throw new BizException(ErrorCode.FORBIDDEN, "内部调用令牌无效");
         }
     }

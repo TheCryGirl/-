@@ -1,5 +1,6 @@
 package com.mall.order.mapper;
 
+import com.mall.order.dto.response.FinanceSummaryRows;
 import com.mall.order.entity.Order;
 import org.apache.ibatis.annotations.Param;
 
@@ -44,4 +45,13 @@ public interface OrderMapper {
     int resetInventoryReleased(@Param("orderId") String orderId);
 
     int softDelete(@Param("orderId") String orderId);
+
+    /** 管理员资金汇总：全部未删订单的总量口径（一条 SQL 聚合，不分页）。 */
+    FinanceSummaryRows.Totals selectFinanceTotals();
+
+    /** 管理员资金汇总：按状态分组计数，全部未删订单。 */
+    List<FinanceSummaryRows.StatusCount> selectFinanceByStatus();
+
+    /** 管理员资金汇总：按 paid_at 归日统计支付订单数与金额（pay 状态）。 */
+    List<FinanceSummaryRows.DailyPaid> selectFinanceDaily();
 }

@@ -50,6 +50,15 @@
         WHERE product_id = #{productId} AND is_deleted = 0
     </update>
 
+    <!-- Seller transitions are CAS-protected; admin review/visibility use separate operations. -->
+    <update id="updateSellerStatus">
+        UPDATE product
+        SET status = #{status}, updated_at = NOW(), updated_by = #{updatedBy}
+        WHERE product_id = #{productId} AND seller_id = #{updatedBy}
+          AND status = #{expectedStatus} AND status IN ('ON_SALE', 'OFF_SHELF')
+          AND is_deleted = 0
+    </update>
+
     <update id="softDelete">
         UPDATE product
         SET is_deleted = 1, status = 'OFF_SHELF', updated_at = NOW(), updated_by = #{updatedBy}

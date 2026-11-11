@@ -1,11 +1,12 @@
 ﻿<script setup>
 import { computed, onMounted, ref } from 'vue'
-import { isOk, orderApi, paymentApi, productApi, unwrapResult, userApi } from '../../api'
+import { isOk, paymentApi, productApi, unwrapResult, userApi } from '../../api'
 import { resolveErrorMessage } from '../../components/ui/message'
 import { formatTotal } from '../../utils/format'
+import { pageCoverage } from '../../utils/adminFinance'
 
 /**
- * 基础风控：用一组可解释的规则扫描全平台数据，列出需要人工关注的记录。
+ * 基础风控：在明确标注的首100条数据样本中应用可解释规则，列出需要人工关注的记录。
  *
  * 规则都是「看数据就能判断」的，不引入黑盒模型，便于答辩解释：
  * 1. 高频退款：同一买家退款单数 ≥ 阈值
@@ -17,7 +18,7 @@ import { formatTotal } from '../../utils/format'
 /* ---------- 1. 状态 ---------- */
 const loading = ref(false)
 const loadError = ref('')
-const orders = ref([])
+const coverage = ref(null)
 const refunds = ref([])
 const products = ref([])
 const users = ref([])
@@ -49,7 +50,7 @@ const risks = computed(() => {
         level: '中',
         rule: '高频退款',
         target: buyerId,
-        detail: `累计 ${v.count} 笔退款，合计 ¥${(v.amount / 100).toFixed(2)}`,
+        detail: `样本内 ${v.count} 笔退款，合计 ¥${(v.amount / 100).toFixed(2)}`,
         action: '建议核查是否存在恶意退款',
       })
     }
@@ -120,19 +121,19 @@ const stats = computed(() => ({
 
 /* ---------- 3. 方法 ---------- */
 async function load() {
+  if (loading.value) return
   loading.value = true
   loadError.value = ''
   try {
-    const [oRes, rRes, pRes, uRes] = await Promise.all([
-      orderApi.list({ page: 1, size: 200 }),
-      paymentApi.refunds({ page: 1, size: 200 }),
-      productApi.list({ size: 200 }),
-      userApi.list({ page: 1, size: 200 }),
+    const [rRes, pRes, uRes] = await Promise.all([
+      paymentApi.refunds({ page: 1, size: 100 }),
+      productApi.list({ status: 'ON_SALE', page: 1, size: 100 }),
+      userApi.list({ page: 1, size: 100 }),
     ])
-    const failed = [oRes, rRes, pRes, uRes].find((res) => !isOk(res.data))
+    const failed = [rRes, pRes, uRes].find((res) => !isOk(res.data))
     if (failed) {
       loadError.value = failed.data?.message || '加载风控数据失败'
-      orders.value = []
+      coverage.value = null
       refunds.value = []
       products.value = []
       users.value = []
@@ -142,13 +143,17 @@ async function load() {
       const p = unwrapResult(d)
       return Array.isArray(p) ? p : p?.list ?? []
     }
-    orders.value = pick(oRes.data)
+    coverage.value = {
+      refunds: pageCoverage(unwrapResult(rRes.data)),
+      products: pageCoverage(unwrapResult(pRes.data)),
+      users: pageCoverage(unwrapResult(uRes.data)),
+    }
     refunds.value = pick(rRes.data)
     products.value = pick(pRes.data)
     users.value = pick(uRes.data)
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载风控数据失败')
-    orders.value = []
+    coverage.value = null
     refunds.value = []
     products.value = []
     users.value = []
@@ -177,6 +182,9 @@ onMounted(load)
     </el-result>
 
     <template v-else>
+      <el-alert v-if="coverage" type="info" :closable="false" show-icon
+        :title="`扫描覆盖：退款 ${coverage.refunds.loaded}/${coverage.refunds.total}；在售商品 ${coverage.products.loaded}/${coverage.products.total}；用户 ${coverage.users.loaded}/${coverage.users.total}`"
+        description="每类仅扫描接口返回的前100条，非持续监控或全平台统计；高频退款只在样本内累计，冻结账号匹配也仅覆盖已加载用户。未加载记录不代表没有风险。" />
       <el-card shadow="never">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -224,7 +232,7 @@ onMounted(load)
           <el-table-column prop="detail" label="详情" min-width="240" />
           <el-table-column prop="action" label="建议" min-width="200" />
           <template #empty>
-            <el-empty description="未发现异常" :image-size="80" />
+            <el-empty description="当前样本未发现异常（不代表全平台无风险）" :image-size="80" />
           </template>
         </el-table>
       </el-card>

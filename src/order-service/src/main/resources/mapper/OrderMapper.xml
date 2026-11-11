@@ -157,4 +157,44 @@
         SET is_deleted = 1, updated_at = NOW()
         WHERE order_id = #{orderId} AND is_deleted = 0
     </update>
+
+    <!-- 管理员资金汇总：口径为全部 is_deleted = 0 的订单，SQL 聚合、不分页。
+         paid 状态固定为 PAID/SHIPPED/COMPLETED/REFUNDED，与契约一致。 -->
+    <sql id="paidStatus">
+        status IN ('PAID', 'SHIPPED', 'COMPLETED', 'REFUNDED')
+    </sql>
+
+    <select id="selectFinanceTotals" resultType="com.mall.order.dto.response.FinanceSummaryRows$Totals">
+        SELECT COALESCE(SUM(pay_amount), 0)                           AS gmv,
+               COUNT(*)                                               AS order_count,
+               COALESCE(SUM(CASE WHEN <include refid="paidStatus"/> THEN 1 ELSE 0 END), 0)
+                                                                      AS paid_count,
+               COALESCE(SUM(CASE WHEN <include refid="paidStatus"/> THEN pay_amount ELSE 0 END), 0)
+                                                                      AS paid_amount,
+               COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0)
+                                                                      AS cancelled_count
+        FROM `order`
+        WHERE is_deleted = 0
+    </select>
+
+    <select id="selectFinanceByStatus" resultType="com.mall.order.dto.response.FinanceSummaryRows$StatusCount">
+        SELECT status AS status, COUNT(*) AS count
+        FROM `order`
+        WHERE is_deleted = 0
+        GROUP BY status
+        ORDER BY status
+    </select>
+
+    <!-- 按支付时间归日（不是创建时间），CAST 在 MySQL 与 H2(MySQL 模式) 下都可用 -->
+    <select id="selectFinanceDaily" resultType="com.mall.order.dto.response.FinanceSummaryRows$DailyPaid">
+        SELECT CAST(paid_at AS DATE)      AS `day`,
+               COUNT(*)                   AS count,
+               COALESCE(SUM(pay_amount), 0) AS amount
+        FROM `order`
+        WHERE is_deleted = 0
+          AND paid_at IS NOT NULL
+          AND <include refid="paidStatus"/>
+        GROUP BY CAST(paid_at AS DATE)
+        ORDER BY CAST(paid_at AS DATE)
+    </select>
 </mapper>

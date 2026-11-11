@@ -8,11 +8,13 @@ import com.mall.payment.dto.request.AuditRefundRequest;
 import com.mall.payment.dto.request.CreatePaymentRequest;
 import com.mall.payment.dto.request.PaymentCallbackRequest;
 import com.mall.payment.dto.request.RefundRequest;
+import com.mall.payment.dto.response.AdminFinanceSummaryResponse;
 import com.mall.payment.dto.response.CreatePaymentResponse;
 import com.mall.payment.dto.response.PaymentDetailResponse;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.service.AuditLogPublisher;
 import com.mall.payment.service.CallbackResult;
+import com.mall.payment.service.FinanceSummaryService;
 import com.mall.payment.service.PaymentCallbackService;
 import com.mall.payment.service.PaymentService;
 import com.mall.payment.service.RefundService;
@@ -46,6 +48,26 @@ public class PaymentController {
     private final PaymentCallbackService paymentCallbackService;
     private final RefundService refundService;
     private final AuditLogPublisher auditLogPublisher;
+    private final FinanceSummaryService financeSummaryService;
+
+    /**
+     * 管理员资金/风控汇总（退款口径）。
+     *
+     * <p>必须带 X-User-Id 与 X-User-Role: ADMIN，且角色严格等于 ADMIN；
+     * 不接受 query 参数授权。路径写在 /{paymentId} 之前，避免被详情路由吞掉。
+     */
+    @GetMapping("/admin/finance-summary")
+    public Result<AdminFinanceSummaryResponse> adminFinanceSummary(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!ROLE_ADMIN.equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "仅管理员可查看资金汇总");
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+        }
+        return Result.success(financeSummaryService.summary());
+    }
 
     @PostMapping
     public Result<CreatePaymentResponse> create(

@@ -113,7 +113,9 @@ public class ProductController {
     public Result<ProductDetailResponse> update(
             @PathVariable String productId,
             @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody UpdateProductRequest request) {
+        requireSeller(role, "仅当前卖家可经营商品");
         return Result.success(productService.update(productId, sellerId, request));
     }
 
@@ -121,7 +123,9 @@ public class ProductController {
     public Result<ProductDetailResponse> updateStatus(
             @PathVariable String productId,
             @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody UpdateStatusRequest request) {
+        requireSeller(role, "仅当前卖家可经营商品");
         return Result.success(productService.updateStatus(productId, sellerId, request));
     }
 
@@ -143,7 +147,9 @@ public class ProductController {
     @DeleteMapping("/{productId}")
     public Result<Void> delete(
             @PathVariable String productId,
-            @RequestHeader(value = "X-User-Id", required = false) String sellerId) {
+            @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        requireSeller(role, "仅当前卖家可删除商品");
         productService.delete(productId, sellerId);
         return Result.success();
     }
@@ -162,12 +168,16 @@ public class ProductController {
     public Result<SkuResponse> updateStock(
             @PathVariable String skuId,
             @RequestHeader(value = "X-User-Id", required = false) String sellerId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody UpdateStockRequest request) {
+        requireSeller(role, "仅当前卖家可经营商品");
         return Result.success(productService.updateStock(skuId, sellerId, request));
     }
 
     @PostMapping("/images")
-    public Result<ImageUploadResponse> uploadImage(@RequestParam("file") MultipartFile file) {
+    public Result<ImageUploadResponse> uploadImage(@RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        requireSeller(role, "仅当前卖家可上传商品图片");
         return Result.success(productService.uploadImage(file));
     }
 

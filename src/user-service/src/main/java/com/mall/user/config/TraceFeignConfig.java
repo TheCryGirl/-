@@ -1,6 +1,7 @@
 package com.mall.user.config;
 
 import feign.RequestInterceptor;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,9 +16,16 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class TraceFeignConfig {
 
+    @Value("${user.internal-token:${INTERNAL_TOKEN:}}")
+    private String internalToken;
+
     @Bean
     public RequestInterceptor traceIdInterceptor() {
         return template -> {
+            if (internalToken != null && !internalToken.isBlank()) {
+                template.removeHeader("X-Internal-Token");
+                template.header("X-Internal-Token", internalToken);
+            }
             String traceId = MDC.get("traceId");
             if (traceId != null && !traceId.isBlank()) {
                 template.header("X-Trace-Id", traceId);

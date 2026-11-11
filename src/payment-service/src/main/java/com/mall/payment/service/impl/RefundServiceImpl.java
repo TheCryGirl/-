@@ -1,9 +1,7 @@
 package com.mall.payment.service.impl;
 
 import com.mall.payment.client.OrderClient;
-import com.mall.payment.client.ProductClient;
 import com.mall.payment.client.dto.OrderDTO;
-import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
@@ -17,6 +15,8 @@ import com.mall.payment.entity.Payment;
 import com.mall.payment.entity.Refund;
 import com.mall.payment.mapper.PaymentMapper;
 import com.mall.payment.mapper.RefundMapper;
+import com.mall.payment.service.RefundNotificationDispatcher;
+import com.mall.payment.service.RefundNotificationTxService;
 import com.mall.payment.service.RefundService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,8 +44,9 @@ public class RefundServiceImpl implements RefundService {
 
     private final PaymentMapper paymentMapper;
     private final RefundMapper refundMapper;
+    private final RefundNotificationTxService refundNotificationTxService;
+    private final RefundNotificationDispatcher refundNotificationDispatcher;
     private final OrderClient orderClient;
-    private final ProductClient productClient;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -146,10 +147,12 @@ public class RefundServiceImpl implements RefundService {
 
         RefundResponse response = RefundResponse.from(refundMapper.selectById(refundId));
         if (approved && fullyRefunded && notifyOrder) {
-            scheduleOrderRefundedNotification(refund.getOrderId());
-            // 全额退款后回补库存（BR-28）。幂等由 product-service 侧的预占状态机保证：
-            // 只有 CONFIRMED 的预占会被回补并置为 REFUNDED，重复调用不会重复加库存。
-            scheduleStockRestock(refund.getOrderId());
+            // 两条通知任务与本次审核在同一个本地事务里落库：审核回滚则任务一起消失，
+            // 审核提交则任务一定存在，进程此时挂掉也能被调度补投。
+            refundNotificationTxService.createTasks(refund.getOrderId());
+            // 事务提交后立即投递，保持「审核成功即通知」的原交互；
+            // 投递失败的任务留在库里由 RefundNotificationDispatcher 定时重试。
+            scheduleImmediateDelivery(refund.getOrderId());
         }
         return response;
     }
@@ -248,63 +251,21 @@ public class RefundServiceImpl implements RefundService {
     }
 
     /**
-     * 本地事务提交后再通知订单服务，避免远程调用占用数据库连接，也避免远程失败回滚已成功的退款。
+     * 本地事务提交后再投递通知，避免远程调用占用数据库连接，也避免远程失败回滚已成功的退款。
+     *
+     * <p>回调里线程仍绑定着刚提交的事务资源，因此投递链路里的抢占/完成/失败写库
+     * 全部走 REQUIRES_NEW 的独立事务（见 {@link RefundNotificationTxService}）。
      */
-    private void scheduleOrderRefundedNotification(String orderId) {
+    private void scheduleImmediateDelivery(String orderId) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    notifyOrderRefunded(orderId);
+                    refundNotificationDispatcher.dispatchAfterCommit(orderId);
                 }
             });
         } else {
-            notifyOrderRefunded(orderId);
-        }
-    }
-
-    /** 事务提交后回补库存；失败只记日志，不阻断退款结果 */
-    private void scheduleStockRestock(String orderId) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    notifyStockRestock(orderId);
-                }
-            });
-        } else {
-            notifyStockRestock(orderId);
-        }
-    }
-
-    private void notifyStockRestock(String orderId) {
-        try {
-            StockConfirmRequest request = new StockConfirmRequest(orderId);
-            Result<Void> result = productClient.refundRestock(request);
-            if (result == null || result.getCode() != 0) {
-                log.error("退款回补库存失败, orderId={}, code={}, message={}",
-                        orderId, result == null ? null : result.getCode(),
-                        result == null ? null : result.getMessage());
-            } else {
-                log.info("退款回补库存完成, orderId={}", orderId);
-            }
-        } catch (Exception e) {
-            log.error("退款回补库存异常，需人工补偿, orderId={}", orderId, e);
-        }
-    }
-
-    private void notifyOrderRefunded(String orderId) {
-        try {
-            Result<Void> result = orderClient.markRefunded(orderId);
-            if (result == null || result.getCode() != 0) {
-                log.error("通知订单退款完成失败, orderId={}, code={}, message={}",
-                        orderId, result == null ? null : result.getCode(),
-                        result == null ? null : result.getMessage());
-            } else {
-                log.info("通知订单退款完成, orderId={}", orderId);
-            }
-        } catch (Exception e) {
-            log.error("通知订单退款完成异常，需人工补偿, orderId={}", orderId, e);
+            refundNotificationDispatcher.dispatchAfterCommit(orderId);
         }
     }
 

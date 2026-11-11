@@ -22,6 +22,12 @@ public interface UserMapper {
 
     int updateById(User user);
 
+    com.mall.user.dto.response.UserAuthState selectAuthState(@Param("userId") String userId);
+
+    int ensureAuthVersion(@Param("userId") String userId);
+
+    int bumpAuthVersion(@Param("userId") String userId);
+
     int updateStatusById(@Param("userId") String userId,
                          @Param("status") String status);
 

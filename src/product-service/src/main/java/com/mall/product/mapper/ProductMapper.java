@@ -18,6 +18,11 @@ public interface ProductMapper {
                      @Param("status") ProductStatus status,
                      @Param("updatedBy") String updatedBy);
 
+    int updateSellerStatus(@Param("productId") String productId,
+                           @Param("expectedStatus") ProductStatus expectedStatus,
+                           @Param("status") ProductStatus status,
+                           @Param("updatedBy") String updatedBy);
+
     int softDelete(@Param("productId") String productId, @Param("updatedBy") String updatedBy);
 
     Product selectById(@Param("productId") String productId);

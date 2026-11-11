@@ -99,3 +99,22 @@ CREATE TABLE after_sale_ticket (
 CREATE INDEX idx_after_sale_buyer_created ON after_sale_ticket (buyer_id, created_at);
 CREATE INDEX idx_after_sale_seller_status_created ON after_sale_ticket (seller_id, status, created_at);
 CREATE INDEX idx_after_sale_status_created ON after_sale_ticket (status, created_at);
+
+DROP TABLE IF EXISTS refund_notification_task;
+
+CREATE TABLE refund_notification_task (
+    event_id       BIGINT       NOT NULL AUTO_INCREMENT,
+    order_id       VARCHAR(32)  NOT NULL,
+    event_type     VARCHAR(32)  NOT NULL,
+    status         VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    attempts       INT          NOT NULL DEFAULT 0,
+    next_retry_at  DATETIME     DEFAULT NULL,
+    lease_until    DATETIME     DEFAULT NULL,
+    last_error     VARCHAR(255) DEFAULT NULL,
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (event_id),
+    CONSTRAINT uk_refund_notify_order_event UNIQUE (order_id, event_type)
+);
+
+CREATE INDEX idx_refund_notify_status_retry ON refund_notification_task (status, next_retry_at);

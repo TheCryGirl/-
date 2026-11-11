@@ -155,6 +155,7 @@ export const orderApi = {
   create: (payload, idempotencyKey) =>
     http.post('/orders', payload, { headers: { 'Idempotency-Key': idempotencyKey } }),
   list: (params) => http.get('/orders', { params }),
+  financeSummary: () => http.get('/orders/admin/finance-summary'),
   detail: (orderId) => http.get(`/orders/${orderId}`),
   cancel: (orderId) => http.put(`/orders/${orderId}/cancel`),
   ship: (orderId, payload) => http.put(`/orders/${orderId}/ship`, payload),
@@ -172,6 +173,7 @@ export const paymentApi = {
   refund: (paymentId, payload) => http.post(`/payments/${paymentId}/refund`, payload),
   auditRefund: (refundId, payload) => http.put(`/payments/refunds/${refundId}/audit`, payload),
   refunds: (params) => http.get('/payments/refunds', { params }),
+  financeSummary: () => http.get('/payments/admin/finance-summary'),
   refundDetail: (refundId) => http.get(`/payments/refunds/${refundId}`),
 
   /* ---- 售后中心 ---- */

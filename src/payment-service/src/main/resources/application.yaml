@@ -1,4 +1,5 @@
 server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
   port: 9005
 
 spring:
@@ -24,6 +25,7 @@ spring:
   cloud:
     nacos:
       discovery:
+        ip: ${NACOS_DISCOVERY_IP:}
         server-addr: ${NACOS_ADDR:127.0.0.1:8848}
         namespace: ${NACOS_NAMESPACE:public}
         enabled: ${NACOS_ENABLED:true}
@@ -50,6 +52,16 @@ payment:
   mock-secret: ${MOCK_SECRET:mock-pay-secret}
   # 服务间内部调用令牌，与 order/product 服务保持一致；未配置时开发期不校验
   internal-token: ${INTERNAL_TOKEN:}
+  # 退款后外部通知（订单退款完成 / 回补库存）的持久任务调度
+  refund-notification:
+    # 定时重试开关；关闭时仍会在退款审核提交后立即投递一次，失败任务留在库里等下次开启
+    enabled: ${REFUND_NOTIFICATION_ENABLED:true}
+    # 单次扫描最多处理的任务数
+    batch-size: ${REFUND_NOTIFICATION_BATCH_SIZE:50}
+    # 扫描间隔
+    interval-ms: ${REFUND_NOTIFICATION_INTERVAL_MS:60000}
+    # 失败退避基准秒数，按 2 的幂递增，封顶 600 秒
+    base-backoff-seconds: ${REFUND_NOTIFICATION_BASE_BACKOFF_SECONDS:30}
 
 services:
   # 留空时通过 Nacos 服务名发现；本地联调可指定直连地址

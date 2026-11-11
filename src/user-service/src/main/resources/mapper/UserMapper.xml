@@ -35,14 +35,28 @@
           AND is_deleted = 0
     </select>
 
+    <select id="selectAuthState" resultType="com.mall.user.dto.response.UserAuthState">
+        SELECT u.user_id, u.role, u.status, COALESCE(v.token_version, 0) AS token_version
+        FROM `user` u LEFT JOIN user_auth_version v ON u.user_id = v.user_id
+        WHERE u.user_id = #{userId} AND u.is_deleted = 0
+    </select>
+
+    <insert id="ensureAuthVersion">
+        INSERT INTO user_auth_version(user_id, token_version)
+        VALUES (#{userId}, 0)
+        ON DUPLICATE KEY UPDATE user_id = user_id
+    </insert>
+
+    <update id="bumpAuthVersion">
+        UPDATE user_auth_version SET token_version = token_version + 1 WHERE user_id = #{userId}
+    </update>
+
     <update id="updateById">
         UPDATE `user`
         <set>
             <if test="nickname != null">nickname = #{nickname},</if>
             <if test="phone != null">phone = #{phone},</if>
             <if test="avatar != null">avatar = #{avatar},</if>
-            <if test="role != null">role = #{role, typeHandler=org.apache.ibatis.type.EnumTypeHandler},</if>
-            <if test="status != null">status = #{status, typeHandler=org.apache.ibatis.type.EnumTypeHandler},</if>
             <if test="updatedAt != null">updated_at = #{updatedAt},</if>
             <if test="updatedBy != null">updated_by = #{updatedBy},</if>
         </set>

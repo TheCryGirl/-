@@ -69,3 +69,9 @@ CREATE TABLE IF NOT EXISTS browse_history (
     PRIMARY KEY (history_id),
     CONSTRAINT uk_history_user_product UNIQUE (user_id, product_id)
 );
+
+-- Revocation version survives role/status round trips and process restarts.
+CREATE TABLE IF NOT EXISTS user_auth_version (
+    user_id VARCHAR(32) NOT NULL PRIMARY KEY,
+    token_version BIGINT NOT NULL DEFAULT 0
+);

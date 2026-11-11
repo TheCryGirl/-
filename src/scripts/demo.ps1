@@ -80,6 +80,11 @@ function Ensure-DemoComponent {
             Artifact=$Artifact; LogPrefix=$logPrefix
         }
         if ($Name -eq 'frontend') { $record | Add-Member -NotePropertyName GatewayTarget -NotePropertyValue 'http://127.0.0.1:9000' }
+        if ($services.Contains($Name)) {
+            $record | Add-Member -NotePropertyName SecurityRevision -NotePropertyValue 1
+            $record | Add-Member -NotePropertyName InternalTokenDigest -NotePropertyValue $script:internalTokenDigest
+            $record | Add-Member -NotePropertyName JwtSecretDigest -NotePropertyValue $script:jwtSecretDigest
+        }
         $records[$Name] = $record
         $null = $started.Add($record)
         Save-DemoState
@@ -117,7 +122,10 @@ try {
     $vite = Join-Path $frontDir 'node_modules\vite\bin\vite.js'
     if (-not (Test-Path -LiteralPath $vite)) { throw '前端依赖缺失。请先在 src\web 用 pnpm install --frozen-lockfile 安装；启动器不会自动联网安装。' }
     $jars = @{}
-    foreach ($name in $services.Keys) { $jars[$name] = Find-DemoServiceJar -Root $Root -Name $name }
+    foreach ($name in $services.Keys) {
+        $jars[$name] = Find-DemoServiceJar -Root $Root -Name $name
+        Assert-DemoSecureJar -Path $jars[$name]
+    }
     if ($env:DB_HOST -and $env:DB_HOST -notin @('127.0.0.1','localhost')) { throw '此演示入口只连接本机 MySQL；检测到远程 DB_HOST，请先检查当前终端环境。' }
     if ($env:DB_PORT -and $env:DB_PORT -ne '3306') { throw '此演示入口要求本机 MySQL 3306；请先检查 DB_PORT。' }
     if ((Get-DemoListener 3306) -eq 0) { throw '本机 MySQL :3306 未运行。请先启动已有 MySQL 服务；本脚本不会安装、重置或停止数据库。' }
@@ -133,6 +141,22 @@ try {
     $script:logDir = Join-Path $Root ('logs\demo-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $PID)
     New-Item -ItemType Directory -Path $script:logDir -Force | Out-Null
     $records = Read-DemoProcessRecords -Path $stateFile
+    $script:internalToken = Get-DemoInternalToken -RunDirectory $runDir -ExplicitToken $env:INTERNAL_TOKEN
+    $script:internalTokenDigest = Get-DemoTextDigest $script:internalToken
+    $jwt = Get-DemoInternalToken -RunDirectory $runDir -ExplicitToken $env:JWT_SECRET -FileName 'demo-jwt-secret.xml'
+    $script:jwtSecretDigest = Get-DemoTextDigest $jwt
+    # Do not silently mix a secured build with older running processes or another cluster token.
+    foreach ($name in $services.Keys) {
+        $record = if ($records.ContainsKey($name)) { $records[$name] } else { $null }
+        $pending = if ($record) { Get-DemoRecordedProcessId -Record $record -Artifact $jars[$name] } else { 0 }
+        if ((Get-DemoListener $services[$name]) -gt 0 -or $pending -gt 0) {
+            if ($null -eq $record -or $null -eq $record.PSObject.Properties['SecurityRevision'] -or $record.SecurityRevision -ne 1 -or
+                $null -eq $record.PSObject.Properties['InternalTokenDigest'] -or $record.InternalTokenDigest -ne $script:internalTokenDigest -or
+                $null -eq $record.PSObject.Properties['JwtSecretDigest'] -or $record.JwtSecretDigest -ne $script:jwtSecretDigest) {
+                throw '检测到旧版或安全配置不一致的后端进程。请先自行关闭这六个商城后端，重新打包后再双击；不会自动结束它们。'
+            }
+        }
+    }
     # Preflight all application ports before asking for a credential or starting anything.
     $components = @([pscustomobject]@{Name='nacos';Port=8848;Artifact=$nacos.Jar})
     foreach ($name in $services.Keys) { $components += [pscustomobject]@{Name=$name;Port=$services[$name];Artifact=$jars[$name]} }
@@ -164,13 +188,9 @@ try {
             if ([string]::IsNullOrEmpty($password)) { throw '未提供数据库密码，未启动应用服务。' }
         }
     }
-    # Reuse the existing local-dev key so independently launched services remain compatible.
-    # This value is not a production credential. It is already used by dev.ps1.
-    $jwt = $env:JWT_SECRET
-    if (-not $jwt) { $jwt = 'dev-only-secret-please-change-in-production-0123456789' }
-    if ($jwt.Length -lt 32) { throw 'JWT_SECRET 长度不足32字符，未启动服务。' }
     $common = @{
         JAVA_HOME=$javaHome; DB_HOST='127.0.0.1'; DB_PORT='3306'; JWT_SECRET=$jwt;
+        INTERNAL_TOKEN=$script:internalToken; SERVER_ADDRESS='127.0.0.1'; NACOS_DISCOVERY_IP='127.0.0.1';
         NACOS_ADDR='127.0.0.1:8848'; NACOS_ENABLED='true';
         ADMIN_BOOTSTRAP_ACCOUNT=$null; ADMIN_BOOTSTRAP_PASSWORD=$null;
         USER_SERVICE_URL='http://127.0.0.1:9001'; PRODUCT_SERVICE_URL='http://127.0.0.1:9002';
@@ -178,7 +198,7 @@ try {
         PAYMENT_SERVICE_URL='http://127.0.0.1:9005'
     }
     Ensure-DemoComponent -Name 'nacos' -Port 8848 -Artifact $nacos.Jar -Exe $java `
-        -ChildArguments @('-Xms256m','-Xmx512m','-Dnacos.standalone=true',('-Dnacos.home=' + $nacos.Home),'-jar',$nacos.Jar) `
+        -ChildArguments @('-Xms256m','-Xmx512m','-Dnacos.standalone=true','-Dserver.address=127.0.0.1',('-Dnacos.home=' + $nacos.Home),'-jar',$nacos.Jar) `
         -WorkDir $nacos.Home -ChildEnvironment @{ JAVA_HOME=$javaHome; MODE='standalone'; ADMIN_BOOTSTRAP_ACCOUNT=$null; ADMIN_BOOTSTRAP_PASSWORD=$null } `
         -Probe { Test-DemoNacosReady }
     foreach ($name in $services.Keys) {
@@ -225,6 +245,7 @@ try {
     Write-Host '未结束任何既有程序；已启动的组件保留，修正后重新双击即可继续。' -ForegroundColor Yellow
 } finally {
     $password = $null
+    $script:internalToken = $null
     if ($lock) { $lock.Dispose() }
 }
 if ($failure) { exit 1 }

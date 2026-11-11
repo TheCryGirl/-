@@ -77,3 +77,9 @@ CREATE TABLE IF NOT EXISTS browse_history (
     UNIQUE KEY uk_history_user_product (user_id, product_id),
     KEY idx_history_user_time (user_id, visited_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品浏览足迹表';
+
+-- Revocation version survives role/status round trips and process restarts.
+CREATE TABLE IF NOT EXISTS user_auth_version (
+    user_id VARCHAR(32) NOT NULL PRIMARY KEY,
+    token_version BIGINT NOT NULL DEFAULT 0
+);
