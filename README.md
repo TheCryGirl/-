@@ -23,7 +23,6 @@
     ├── order-service/         订单服务（9004），库 mall_order
     ├── payment-service/       支付服务（9005），库 mall_payment
     ├── web/                   Vue 3 前端（开发端口 5173）
-    ├── campusEasy/            既有参考原型（Spring Boot），不作为本系统运行部分
     ├── docker/                docker compose 编排与 init-db.sql（已实测验收，见下文）
     └── scripts/               dev.bat / dev.ps1 本地一键启停
 ```

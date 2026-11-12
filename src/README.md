@@ -2,9 +2,8 @@
 
 本项目包含以下可运行部分：
 
-- **前端**：`src/web`（Vue 3 + Element Plus，改造进行中）
+- **前端**：`src/web`（Vue 3 + Element Plus，2026-11 前端重构完成）
 - **后端**：六个 Spring Boot 微服务（gateway / user / product / cart / order / payment）
-- **参考原型**：`src/campusEasy`（课程前序实践留下，仅作技术栈参考，不参与本系统运行）
 
 ---
 
@@ -205,17 +204,8 @@ mvn -B -pl order-service test   # 单个模块
 
 ---
 
-## 三、参考原型（`src/campusEasy`）
 
-课程前序实践留下的参考原型（校园二手交易平台），作为技术栈起点参考。
-
-它与本课程选题六「在线商城系统」在业务模型上并不完全对应——缺少购物车、支付与订单状态机，这些是本项目新设计与实现的部分。**不参与本系统运行**，构建时也已被聚合 pom 排除。
-
-详见 [总体实验规划](../docs/02-总体实验规划.md) 实验三章节。
-
----
-
-## 四、设计文件的重新生成
+## 三、设计文件的重新生成
 
 UML 图由 PlantUML 源文件渲染，源文件在 `design/uml/`。
 
@@ -243,7 +233,7 @@ python design/scripts/gen_storymap.py
 
 ---
 
-## 五、实验报告
+## 四、实验报告
 
 报告在 `reports/`。其中 `实验一_需求规格说明书.docx` 由 `design/scripts/` 下的两个脚本处理版式（图片缩放与分页、题注编号、目录生成）：
 
