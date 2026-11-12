@@ -43,3 +43,7 @@ logs/
 # 运行时上传的图片（商品主图、用户头像落到本地目录，不入库）
 uploads/
 
+# 组件库自动生成的类型声明（unplugin-auto-import / unplugin-vue-components 产出，跑 vite 即重建）
+src/web/src/auto-imports.d.ts
+src/web/src/components.d.ts
+
