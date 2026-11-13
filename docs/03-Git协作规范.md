@@ -218,15 +218,19 @@ pnpm build
 | 互评维度 | 取数来源 | 查看方式 |
 | --- | --- | --- |
 | 工作量 | 每人关联 Issue 的数量与关闭数量 | 看板按 Assignee 筛选 |
-| 代码贡献 | 每人的 commit 数量与代码行数 | `git shortlog -sn`、GitHub Insights → Contributors |
+| 代码贡献 | **按代码工作量（新增+删除行数）衡量，不用提交次数** | `scripts/count_contribution.py`（从 `git log --no-merges --numstat` 汇总） |
 | 参与度 | PR 提交数、代码审查数 | GitHub Insights → Pulse |
 | 任务完成质量 | Issue 是否按期关闭、PR 是否被打回 | Milestone 完成率 |
 
 **示例命令**：
 
 ```bash
-# 查看每个人的提交次数
+# 注意：shortlog 只说明「谁提交过多少条」，不等于贡献大小
+# 合并提交、文档改动、一次大重构都会让提交次数失真
 git shortlog -sn --all
+
+# 按代码工作量统计（本项目采用的口径，见 04-团队协作限制.md）
+python scripts/count_contribution.py
 
 # 查看某人的提交明细
 git log --author="姓名" --oneline
