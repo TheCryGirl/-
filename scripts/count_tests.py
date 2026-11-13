@@ -4,10 +4,16 @@ import glob
 import os
 import xml.etree.ElementTree as ET
 
+files = glob.glob('src/*/target/surefire-reports/TEST-*.xml')
+if not files:
+    print('未找到 surefire 报告（src/*/target/surefire-reports/）。')
+    print('请先在 src 目录运行 `mvn -B test`（需 JDK 17），再重新执行本脚本。')
+    raise SystemExit(2)
+
 per = {}
 total = [0, 0, 0, 0]
 
-for f in glob.glob('src/*/target/surefire-reports/TEST-*.xml'):
+for f in files:
     parts = f.replace('\\', '/').split('/')
     mod = parts[1]
     r = ET.parse(f).getroot()

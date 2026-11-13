@@ -1,8 +1,17 @@
 # -*- coding: utf-8 -*-
 """用最新的实验三分册内容替换合订本的第三部分。
 
+依赖：python-docx（pip install python-docx）
+
 分册标题层级比合订本低一级（分册 H2/H3/H4 → 合订本 H3/H4/H5），
 因此复制时整体降一级，H1「第三部分」保持不动。
+
+复制完成后自动处理三件会让 Word 判定文件损坏的事：
+  1. 删掉被一起复制的 body 级 sectPr（它只能出现在 body 末尾）
+  2. 重新编号书签 id（复制会造成重复）
+  3. 运行结束提示需要在 Word 里更新 TOC 页码字段
+
+可重复执行：每次以当前分册为准重建第三部分。
 """
 import io
 import copy
@@ -97,5 +106,29 @@ for block in blocks:
     inserted += 1
 
 print(f'已插入 {inserted} 块，图片关系 {img_count} 个')
+
+# ---- 清理复制带入的结构问题，否则 Word 会判定文件损坏 ----
+# 1) 分册 body 末尾的 <w:sectPr> 被一起复制进来，落到文档中部。
+#    body 级 sectPr 只能出现在 body 末尾，多出来的必须删掉。
+body_kids = list(body)
+removed_sect = 0
+for i, el in enumerate(body_kids):
+    if el.tag == qn('w:sectPr') and i != len(body_kids) - 1:
+        body.remove(el)
+        removed_sect += 1
+print(f'删除复制带入的 body 级 sectPr: {removed_sect} 个')
+
+# 2) 书签 id 必须全局唯一，复制会引入重复（如分册的 _GoBack 与合订本的 id 0 撞车）。
+starts = body.findall('.//' + qn('w:bookmarkStart'))
+ends = body.findall('.//' + qn('w:bookmarkEnd'))
+for i, s in enumerate(starts):
+    s.set(qn('w:id'), str(i + 1))
+for i, e in enumerate(ends):
+    e.set(qn('w:id'), str(i + 1))
+print(f'书签 id 重编号: Start {len(starts)} / End {len(ends)}')
+
 full.save(FULL)
 print('saved')
+print()
+print('注意：TOC 页码字段需在 Word 中更新（打开后 Ctrl+A、F9，或调用')
+print('      Documents.TablesOfContents.Update），否则目录页码停留在旧值。')
