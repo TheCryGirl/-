@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 /**
  * 统一分页约定与状态管理。
  *
- * 约定（全组统一，写进 docs/ui-plan/）：
+ * 约定（全组统一，见 docs/06-开发规范.md）：
  * - 页码从 1 开始，页面内部 state 也是 1 起；后端若为 0 起，在 api 适配层转换，不要在页面里混用
  * - 每页条数参数名 `size`，页码参数名 `page`
  * - 列表接口返回 { list, total }

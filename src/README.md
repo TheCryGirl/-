@@ -73,7 +73,7 @@ src/web/src/
 │   └── ui/                共享组件：UiTable / confirm / message
 ├── composables/
 │   └── usePagination.js   分页约定
-├── views/                 业务页面（29 个）
+├── views/                 业务页面（30 个 .vue，含 _StandardPage.vue 模板）
 │   ├── _StandardPage.vue  ★ 标准页骨架，改造时照抄
 │   ├── admin/             管理端 10 页
 │   └── seller/            卖家端 6 页
@@ -99,11 +99,11 @@ src/web/src/
 | `/seller/**` | 卖家端 | 卖家 |
 | `/admin/**` | 管理端 | 管理员 |
 
-路由守卫按 `requiresAuth` 与 `role` 拦截，`ADMIN` 可进入卖家页。
+路由守卫按 `requiresAuth` 与 `role` 做**精确匹配**（见 `utils/roleAccess.js`）：`/seller/**` 要求角色严格等于 `SELLER`，`ADMIN` **不能**进入卖家经营页，只能走 `/admin/**` 审核与管理入口。
 
-### 前端改造须知
+### 前端实现状态
 
-前端正在从手写 Tailwind 迁移到 Element Plus。**参与改造前必读 [开工卡](../docs/ui-plan/开工卡.md)**，里面有一屏讲完的分支名、试点页、禁止项和自查命令。
+前端已于 2026-11 完成 Element Plus 重构：统一页头、商品卡、搜索页与管理/卖家端页面骨架。长期有效的组件与状态约定见 [开发规范](../docs/06-开发规范.md) 前端章节。
 
 ---
 
@@ -187,7 +187,7 @@ bash demo-init.sh --dry-run
 
 ```bash
 cd src
-mvn -B test          # 聚合构建，125 个用例
+mvn -B test          # 聚合构建，233 个用例
 mvn -B -pl order-service test   # 单个模块
 ```
 
