@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.MessageMapper">
+    <insert id="insert">
+        INSERT INTO message (message_id, conversation_id, sender_id, content, context_product_id, read_at, created_at)
+        VALUES (#{messageId}, #{conversationId}, #{senderId}, #{content}, #{contextProductId}, NULL, #{createdAt})
+    </insert>
+    <select id="selectPage" resultType="com.mall.user.entity.Message">
+        SELECT message_id, conversation_id, sender_id, content, context_product_id, read_at, created_at
+        FROM message WHERE conversation_id = #{conversationId}
+        ORDER BY created_at ASC, message_id ASC
+        LIMIT #{offset}, #{size}
+    </select>
+    <select id="countByConversation" resultType="long">
+        SELECT COUNT(*) FROM message WHERE conversation_id = #{conversationId}
+    </select>
+    <update id="markReceivedRead">
+        UPDATE message SET read_at = #{readAt}
+        WHERE conversation_id = #{conversationId} AND sender_id != #{userId} AND read_at IS NULL
+    </update>
+</mapper>

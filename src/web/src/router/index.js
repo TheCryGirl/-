@@ -91,6 +91,18 @@ const routes = [
     meta: { title: '浏览足迹', requiresAuth: true },
   },
   {
+    path: '/messages',
+    name: 'messages',
+    component: () => import('../views/Messages.vue'),
+    meta: { title: '我的消息', requiresAuth: true },
+  },
+  {
+    path: '/seller/messages',
+    name: 'seller-messages',
+    component: () => import('../views/Messages.vue'),
+    meta: { title: '买家消息', requiresAuth: true, role: 'SELLER' },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('../views/Login.vue'),

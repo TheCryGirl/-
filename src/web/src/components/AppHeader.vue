@@ -34,6 +34,7 @@ const sellerItems = [
   { name: 'seller-shipments', label: '待发货' },
   { name: 'seller-refunds', label: '退款审核' },
   { name: 'seller-after-sales', label: '售后处理' },
+  { name: 'seller-messages', label: '买家消息' },
 ]
 
 const adminItems = [
@@ -201,6 +202,7 @@ onBeforeUnmount(() => {
           <RouterLink v-if="isLoggedIn" :to="{ name: 'orders' }" class="jd-topbar__link">我的订单</RouterLink>
           <RouterLink v-if="isLoggedIn" :to="{ name: 'favorites' }" class="jd-topbar__link">我的收藏</RouterLink>
           <RouterLink v-if="isLoggedIn" :to="{ name: 'browse-history' }" class="jd-topbar__link">浏览足迹</RouterLink>
+          <RouterLink v-if="isLoggedIn && !isAdmin" :to="{ name: 'messages' }" class="jd-topbar__link">我的消息</RouterLink>
           <RouterLink v-if="isSeller" :to="{ name: 'seller-products' }" class="jd-topbar__link">卖家中心</RouterLink>
           <RouterLink v-if="isAdmin" :to="{ name: 'admin-users' }" class="jd-topbar__link">管理中心</RouterLink>
           <span class="jd-topbar__divider" aria-hidden="true"></span>
@@ -308,6 +310,7 @@ onBeforeUnmount(() => {
                 <RouterLink :to="{ name: 'orders' }" class="jd-user__item">我的订单</RouterLink>
                 <RouterLink :to="{ name: 'favorites' }" class="jd-user__item">我的收藏</RouterLink>
                 <RouterLink :to="{ name: 'browse-history' }" class="jd-user__item">浏览足迹</RouterLink>
+                <RouterLink v-if="!isAdmin" :to="{ name: 'messages' }" class="jd-user__item">我的消息</RouterLink>
                 <button type="button" class="jd-user__item jd-user__item--danger" @click="handleLogout">
                   退出登录
                 </button>

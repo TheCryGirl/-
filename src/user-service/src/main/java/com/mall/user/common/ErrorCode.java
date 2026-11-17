@@ -19,6 +19,8 @@ public final class ErrorCode {
     public static final int ADDRESS_NOT_FOUND = 20006;
     public static final int SHOP_NOT_FOUND = 20007;
     public static final int FAVORITE_NOT_FOUND = 20008;
+    public static final int CONVERSATION_NOT_FOUND = 20009;
+    public static final int MESSAGE_NOT_FOUND = 20010;
 
     private ErrorCode() {
     }

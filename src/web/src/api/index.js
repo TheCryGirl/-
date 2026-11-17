@@ -118,6 +118,14 @@ export const historyApi = {
   clear: () => http.delete('/history'),
 }
 
+/* ---------------- 买卖双方站内消息（#106） ---------------- */
+export const messageApi = {
+  conversations: (params) => http.get('/messages/conversations', { params }),
+  list: (conversationId, params) => http.get(`/messages/conversations/${conversationId}`, { params }),
+  send: (payload) => http.post('/messages', payload),
+  read: (conversationId) => http.put(`/messages/conversations/${conversationId}/read`),
+}
+
 /* ---------------- 商品 ---------------- */
 export const productApi = {
   list: (params) => http.get('/products', { params }),
@@ -126,6 +134,7 @@ export const productApi = {
    * 未登录时后端按冷启动返回全站热销，因此不需要额外分支。
    */
   recommend: (params) => http.get('/products/recommend', { params }),
+  batch: (ids) => http.get('/products/batch', { params: { ids: ids.join(',') } }),
   detail: (productId) => http.get(`/products/${productId}`),
   categories: () => http.get('/categories'),
   create: (payload) => http.post('/products', payload),
