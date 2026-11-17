@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.FreightMapper">
+
+    <sql id="templateColumns">
+        template_id, shop_id, name, free_threshold, status,
+        created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <select id="selectTemplateByShopId" resultType="com.mall.user.entity.FreightTemplate">
+        SELECT <include refid="templateColumns"/>
+        FROM freight_template
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectRulesByTemplateId" resultType="com.mall.user.entity.FreightRule">
+        SELECT rule_id, template_id, region_code, min_amount, fee, created_at, updated_at, is_deleted
+        FROM freight_rule
+        WHERE template_id = #{templateId}
+          AND is_deleted = 0
+        ORDER BY region_code ASC, min_amount ASC
+    </select>
+
+    <insert id="insertTemplate" parameterType="com.mall.user.entity.FreightTemplate">
+        INSERT INTO freight_template(template_id, shop_id, name, free_threshold, status,
+                                     created_at, updated_at, created_by, updated_by, is_deleted)
+        VALUES (#{templateId}, #{shopId}, #{name}, #{freeThreshold}, #{status},
+                #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0)
+    </insert>
+
+    <update id="updateTemplate" parameterType="com.mall.user.entity.FreightTemplate">
+        UPDATE freight_template
+        SET name = #{name},
+            free_threshold = #{freeThreshold},
+            status = #{status},
+            updated_at = #{updatedAt},
+            updated_by = #{updatedBy}
+        WHERE template_id = #{templateId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 整体覆盖：旧规则软删除，再插入本次提交的规则 -->
+    <update id="softDeleteRulesByTemplateId">
+        UPDATE freight_rule
+        SET is_deleted = 1, updated_at = NOW()
+        WHERE template_id = #{templateId}
+          AND is_deleted = 0
+    </update>
+
+    <insert id="insertRule" parameterType="com.mall.user.entity.FreightRule">
+        INSERT INTO freight_rule(rule_id, template_id, region_code, min_amount, fee,
+                                 created_at, updated_at, is_deleted)
+        VALUES (#{ruleId}, #{templateId}, #{regionCode}, #{minAmount}, #{fee},
+                #{createdAt}, #{updatedAt}, 0)
+    </insert>
+</mapper>

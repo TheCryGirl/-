@@ -19,6 +19,8 @@ public class ShopResponse {
     private String contactPhone;
     private String contactWechat;
     private ShopStatus status;
+    /** 当前生效的运费模板ID（#136）；未配置时为 null */
+    private String freightTemplateId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -1,10 +1,11 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { addressApi, isOk, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
+import { buildSummary, summaryRows } from '../utils/pricing'
 import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 
@@ -29,14 +30,26 @@ const previewError = ref('')
 
 const previewShops = computed(() => preview.value?.shops || [])
 const isMultiShop = computed(() => previewShops.value.length > 1)
-const previewPayAmount = computed(() => preview.value?.payAmount ?? total.value)
+/** #136 计价链：商品金额 / 运费 / 优惠 / 应付合计，全部取后端预览结果 */
+const summary = computed(() => buildSummary(preview.value, total.value))
+const summaryLines = computed(() => summaryRows(summary.value))
+let previewReady = false
 
 async function loadPreview() {
   if (!items.value.length) return
+  if (!addresses.value.length) {
+    // 运费按收货地区算，没有地址就没有可用的运费；页面已提示先添加地址
+    preview.value = null
+    previewError.value = ''
+    return
+  }
   previewLoading.value = true
   previewError.value = ''
   try {
-    const { data } = await orderApi.preview({ cartItemIds: items.value.map((i) => i.cartItemId) })
+    const { data } = await orderApi.preview({
+      cartItemIds: items.value.map((i) => i.cartItemId),
+      addressId: selectedAddressId.value || undefined,
+    })
     if (!isOk(data)) {
       previewError.value = data?.message || '结算预览加载失败'
       preview.value = null
@@ -50,6 +63,12 @@ async function loadPreview() {
     previewLoading.value = false
   }
 }
+
+/** 切换收货地址后运费会变，重新调预览接口（前端不自己算） */
+watch(selectedAddressId, (value, previous) => {
+  if (!previewReady || !value || value === previous) return
+  loadPreview()
+})
 
 /** 后端同时输出 isDefault 与 defaultAddress，两个名字都兼容 */
 function isDefaultAddress(addr) {
@@ -99,6 +118,7 @@ async function load() {
       selectedAddressId.value = addresses.value[0].addressId
     }
     await loadPreview()
+    previewReady = true
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载结算信息失败')
   } finally {
@@ -240,6 +260,8 @@ onMounted(load)
               <span class="text-base font-medium">{{ shop.shopName || shop.sellerId }}</span>
               <span class="text-xs text-gray-400">
                 店铺小计 ¥{{ formatPrice(shop.totalAmount) }}
+                <template v-if="shop.freightAmount"> · 运费 ¥{{ formatPrice(shop.freightAmount) }}</template>
+                <template v-if="shop.discountAmount"> · 优惠 -¥{{ formatPrice(shop.discountAmount) }}</template>
               </span>
             </div>
           </template>
@@ -305,33 +327,47 @@ onMounted(load)
         </div>
       </el-card>
 
-      <!-- 合计 -->
+      <!-- 合计：#136 四行（商品金额 / 运费 / 优惠 / 应付合计），金额以后端预览为准 -->
       <el-card shadow="never">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-sm text-gray-600" data-testid="order-confirm-summary">
-            <template v-if="isMultiShop">共 {{ previewShops.length }} 家店铺，</template>{{ totalQuantity }} 件
-          </span>
-          <div class="flex flex-wrap items-center gap-4">
-            <span class="text-sm text-gray-600">
-              应付合计
-              <span class="text-xl font-semibold text-red-600" data-testid="order-confirm-pay-amount">
-                ¥{{ formatPrice(previewPayAmount) }}
-              </span>
-            </span>
-            <el-button
-              type="primary"
-              :loading="submitting"
-              :disabled="!selectedAddressId || !items.length"
-              data-testid="order-confirm-submit"
-              @click="submit"
+        <div class="space-y-2">
+          <div
+            v-for="line in summaryLines"
+            :key="line.key"
+            class="flex items-center justify-between text-sm"
+            :class="{ 'pt-2 border-t border-gray-100': line.key === 'pay' }"
+          >
+            <span class="text-gray-600">{{ line.label }}</span>
+            <span
+              :class="[
+                line.key === 'pay' ? 'text-xl font-semibold text-red-600' : 'text-gray-900',
+                line.key === 'discount' && line.amount ? 'text-emerald-600' : '',
+              ]"
+              :data-testid="`order-confirm-${line.key}`"
             >
-              {{ submitting ? '提交中…' : '提交订单' }}
-            </el-button>
+              {{ line.key === 'discount' && line.amount ? '-' : '' }}¥{{ formatPrice(line.amount) }}
+            </span>
           </div>
         </div>
-        <p v-if="previewError" class="text-xs text-amber-600 mt-2">
+
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
+          <span class="text-sm text-gray-600" data-testid="order-confirm-summary">
+            <template v-if="isMultiShop">共 {{ previewShops.length }} 家店铺，</template>{{ totalQuantity }} 件
+            <template v-if="preview?.region"> · 收货地区 {{ preview.region }}</template>
+          </span>
+          <el-button
+            type="primary"
+            :loading="submitting"
+            :disabled="!selectedAddressId || !items.length"
+            data-testid="order-confirm-submit"
+            @click="submit"
+          >
+            {{ submitting ? '提交中…' : '提交订单' }}
+          </el-button>
+        </div>
+        <p v-if="previewError" class="text-xs text-amber-600 mt-2" data-testid="order-confirm-preview-error">
           分店预览加载失败（{{ previewError }}），应付金额以提交订单时服务端计算为准
         </p>
+        <p v-else-if="previewLoading" class="text-xs text-gray-400 mt-2">正在按收货地址重新计算运费…</p>
       </el-card>
     </template>
   </div>

@@ -19,6 +19,8 @@ public class Shop {
     private String contactPhone;
     private String contactWechat;
     private ShopStatus status;
+    /** 当前生效的运费模板ID（#136） */
+    private String freightTemplateId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Boolean isDeleted;

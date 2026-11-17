@@ -20,6 +20,11 @@ public interface ShopMapper {
 
     Shop selectById(@Param("shopId") String shopId);
 
+    /** 运费模板挂到店铺上（#136） */
+    int updateFreightTemplateId(@Param("shopId") String shopId,
+                                @Param("templateId") String templateId,
+                                @Param("updatedAt") java.time.LocalDateTime updatedAt);
+
     Shop selectBySellerId(@Param("sellerId") String sellerId);
 
     List<Shop> selectPage(@Param("keyword") String keyword,

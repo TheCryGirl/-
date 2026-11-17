@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS shop (
     contact_phone  VARCHAR(20)  DEFAULT NULL COMMENT '联系电话',
     contact_wechat VARCHAR(64)  DEFAULT NULL COMMENT '在线联系方式（微信/旺旺）',
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE' COMMENT '营业状态：ACTIVE正常/SUSPENDED已停用',
+    freight_template_id VARCHAR(32) DEFAULT NULL COMMENT '当前生效的运费模板ID（#136）',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     is_deleted     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
@@ -83,3 +84,36 @@ CREATE TABLE IF NOT EXISTS user_auth_version (
     user_id VARCHAR(32) NOT NULL PRIMARY KEY,
     token_version BIGINT NOT NULL DEFAULT 0
 );
+
+-- 运费模板（#136）：一个店铺一个模板，shop.freight_template_id 指向当前生效的模板。
+-- free_threshold 单位分；0 表示不包邮，大于 0 表示商品小计达到该值即免运费。
+CREATE TABLE IF NOT EXISTS freight_template (
+    template_id    VARCHAR(32)  NOT NULL COMMENT '运费模板ID',
+    shop_id        VARCHAR(32)  NOT NULL COMMENT '所属店铺ID',
+    name           VARCHAR(64)  NOT NULL COMMENT '模板名称，如「全国包邮」',
+    free_threshold BIGINT       NOT NULL DEFAULT 0 COMMENT '包邮门槛，单位分；0 表示不包邮',
+    status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE启用/DISABLED停用',
+    created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_by     VARCHAR(32)  DEFAULT NULL COMMENT '创建人',
+    updated_by     VARCHAR(32)  DEFAULT NULL COMMENT '更新人',
+    is_deleted     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (template_id),
+    UNIQUE KEY uk_freight_template_shop (shop_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运费模板';
+
+-- 分地区运费规则（#136）：region_code 为省级名称（如「河北省」），DEFAULT 表示其它地区兜底；
+-- min_amount 为该条规则适用的最低商品金额（分），同一地区可配多档（如满 99 收 6 元）。
+CREATE TABLE IF NOT EXISTS freight_rule (
+    rule_id     VARCHAR(32) NOT NULL COMMENT '规则ID',
+    template_id VARCHAR(32) NOT NULL COMMENT '所属模板ID',
+    region_code VARCHAR(32) NOT NULL COMMENT '收货地区：省级名称或 DEFAULT',
+    min_amount  BIGINT      NOT NULL DEFAULT 0 COMMENT '适用该规则的最低商品金额，单位分',
+    fee         BIGINT      NOT NULL DEFAULT 0 COMMENT '运费，单位分',
+    created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    is_deleted  TINYINT(1)  NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (rule_id),
+    UNIQUE KEY uk_freight_rule (template_id, region_code, min_amount),
+    KEY idx_freight_rule_template (template_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT '分地区运费规则';

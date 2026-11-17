@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS shop (
     contact_phone  VARCHAR(20)  DEFAULT NULL,
     contact_wechat VARCHAR(64)  DEFAULT NULL,
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    freight_template_id VARCHAR(32) DEFAULT NULL,
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted     TINYINT      NOT NULL DEFAULT 0,
@@ -74,4 +75,33 @@ CREATE TABLE IF NOT EXISTS browse_history (
 CREATE TABLE IF NOT EXISTS user_auth_version (
     user_id VARCHAR(32) NOT NULL PRIMARY KEY,
     token_version BIGINT NOT NULL DEFAULT 0
+);
+
+-- 运费模板与分地区规则（#136）
+CREATE TABLE IF NOT EXISTS freight_template (
+    template_id    VARCHAR(32) NOT NULL,
+    shop_id        VARCHAR(32) NOT NULL,
+    name           VARCHAR(64) NOT NULL,
+    free_threshold BIGINT      NOT NULL DEFAULT 0,
+    status         VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+    created_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by     VARCHAR(32) DEFAULT NULL,
+    updated_by     VARCHAR(32) DEFAULT NULL,
+    is_deleted     TINYINT     NOT NULL DEFAULT 0,
+    PRIMARY KEY (template_id),
+    CONSTRAINT uk_freight_template_shop UNIQUE (shop_id)
+);
+
+CREATE TABLE IF NOT EXISTS freight_rule (
+    rule_id     VARCHAR(32) NOT NULL,
+    template_id VARCHAR(32) NOT NULL,
+    region_code VARCHAR(32) NOT NULL,
+    min_amount  BIGINT      NOT NULL DEFAULT 0,
+    fee         BIGINT      NOT NULL DEFAULT 0,
+    created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted  TINYINT     NOT NULL DEFAULT 0,
+    PRIMARY KEY (rule_id),
+    CONSTRAINT uk_freight_rule UNIQUE (template_id, region_code, min_amount)
 );

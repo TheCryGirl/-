@@ -21,6 +21,11 @@ public class Order {
     private String mainOrderId;
     private OrderStatus status;
     private Long totalAmount;
+    /** 运费，单位分（#136） */
+    private Long freightAmount;
+    /** 优惠抵扣，单位分（#136） */
+    private Long discountAmount;
+    /** 应付金额 = totalAmount + freightAmount - discountAmount */
     private Long payAmount;
     private String receiver;
     private String receiverPhone;
