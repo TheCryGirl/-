@@ -53,7 +53,10 @@ CREATE TABLE IF NOT EXISTS refund (
     seller_id       VARCHAR(32)  DEFAULT NULL COMMENT '卖家ID快照',
     amount          BIGINT       NOT NULL COMMENT '退款金额，单位分',
     reason          VARCHAR(255) DEFAULT NULL COMMENT '退款原因',
-    status          VARCHAR(16)  NOT NULL COMMENT '退款状态：PENDING/REJECTED/SUCCESS/FAILED',
+    status          VARCHAR(16)  NOT NULL COMMENT '退款状态：PENDING/PROCESSING/REJECTED/SUCCESS/FAILED',
+    channel_refund_no VARCHAR(64) DEFAULT NULL COMMENT '渠道退款单号（#137 原路退款）',
+    channel_error   VARCHAR(255) DEFAULT NULL COMMENT '渠道退款失败原因（不含凭据）',
+    refunded_at     DATETIME     DEFAULT NULL COMMENT '渠道退款到账时间',
     audited_by      VARCHAR(32)  DEFAULT NULL COMMENT '审核人',
     audit_remark    VARCHAR(255) DEFAULT NULL COMMENT '审核备注',
     audited_at      DATETIME     DEFAULT NULL COMMENT '审核时间',
@@ -123,3 +126,54 @@ CREATE TABLE IF NOT EXISTS refund_notification_task (
     UNIQUE KEY uk_order_event (order_id, event_type),
     KEY idx_status_retry (status, next_retry_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款通知任务';
+
+-- 退款异步回调流水（#137）。去重靠 (channel, notify_id) 唯一约束，不使用先查再插。
+CREATE TABLE IF NOT EXISTS refund_callback (
+    callback_id     BIGINT       NOT NULL AUTO_INCREMENT COMMENT '回调流水ID',
+    channel         VARCHAR(16)  NOT NULL COMMENT '渠道：ALIPAY/MOCK',
+    notify_id       VARCHAR(128) NOT NULL COMMENT '渠道通知唯一标识',
+    refund_id       VARCHAR(32)  NOT NULL COMMENT '退款单ID',
+    raw_payload     TEXT         COMMENT '回调原始参数（JSON）',
+    sign_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '验签结果：0失败 1通过',
+    amount          BIGINT       NOT NULL COMMENT '回调退款金额，单位分',
+    process_status  VARCHAR(16)  NOT NULL DEFAULT 'PROCESSING' COMMENT 'PROCESSING/PROCESSED/DUPLICATE/AMOUNT_MISMATCH',
+    error_message   VARCHAR(255) DEFAULT NULL COMMENT '处理失败原因',
+    received_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '接收时间',
+    PRIMARY KEY (callback_id),
+    UNIQUE KEY uk_channel_notify (channel, notify_id),
+    KEY idx_refund_id (refund_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款回调流水';
+
+-- 渠道对账批次（#137）。一次 CSV 导入一个批次，只出差异清单，不修改 payment/refund。
+CREATE TABLE IF NOT EXISTS reconcile_batch (
+    batch_id        VARCHAR(32)  NOT NULL COMMENT '批次ID',
+    channel         VARCHAR(16)  NOT NULL COMMENT '对账渠道',
+    file_name       VARCHAR(255) DEFAULT NULL COMMENT '账单文件名',
+    total_rows      INT          NOT NULL DEFAULT 0 COMMENT '账单有效行数',
+    diff_count      INT          NOT NULL DEFAULT 0 COMMENT '差异条数',
+    imported_by     VARCHAR(32)  NOT NULL COMMENT '导入人（管理员）',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '导入时间',
+    PRIMARY KEY (batch_id),
+    KEY idx_channel_created (channel, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='渠道对账批次';
+
+-- 渠道对账差异（#137）。三类：LOCAL_ONLY / CHANNEL_ONLY / AMOUNT_MISMATCH。
+CREATE TABLE IF NOT EXISTS reconcile_difference (
+    difference_id   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '差异ID',
+    batch_id        VARCHAR(32)  NOT NULL COMMENT '批次ID',
+    channel         VARCHAR(16)  NOT NULL COMMENT '渠道',
+    bill_type       VARCHAR(16)  NOT NULL COMMENT '账单记录类型：PAYMENT/REFUND',
+    diff_type       VARCHAR(24)  NOT NULL COMMENT 'LOCAL_ONLY/CHANNEL_ONLY/AMOUNT_MISMATCH',
+    bill_trade_no   VARCHAR(64)  DEFAULT NULL COMMENT '渠道账单交易号；LOCAL_ONLY 为空',
+    local_no        VARCHAR(64)  DEFAULT NULL COMMENT '本地单号（pay_no 或 refund_id）；CHANNEL_ONLY 为空',
+    local_amount    BIGINT       DEFAULT NULL COMMENT '本地金额，单位分',
+    channel_amount  BIGINT       DEFAULT NULL COMMENT '账单金额，单位分',
+    status          VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/RESOLVED',
+    remark          VARCHAR(255) DEFAULT NULL COMMENT '处理备注',
+    resolved_by     VARCHAR(32)  DEFAULT NULL COMMENT '处理人',
+    resolved_at     DATETIME     DEFAULT NULL COMMENT '处理时间',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (difference_id),
+    KEY idx_batch_type (batch_id, diff_type),
+    KEY idx_status_created (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='渠道对账差异';

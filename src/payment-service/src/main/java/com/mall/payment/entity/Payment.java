@@ -1,6 +1,6 @@
 package com.mall.payment.entity;
 
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import lombok.Data;
 
@@ -17,7 +17,7 @@ public class Payment {
     private String orderId;
     private String buyerId;
     private String sellerId;
-    private PaymentChannel channel;
+    private ChannelType channel;
     private Long amount;
     private Long refundedAmount;
     private PaymentStatus status;

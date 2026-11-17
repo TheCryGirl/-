@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.ChannelReconcileMapper">
+
+    <insert id="insertBatch" parameterType="com.mall.payment.entity.ReconcileBatch">
+        INSERT INTO reconcile_batch (batch_id, channel, file_name, total_rows, diff_count, imported_by)
+        VALUES (#{batchId}, #{channel}, #{fileName,jdbcType=VARCHAR}, #{totalRows}, #{diffCount}, #{importedBy})
+    </insert>
+
+    <insert id="insertDifference" parameterType="com.mall.payment.entity.ReconcileDifference"
+            useGeneratedKeys="true" keyProperty="differenceId">
+        INSERT INTO reconcile_difference (
+            batch_id, channel, bill_type, diff_type, bill_trade_no, local_no,
+            local_amount, channel_amount, status
+        ) VALUES (
+            #{batchId}, #{channel}, #{billType}, #{diffType},
+            #{billTradeNo,jdbcType=VARCHAR}, #{localNo,jdbcType=VARCHAR},
+            #{localAmount,jdbcType=BIGINT}, #{channelAmount,jdbcType=BIGINT}, 'PENDING'
+        )
+    </insert>
+
+    <select id="selectBatches" resultType="com.mall.payment.entity.ReconcileBatch">
+        SELECT batch_id, channel, file_name, total_rows, diff_count, imported_by, created_at
+        FROM reconcile_batch
+        <where>
+            <if test="channel != null and channel != ''">
+                AND channel = #{channel}
+            </if>
+        </where>
+        ORDER BY created_at DESC, batch_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countBatches" resultType="long">
+        SELECT COUNT(*) FROM reconcile_batch
+        <where>
+            <if test="channel != null and channel != ''">
+                AND channel = #{channel}
+            </if>
+        </where>
+    </select>
+
+    <sql id="diffWhere">
+        <where>
+            <if test="batchId != null and batchId != ''">
+                AND batch_id = #{batchId}
+            </if>
+            <if test="diffType != null and diffType != ''">
+                AND diff_type = #{diffType}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectDifferences" resultType="com.mall.payment.entity.ReconcileDifference">
+        SELECT difference_id, batch_id, channel, bill_type, diff_type, bill_trade_no, local_no,
+               local_amount, channel_amount, status, remark, resolved_by, resolved_at, created_at
+        FROM reconcile_difference
+        <include refid="diffWhere"/>
+        ORDER BY difference_id ASC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countDifferences" resultType="long">
+        SELECT COUNT(*) FROM reconcile_difference
+        <include refid="diffWhere"/>
+    </select>
+
+    <select id="selectDifferenceById" resultType="com.mall.payment.entity.ReconcileDifference">
+        SELECT difference_id, batch_id, channel, bill_type, diff_type, bill_trade_no, local_no,
+               local_amount, channel_amount, status, remark, resolved_by, resolved_at, created_at
+        FROM reconcile_difference
+        WHERE difference_id = #{differenceId}
+    </select>
+
+    <update id="resolveDifference">
+        UPDATE reconcile_difference
+        SET status = 'RESOLVED',
+            remark = #{remark,jdbcType=VARCHAR},
+            resolved_by = #{resolvedBy},
+            resolved_at = #{resolvedAt}
+        WHERE difference_id = #{differenceId}
+          AND status = 'PENDING'
+    </update>
+
+    <!-- 对账只读：不修改任何 payment/refund 行 -->
+    <select id="selectPaidPaymentsByChannel" resultType="com.mall.payment.entity.Payment">
+        SELECT payment_id, pay_no, order_id, buyer_id, seller_id, channel, amount,
+               refunded_amount, status, idempotency_key, paid_at, reconciled_at,
+               created_at, updated_at, created_by, updated_by, is_deleted
+        FROM payment
+        WHERE channel = #{channel}
+          AND status IN ('SUCCESS', 'REFUNDED')
+          AND is_deleted = 0
+    </select>
+
+    <select id="selectSuccessRefundsByChannel" resultType="com.mall.payment.entity.Refund">
+        SELECT r.refund_id, r.payment_id, r.order_id, r.buyer_id, r.seller_id, r.amount, r.reason,
+               r.status, r.channel_refund_no, r.channel_error, r.refunded_at,
+               r.audited_by, r.audit_remark, r.audited_at, r.created_at, r.updated_at,
+               r.created_by, r.updated_by, r.is_deleted
+        FROM refund r
+        JOIN payment p ON r.payment_id = p.payment_id
+        WHERE p.channel = #{channel}
+          AND r.status = 'SUCCESS'
+          AND r.is_deleted = 0
+    </select>
+</mapper>

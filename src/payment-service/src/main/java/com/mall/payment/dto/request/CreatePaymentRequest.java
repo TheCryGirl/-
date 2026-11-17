@@ -1,6 +1,6 @@
 package com.mall.payment.dto.request;
 
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -17,5 +17,5 @@ public class CreatePaymentRequest {
     private String orderId;
 
     @NotNull(message = "支付渠道不能为空")
-    private PaymentChannel channel;
+    private ChannelType channel;
 }

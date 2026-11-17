@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.dto.request.MockDuplicateRequest;
 import com.mall.payment.dto.request.MockPayRequest;
@@ -54,7 +54,7 @@ public class MockPaymentServiceImpl implements MockPaymentService {
     @Override
     public MockPayResponse mockPay(String buyerId, MockPayRequest request) {
         Payment payment = paymentService.getPaymentEntityForBuyer(buyerId, request.getPaymentId());
-        if (payment.getChannel() != PaymentChannel.MOCK) {
+        if (payment.getChannel() != ChannelType.MOCK) {
             throw new BizException(ErrorCode.PARAM_INVALID, "该支付单不是 MOCK 渠道");
         }
         if (payment.getStatus() != PaymentStatus.PENDING

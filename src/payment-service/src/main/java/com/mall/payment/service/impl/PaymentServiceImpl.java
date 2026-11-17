@@ -1,12 +1,13 @@
 package com.mall.payment.service.impl;
 
+import com.mall.payment.channel.PaymentChannelRegistry;
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
 import com.mall.payment.common.OrderStatus;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.CreatePaymentRequest;
@@ -36,6 +37,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentMapper paymentMapper;
     private final PaymentTxService paymentTxService;
     private final OrderClient orderClient;
+    private final PaymentChannelRegistry channelRegistry;
 
     @Override
     public CreatePaymentResponse createPayment(String buyerId, String idempotencyKey,
@@ -46,8 +48,8 @@ public class PaymentServiceImpl implements PaymentService {
         if (idempotencyKey.length() > IDEMPOTENCY_KEY_MAX_LENGTH) {
             throw new BizException(ErrorCode.PARAM_INVALID, "幂等键过长");
         }
-        if (request.getChannel() != PaymentChannel.MOCK) {
-            throw new BizException(ErrorCode.PARAM_INVALID, "当前仅支持 MOCK 支付渠道");
+        if (request.getChannel() == null || !channelRegistry.isEnabled(request.getChannel())) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "支付渠道未启用");
         }
 
         Payment byKey = paymentMapper.selectByIdempotencyKey(idempotencyKey);
@@ -150,11 +152,12 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private CreatePaymentResponse toCreateResponse(Payment payment) {
+        String payUrl = channelRegistry.get(payment.getChannel()).createOrder(payment).payUrl();
         return new CreatePaymentResponse(
                 payment.getPaymentId(),
                 payment.getPayNo(),
                 payment.getAmount(),
-                "mock://pay/" + payment.getPaymentId()
+                payUrl
         );
     }
 }

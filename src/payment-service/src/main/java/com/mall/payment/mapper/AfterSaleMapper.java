@@ -74,4 +74,11 @@ public interface AfterSaleMapper {
                               @Param("trackingNo") String trackingNo,
                               @Param("remark") String remark,
                               @Param("now") LocalDateTime now);
+
+    /** 渠道异步退款：先挂退款单号，不改售后状态；退款成功回调再置 REFUNDED */
+    int attachRefundId(@Param("ticketId") String ticketId, @Param("refundId") String refundId);
+
+    /** 渠道退款成功后按退款单号同步售后单为 REFUNDED（条件更新，幂等） */
+    int markRefundedByRefundId(@Param("refundId") String refundId,
+                               @Param("now") LocalDateTime now);
 }

@@ -10,6 +10,7 @@ import com.mall.payment.common.IdGenerator;
 import com.mall.payment.common.OrderStatus;
 import com.mall.payment.common.PageResult;
 import com.mall.payment.common.PaymentStatus;
+import com.mall.payment.common.RefundStatus;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.CreateAfterSaleRequest;
 import com.mall.payment.dto.request.RefundRequest;
@@ -319,9 +320,18 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         if (ticket.getStatus() != AfterSaleStatus.SELLER_RECEIVED) {
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许退款");
         }
-        String refundId = executeRefund(ticket, operatorId, role, remark);
+        if (ticket.getRefundId() != null) {
+            // 渠道退款处理中，重复确认收货不再发起新退款
+            return AfterSaleResponse.from(ticket);
+        }
+        RefundResponse refund = executeRefund(ticket, operatorId, role, remark);
+        if (refund.getStatus() != RefundStatus.SUCCESS) {
+            // 渠道异步退款：售后单停在 SELLER_RECEIVED，退款成功回调再置 REFUNDED
+            afterSaleMapper.attachRefundId(ticketId, refund.getRefundId());
+            return AfterSaleResponse.from(requireTicket(ticketId));
+        }
         int updated = afterSaleMapper.markReturnRefunded(
-                ticketId, ticket.getSellerId(), refundId, remark, LocalDateTime.now());
+                ticketId, ticket.getSellerId(), refund.getRefundId(), remark, LocalDateTime.now());
         if (updated == 0) {
             AfterSaleTicket latest = requireTicket(ticketId);
             if (latest.getStatus() == AfterSaleStatus.REFUNDED) {
@@ -364,9 +374,18 @@ public class AfterSaleServiceImpl implements AfterSaleService {
 
     private AfterSaleResponse executeRefundOnly(AfterSaleTicket ticket, String operatorId,
                                                 String role, String remark) {
-        String refundId = executeRefund(ticket, operatorId, role, remark);
+        if (ticket.getRefundId() != null) {
+            // 渠道退款处理中，重复审核不再发起新退款
+            return AfterSaleResponse.from(ticket);
+        }
+        RefundResponse refund = executeRefund(ticket, operatorId, role, remark);
+        if (refund.getStatus() != RefundStatus.SUCCESS) {
+            // 渠道异步退款：售后单停在 APPROVED，退款成功回调再置 REFUNDED
+            afterSaleMapper.attachRefundId(ticket.getTicketId(), refund.getRefundId());
+            return AfterSaleResponse.from(requireTicket(ticket.getTicketId()));
+        }
         int updated = afterSaleMapper.markRefundOnlyRefunded(
-                ticket.getTicketId(), ticket.getSellerId(), refundId, remark, LocalDateTime.now());
+                ticket.getTicketId(), ticket.getSellerId(), refund.getRefundId(), remark, LocalDateTime.now());
         if (updated == 0) {
             AfterSaleTicket latest = requireTicket(ticket.getTicketId());
             if (latest.getStatus() == AfterSaleStatus.REFUNDED) {
@@ -377,14 +396,13 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         return AfterSaleResponse.from(requireTicket(ticket.getTicketId()));
     }
 
-    private String executeRefund(AfterSaleTicket ticket, String operatorId, String role, String remark) {
+    private RefundResponse executeRefund(AfterSaleTicket ticket, String operatorId, String role, String remark) {
         RefundRequest request = new RefundRequest();
         request.setAmount(ticket.getAmount());
         request.setReason(ticket.getReason() == null ? "售后退款" : ticket.getReason());
         RefundResponse refund = refundService.createRefund(
                 ticket.getBuyerId(), ticket.getPaymentId(), request, ticket.getSellerId());
-        refundService.auditRefund(refund.getRefundId(), true, operatorId, role, remark);
-        return refund.getRefundId();
+        return refundService.auditRefund(refund.getRefundId(), true, operatorId, role, remark);
     }
 
     private AfterSaleTicket requireTicket(String ticketId) {

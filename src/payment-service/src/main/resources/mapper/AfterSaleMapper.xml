@@ -186,4 +186,25 @@
           AND seller_id = #{sellerId}
           AND is_deleted = 0
     </update>
+
+    <update id="attachRefundId">
+        UPDATE after_sale_ticket
+        SET refund_id = #{refundId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND refund_id IS NULL
+          AND is_deleted = 0
+    </update>
+
+    <update id="markRefundedByRefundId">
+        UPDATE after_sale_ticket
+        SET status = 'REFUNDED',
+            active_flag = NULL,
+            updated_by = 'SYSTEM',
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND status IN ('APPROVED', 'SELLER_RECEIVED', 'ARBITRATING')
+          AND after_sale_type IN ('REFUND_ONLY', 'RETURN_REFUND')
+          AND is_deleted = 0
+    </update>
 </mapper>

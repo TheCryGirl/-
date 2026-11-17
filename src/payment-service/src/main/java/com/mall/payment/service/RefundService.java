@@ -37,4 +37,10 @@ public interface RefundService {
      * 订单取消后收到支付成功回调时，按剩余可退金额自动退款。
      */
     RefundResponse autoRefund(Payment payment, String reason);
+
+    /**
+     * 渠道退款失败/滞留时的人工重试（#137）。同一 refundId 作为渠道
+     * out_request_no，渠道侧幂等，不会重复退款。SELLER 限本店，ADMIN 全量。
+     */
+    RefundResponse retryRefund(String refundId, String operatorId, String role);
 }

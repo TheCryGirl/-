@@ -42,6 +42,14 @@ public class PaymentCallbackService {
                     request.getTradeNo(), request.getPayNo());
             return CallbackResult.fail(ErrorCode.SIGN_VERIFY_FAILED, "回调验签失败", null);
         }
+        return processVerified(request);
+    }
+
+    /**
+     * 验签之后的完整处理链。渠道路由 /callback/{channel} 先由渠道实现验签，
+     * 再进入这里，去重、金额核对与状态更新逻辑与旧回调完全一致。
+     */
+    public CallbackResult processVerified(PaymentCallbackRequest request) {
         if (!"SUCCESS".equalsIgnoreCase(request.getStatus())) {
             log.warn("暂不支持的回调状态, tradeNo={}, status={}",
                     request.getTradeNo(), request.getStatus());
