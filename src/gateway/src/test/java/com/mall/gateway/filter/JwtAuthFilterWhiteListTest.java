@@ -42,6 +42,21 @@ class JwtAuthFilterWhiteListTest {
     }
 
     @Test
+    @DisplayName("#137 渠道支付/退款回调可匿名 POST，单段通配不扩大放行面")
+    void channelCallbackPostAllowed() throws Exception {
+        assertTrue(white(HttpMethod.POST, "/api/payments/callback/ALIPAY"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/callback/MOCK"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/refund-callback/ALIPAY"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/refund-callback/MOCK"));
+        // 通配只匹配一段，不能借回调路径放行更深的业务接口
+        assertFalse(white(HttpMethod.POST, "/api/payments/callback/ALIPAY/extra"));
+        assertFalse(white(HttpMethod.POST, "/api/payments/refund-callback/ALIPAY/extra"));
+        // 回调只放行 POST；退款重试等写操作仍必须登录
+        assertFalse(white(HttpMethod.GET, "/api/payments/callback/ALIPAY"));
+        assertFalse(white(HttpMethod.POST, "/api/payments/refunds/REF1/retry"));
+    }
+
+    @Test
     @DisplayName("其他 POST 一律不匿名，尤其是商品写操作")
     void otherPostsRequireAuth() throws Exception {
         assertFalse(white(HttpMethod.POST, "/api/products"));

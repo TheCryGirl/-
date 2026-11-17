@@ -57,7 +57,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     private static final List<String> PUBLIC_POST = List.of(
             "/api/users/register",
             "/api/users/login",
-            "/api/payments/callback"
+            "/api/payments/callback",
+            // #137 渠道回调（支付宝等）无登录态，来源由渠道验签保证；单段通配只放行渠道名
+            "/api/payments/callback/*",
+            "/api/payments/refund-callback/*"
     );
 
     /**
