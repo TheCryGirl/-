@@ -180,6 +180,20 @@ function ensureLogin() {
   return true
 }
 
+function contactSeller() {
+  if (!product.value?.sellerId || isOwnProduct.value) return
+  const target = {
+    name: 'messages',
+    query: { sellerId: product.value.sellerId, contextProductId: String(route.params.id) },
+  }
+  if (!isLoggedIn.value) {
+    sessionStorage.setItem('redirectAfterLogin', router.resolve(target).fullPath)
+    router.push({ name: 'login' })
+    return
+  }
+  router.push(target)
+}
+
 async function toggleFavorite() {
   if (!ensureLogin()) return
   if (favoriteBusy.value) return
@@ -342,6 +356,16 @@ onMounted(() => {
             </span>
             <span class="jd-detail__thumb-note">更多实拍图由卖家上传后展示</span>
           </div>
+          <el-button
+            v-if="product.sellerId && !isOwnProduct"
+            class="mt-3"
+            plain
+            data-testid="contact-seller"
+            @click="contactSeller"
+          >
+            <StoreIcon name="headset" :size="16" />
+            联系卖家
+          </el-button>
         </div>
 
         <!-- 右侧信息 -->
