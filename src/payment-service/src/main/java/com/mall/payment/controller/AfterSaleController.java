@@ -11,6 +11,7 @@ import com.mall.payment.dto.request.ReshipRequest;
 import com.mall.payment.dto.request.ReturnShipmentRequest;
 import com.mall.payment.dto.response.AfterSaleResponse;
 import com.mall.payment.service.AfterSaleService;
+import com.mall.payment.service.NotificationPublisher;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,13 +38,16 @@ public class AfterSaleController {
     private static final String ROLE_ADMIN = "ADMIN";
 
     private final AfterSaleService afterSaleService;
+    private final NotificationPublisher notificationPublisher;
 
     @PostMapping
     public Result<AfterSaleResponse> create(
             @RequestHeader("X-User-Id") String buyerId,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateAfterSaleRequest request) {
-        return Result.success(afterSaleService.create(buyerId, idempotencyKey, request));
+        AfterSaleResponse created = afterSaleService.create(buyerId, idempotencyKey, request);
+        notificationPublisher.afterSale(created.getBuyerId(), created.getTicketId(), String.valueOf(created.getStatus()));
+        return Result.success(created);
     }
 
     @GetMapping
@@ -74,8 +78,10 @@ public class AfterSaleController {
             @PathVariable("ticketId") String ticketId,
             @Valid @RequestBody AuditAfterSaleRequest request) {
         requireSellerOrAdmin(role);
-        return Result.success(afterSaleService.audit(
-                ticketId, operatorId, role, request.getApproved(), request.getRemark()));
+        AfterSaleResponse audited = afterSaleService.audit(
+                ticketId, operatorId, role, request.getApproved(), request.getRemark());
+        notificationPublisher.afterSale(audited.getBuyerId(), audited.getTicketId(), String.valueOf(audited.getStatus()));
+        return Result.success(audited);
     }
 
     @PutMapping("/{ticketId}/return-shipment")
@@ -83,7 +89,9 @@ public class AfterSaleController {
             @RequestHeader("X-User-Id") String buyerId,
             @PathVariable("ticketId") String ticketId,
             @Valid @RequestBody ReturnShipmentRequest request) {
-        return Result.success(afterSaleService.shipReturn(ticketId, buyerId, request.getTrackingNo()));
+        AfterSaleResponse shipped = afterSaleService.shipReturn(ticketId, buyerId, request.getTrackingNo());
+        notificationPublisher.afterSale(shipped.getBuyerId(), shipped.getTicketId(), String.valueOf(shipped.getStatus()));
+        return Result.success(shipped);
     }
 
     @PutMapping("/{ticketId}/receive")
@@ -94,8 +102,9 @@ public class AfterSaleController {
             @RequestBody(required = false) AfterSaleRemarkRequest request) {
         requireSellerOrAdmin(role);
         String remark = request == null ? null : request.getRemark();
-        return Result.success(afterSaleService.receiveReturn(
-                ticketId, operatorId, role, remark));
+        AfterSaleResponse received = afterSaleService.receiveReturn(ticketId, operatorId, role, remark);
+        notificationPublisher.afterSale(received.getBuyerId(), received.getTicketId(), String.valueOf(received.getStatus()));
+        return Result.success(received);
     }
 
     @PutMapping("/{ticketId}/reship")
@@ -105,8 +114,10 @@ public class AfterSaleController {
             @PathVariable("ticketId") String ticketId,
             @Valid @RequestBody ReshipRequest request) {
         requireSellerOrAdmin(role);
-        return Result.success(afterSaleService.reshipExchange(
-                ticketId, operatorId, role, request.getTrackingNo(), request.getRemark()));
+        AfterSaleResponse reshipped = afterSaleService.reshipExchange(
+                ticketId, operatorId, role, request.getTrackingNo(), request.getRemark());
+        notificationPublisher.afterSale(reshipped.getBuyerId(), reshipped.getTicketId(), String.valueOf(reshipped.getStatus()));
+        return Result.success(reshipped);
     }
 
     private void requireSellerOrAdmin(String role) {

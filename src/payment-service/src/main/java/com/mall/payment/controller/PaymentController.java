@@ -16,6 +16,7 @@ import com.mall.payment.service.AuditLogPublisher;
 import com.mall.payment.service.CallbackResult;
 import com.mall.payment.service.FinanceSummaryService;
 import com.mall.payment.service.PaymentCallbackService;
+import com.mall.payment.service.NotificationPublisher;
 import com.mall.payment.service.PaymentService;
 import com.mall.payment.service.RefundService;
 import jakarta.validation.Valid;
@@ -45,6 +46,7 @@ public class PaymentController {
     private static final String ROLE_ADMIN = "ADMIN";
 
     private final PaymentService paymentService;
+    private final NotificationPublisher notificationPublisher;
     private final PaymentCallbackService paymentCallbackService;
     private final RefundService refundService;
     private final AuditLogPublisher auditLogPublisher;
@@ -117,7 +119,11 @@ public class PaymentController {
             @RequestHeader("X-User-Id") String buyerId,
             @PathVariable("paymentId") String paymentId,
             @Valid @RequestBody RefundRequest request) {
-        return Result.success(refundService.createRefund(buyerId, paymentId, request));
+        RefundResponse refund = refundService.createRefund(buyerId, paymentId, request);
+        if ("SUCCESS".equals(String.valueOf(refund.getStatus()))) {
+            notificationPublisher.refundDone(refund.getBuyerId(), refund.getOrderId(), refund.getAmount());
+        }
+        return Result.success(refund);
     }
 
     @PutMapping("/refunds/{refundId}/audit")
@@ -131,6 +137,9 @@ public class PaymentController {
         }
         RefundResponse refund = refundService.auditRefund(
                 refundId, request.getApproved(), auditorId, role, request.getRemark());
+        if ("SUCCESS".equals(String.valueOf(refund.getStatus()))) {
+            notificationPublisher.refundDone(refund.getBuyerId(), refund.getOrderId(), refund.getAmount());
+        }
         auditLogPublisher.publish(auditorId, role, "REFUND_AUDIT", "REFUND", refundId,
                 (Boolean.TRUE.equals(request.getApproved()) ? "通过退款" : "驳回退款") + suffix(request.getRemark()));
         return Result.success(refund);
