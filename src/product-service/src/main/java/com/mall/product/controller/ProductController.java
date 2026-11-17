@@ -53,6 +53,7 @@ public class ProductController {
     public Result<PageResult<ProductListItem>> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String categoryId,
+            @RequestParam(required = false) String shopId,
             @RequestParam(required = false) Long minPrice,
             @RequestParam(required = false) Long maxPrice,
             @RequestParam(defaultValue = "default") String sort,
@@ -60,7 +61,7 @@ public class ProductController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(value = "X-User-Role", required = false) String role) {
-        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, status, role, page, size));
+        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, status, role, shopId, page, size));
     }
 
     /**

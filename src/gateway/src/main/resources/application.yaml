@@ -22,7 +22,7 @@ spring:
         - id: user-service
           uri: lb://user-service
           predicates:
-            - Path=/api/users/**,/api/shops/**,/api/favorites/**,/api/history/**
+            - Path=/api/users/**,/api/shops/**,/api/favorites/**,/api/history/**,/api/notifications/**,/api/tickets/**
           filters:
             # 契约 1.2：下游服务路径不带 /api 前缀
             - StripPrefix=1

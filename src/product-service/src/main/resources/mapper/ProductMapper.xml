@@ -81,6 +81,9 @@
         <if test="categoryId != null and categoryId != ''">
             AND p.category_id = #{categoryId}
         </if>
+        <if test="sellerId != null and sellerId != ''">
+            AND p.seller_id = #{sellerId}
+        </if>
         <if test="minPrice != null">
             AND s.price &gt;= #{minPrice}
         </if>

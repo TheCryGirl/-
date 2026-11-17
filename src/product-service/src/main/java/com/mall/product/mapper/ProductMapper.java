@@ -29,6 +29,7 @@ public interface ProductMapper {
 
     List<ProductListItem> selectPublicList(@Param("keyword") String keyword,
                                            @Param("categoryId") String categoryId,
+                              @Param("sellerId") String sellerId,
                                            @Param("minPrice") Long minPrice,
                                            @Param("maxPrice") Long maxPrice,
                                            @Param("sort") String sort,
@@ -37,6 +38,7 @@ public interface ProductMapper {
 
     long countPublic(@Param("keyword") String keyword,
                      @Param("categoryId") String categoryId,
+                     @Param("sellerId") String sellerId,
                      @Param("minPrice") Long minPrice,
                      @Param("maxPrice") Long maxPrice);
 

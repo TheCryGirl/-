@@ -199,6 +199,16 @@ public class ProductService {
      */
     public PageResult<ProductListItem> list(String keyword, String categoryId, Long minPrice, Long maxPrice,
                                             String sort, String status, String role, int page, int size) {
+        return list(keyword, categoryId, minPrice, maxPrice, sort, status, role, null, page, size);
+    }
+
+    /**
+     * 公开商品列表，可按店铺筛选（#142 店铺主页）。
+     * shopId 先经 user-service 换成 sellerId 再过滤；店铺不存在时返回空页。
+     */
+    public PageResult<ProductListItem> list(String keyword, String categoryId, Long minPrice, Long maxPrice,
+                                            String sort, String status, String role, String shopId,
+                                            int page, int size) {
         if ("ADMIN".equalsIgnoreCase(role) && status != null && !status.isBlank()) {
             return listForAdmin(status, page, size);
         }
@@ -214,10 +224,29 @@ public class ProductService {
         }
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
+        String sellerId = null;
+        if (shopId != null && !shopId.isBlank()) {
+            ShopBriefDTO shop = resolveShop(shopId.trim());
+            if (shop == null || shop.getSellerId() == null) {
+                return PageResult.of(List.of(), 0, safePage, safeSize);
+            }
+            sellerId = shop.getSellerId();
+        }
         List<ProductListItem> items = productMapper.selectPublicList(trimToNull(keyword), trimToNull(categoryId),
-                minPrice, maxPrice, safeSort, (safePage - 1) * safeSize, safeSize);
-        long total = productMapper.countPublic(trimToNull(keyword), trimToNull(categoryId), minPrice, maxPrice);
+                sellerId, minPrice, maxPrice, safeSort, (safePage - 1) * safeSize, safeSize);
+        long total = productMapper.countPublic(trimToNull(keyword), trimToNull(categoryId), sellerId, minPrice, maxPrice);
         return PageResult.of(items, total, safePage, safeSize);
+    }
+
+    /** 按店铺ID取卖家ID；店铺不存在或 user-service 异常时返回 null。 */
+    private ShopBriefDTO resolveShop(String shopId) {
+        try {
+            Result<ShopBriefDTO> result = shopClient.getByShopId(shopId);
+            return result != null && result.getCode() == 0 ? result.getData() : null;
+        } catch (Exception e) {
+            log.warn("按店铺查询失败, shopId={}, reason={}", shopId, e.getMessage());
+            return null;
+        }
     }
 
     /**
