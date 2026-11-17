@@ -33,6 +33,14 @@ public final class IdGenerator {
         return "H" + randomHex(24);
     }
 
+    public static String conversationId() {
+        return "C" + randomHex(24);
+    }
+
+    public static String messageId() {
+        return "M" + randomHex(24);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

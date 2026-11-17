@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.ConversationMapper">
+    <!-- The unique pair is also the creation lock. Concurrent first sends wait here,
+         then select the one committed conversation with a locking/current read. -->
+    <insert id="ensureConversation">
+        INSERT INTO conversation (conversation_id, buyer_id, seller_id, last_message_at, last_preview,
+                                  buyer_unread, seller_unread, created_at)
+        VALUES (#{conversationId}, #{buyerId}, #{sellerId}, #{lastMessageAt}, NULL, 0, 0, #{createdAt})
+        ON DUPLICATE KEY UPDATE conversation_id = conversation_id
+    </insert>
+    <select id="selectById" resultType="com.mall.user.entity.Conversation">
+        SELECT conversation_id, buyer_id, seller_id, last_message_at, last_preview,
+               buyer_unread, seller_unread, created_at
+        FROM conversation WHERE conversation_id = #{conversationId}
+    </select>
+    <select id="selectByIdForUpdate" resultType="com.mall.user.entity.Conversation">
+        SELECT conversation_id, buyer_id, seller_id, last_message_at, last_preview,
+               buyer_unread, seller_unread, created_at
+        FROM conversation WHERE conversation_id = #{conversationId} FOR UPDATE
+    </select>
+    <select id="selectByParticipantsForUpdate" resultType="com.mall.user.entity.Conversation">
+        SELECT conversation_id, buyer_id, seller_id, last_message_at, last_preview,
+               buyer_unread, seller_unread, created_at
+        FROM conversation WHERE buyer_id = #{buyerId} AND seller_id = #{sellerId} FOR UPDATE
+    </select>
+    <update id="updateAfterSend">
+        UPDATE conversation SET last_message_at = #{lastMessageAt}, last_preview = #{lastPreview},
+                                buyer_unread = #{buyerUnread}, seller_unread = #{sellerUnread}
+        WHERE conversation_id = #{conversationId}
+    </update>
+    <update id="clearUnread">
+        UPDATE conversation
+        <choose>
+            <when test="buyer">SET buyer_unread = 0</when>
+            <otherwise>SET seller_unread = 0</otherwise>
+        </choose>
+        WHERE conversation_id = #{conversationId}
+    </update>
+    <select id="countByParticipant" resultType="long">
+        SELECT COUNT(*) FROM conversation WHERE buyer_id = #{userId} OR seller_id = #{userId}
+    </select>
+    <select id="selectPage" resultType="com.mall.user.dto.response.ConversationResponse">
+        SELECT conversation_id, buyer_id, seller_id, last_message_at, last_preview,
+               buyer_unread, seller_unread,
+               CASE WHEN buyer_id = #{userId} THEN buyer_unread ELSE seller_unread END AS unread_count
+        FROM conversation
+        WHERE buyer_id = #{userId} OR seller_id = #{userId}
+        ORDER BY last_message_at DESC, conversation_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+</mapper>

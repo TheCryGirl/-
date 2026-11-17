@@ -75,3 +75,28 @@ CREATE TABLE IF NOT EXISTS user_auth_version (
     user_id VARCHAR(32) NOT NULL PRIMARY KEY,
     token_version BIGINT NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS conversation (
+    conversation_id VARCHAR(32) NOT NULL PRIMARY KEY,
+    buyer_id VARCHAR(32) NOT NULL,
+    seller_id VARCHAR(32) NOT NULL,
+    last_message_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_preview VARCHAR(120) DEFAULT NULL,
+    buyer_unread INT NOT NULL DEFAULT 0,
+    seller_unread INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT uk_conv_buyer_seller UNIQUE (buyer_id, seller_id)
+);
+CREATE INDEX IF NOT EXISTS idx_conv_seller_time ON conversation(seller_id, last_message_at);
+CREATE INDEX IF NOT EXISTS idx_conv_buyer_time ON conversation(buyer_id, last_message_at);
+
+CREATE TABLE IF NOT EXISTS message (
+    message_id VARCHAR(32) NOT NULL PRIMARY KEY,
+    conversation_id VARCHAR(32) NOT NULL,
+    sender_id VARCHAR(32) NOT NULL,
+    content VARCHAR(500) NOT NULL,
+    context_product_id VARCHAR(32) DEFAULT NULL,
+    read_at TIMESTAMP(6) DEFAULT NULL,
+    created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+);
+CREATE INDEX IF NOT EXISTS idx_msg_conv_time ON message(conversation_id, created_at);

@@ -83,3 +83,31 @@ CREATE TABLE IF NOT EXISTS user_auth_version (
     user_id VARCHAR(32) NOT NULL PRIMARY KEY,
     token_version BIGINT NOT NULL DEFAULT 0
 );
+
+-- 站内消息（#106）。同一买家与卖家跨商品复用一个会话。
+CREATE TABLE IF NOT EXISTS conversation (
+    conversation_id VARCHAR(32) NOT NULL,
+    buyer_id VARCHAR(32) NOT NULL,
+    seller_id VARCHAR(32) NOT NULL,
+    last_message_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_preview VARCHAR(120) DEFAULT NULL,
+    buyer_unread INT NOT NULL DEFAULT 0,
+    seller_unread INT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (conversation_id),
+    UNIQUE KEY uk_conv_buyer_seller (buyer_id, seller_id),
+    KEY idx_conv_seller_time (seller_id, last_message_at),
+    KEY idx_conv_buyer_time (buyer_id, last_message_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='买卖双方会话';
+
+CREATE TABLE IF NOT EXISTS message (
+    message_id VARCHAR(32) NOT NULL,
+    conversation_id VARCHAR(32) NOT NULL,
+    sender_id VARCHAR(32) NOT NULL,
+    content VARCHAR(500) NOT NULL,
+    context_product_id VARCHAR(32) DEFAULT NULL,
+    read_at DATETIME(6) DEFAULT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (message_id),
+    KEY idx_msg_conv_time (conversation_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内文字消息';
