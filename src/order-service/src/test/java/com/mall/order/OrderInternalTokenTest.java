@@ -4,6 +4,7 @@ import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
 import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.controller.OrderController;
+import com.mall.order.service.LogisticsService;
 import com.mall.order.service.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -20,7 +21,7 @@ class OrderInternalTokenTest {
     @Test
     void configuredTokenRejectsMissingAndWrongTokensForPaidAndRefunded() {
         InternalTokenVerifier verifier = verifier(EXPECTED);
-        OrderController controller = new OrderController(mock(OrderService.class), verifier);
+        OrderController controller = new OrderController(mock(OrderService.class), mock(LogisticsService.class), verifier);
 
         assertForbidden(() -> controller.paid("O1", null));
         assertForbidden(() -> controller.paid("O1", "wrong"));
@@ -31,7 +32,7 @@ class OrderInternalTokenTest {
     @Test
     void configuredTokenAllowsPaymentAndRefundNotifications() {
         OrderService orderService = mock(OrderService.class);
-        OrderController controller = new OrderController(orderService, verifier(EXPECTED));
+        OrderController controller = new OrderController(orderService, mock(LogisticsService.class), verifier(EXPECTED));
 
         assertThatCode(() -> controller.paid("O1", EXPECTED)).doesNotThrowAnyException();
         assertThatCode(() -> controller.refunded("O1", EXPECTED)).doesNotThrowAnyException();
@@ -43,7 +44,7 @@ class OrderInternalTokenTest {
     @Test
     void emptyConfiguredTokenRejectsInternalCalls() {
         OrderService orderService = mock(OrderService.class);
-        OrderController controller = new OrderController(orderService, verifier(""));
+        OrderController controller = new OrderController(orderService, mock(LogisticsService.class), verifier(""));
 
         assertForbidden(() -> controller.paid("O1", null));
         assertForbidden(() -> controller.refunded("O1", "any-token"));
