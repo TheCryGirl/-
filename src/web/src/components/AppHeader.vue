@@ -142,6 +142,19 @@ async function loadCategories() {
 }
 
 /** 购物车角标：登录后静默拉一次，失败就不显示，不打扰用户 */
+async function loadUnreadCount() {
+  if (!isLoggedIn.value) {
+    unreadCount.value = 0
+    return
+  }
+  try {
+    const { data } = await notificationApi.unreadCount()
+    unreadCount.value = unwrapResult(data)?.count || 0
+  } catch {
+    unreadCount.value = 0
+  }
+}
+
 async function loadCartCount() {
   if (!isLoggedIn.value) {
     cartCount.value = 0
@@ -290,6 +303,14 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="jd-actions">
+          <RouterLink :to="{ name: 'notifications' }" class="jd-cart" title="消息中心">
+            <span class="jd-cart__icon">
+              <StoreIcon name="bell" :size="20" />
+              <span v-if="unreadCount" class="jd-cart__badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+            </span>
+            <span class="jd-cart__text">消息</span>
+          </RouterLink>
+
           <RouterLink :to="{ name: 'cart' }" class="jd-cart" :class="{ 'is-bump': cartCount > 0 }">
             <span class="jd-cart__icon">
               <StoreIcon name="cart" :size="20" />
@@ -308,6 +329,9 @@ onBeforeUnmount(() => {
               <div v-if="menuOpen" class="jd-user__panel" @click="menuOpen = false">
                 <RouterLink :to="{ name: 'profile' }" class="jd-user__item">个人中心</RouterLink>
                 <RouterLink :to="{ name: 'orders' }" class="jd-user__item">我的订单</RouterLink>
+                <RouterLink :to="{ name: 'notifications' }" class="jd-user__item">消息中心</RouterLink>
+                <RouterLink :to="{ name: 'following-shops' }" class="jd-user__item">关注的店铺</RouterLink>
+                <RouterLink :to="{ name: 'tickets' }" class="jd-user__item">我的工单</RouterLink>
                 <RouterLink :to="{ name: 'favorites' }" class="jd-user__item">我的收藏</RouterLink>
                 <RouterLink :to="{ name: 'browse-history' }" class="jd-user__item">浏览足迹</RouterLink>
                 <RouterLink v-if="!isAdmin" :to="{ name: 'messages' }" class="jd-user__item">我的消息</RouterLink>

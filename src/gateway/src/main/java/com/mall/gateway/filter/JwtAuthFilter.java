@@ -80,6 +80,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final Pattern PRODUCT_DETAIL_PATH = Pattern.compile("^/api/products/([^/]+)$");
 
+    /** 店铺主页公开可读（#142）；following / mine / seller 仍需要登录 */
+    private static final Pattern SHOP_DETAIL_PATH = Pattern.compile("^/api/shops/([^/]+)$");
+    private static final Set<String> SHOP_RESERVED_SEGMENTS = Set.of("mine", "following", "seller");
+
     /** /api/products/{x} 中属于功能路径而非商品 ID 的保留字 */
     private static final Set<String> PRODUCT_RESERVED_SEGMENTS = Set.of("mine", "skus", "images", "batch", "internal");
 
@@ -230,6 +234,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             return true;
         }
         if ("/api/products".equals(path)) {
+            return true;
+        }
+        Matcher shopMatcher = SHOP_DETAIL_PATH.matcher(path);
+        if (shopMatcher.matches() && !SHOP_RESERVED_SEGMENTS.contains(shopMatcher.group(1))) {
             return true;
         }
         Matcher matcher = PRODUCT_DETAIL_PATH.matcher(path);

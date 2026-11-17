@@ -22,6 +22,9 @@ public interface ShopService {
     /** 管理员停用 / 恢复店铺，并联动商品可见性 */
     ShopResponse updateStatus(String operatorId, String shopId, ShopStatusRequest request);
 
+    /** 按店铺ID查询店铺，供店铺主页公开访问 */
+    ShopResponse getById(String shopId);
+
     /** 按卖家查店铺，供 product-service、order-service 内部校验营业状态 */
     ShopResponse getBySellerId(String sellerId);
 }

@@ -21,6 +21,7 @@ public final class ErrorCode {
     public static final int FAVORITE_NOT_FOUND = 20008;
     public static final int CONVERSATION_NOT_FOUND = 20009;
     public static final int MESSAGE_NOT_FOUND = 20010;
+    public static final int TICKET_NOT_FOUND = 20011;
 
     private ErrorCode() {
     }

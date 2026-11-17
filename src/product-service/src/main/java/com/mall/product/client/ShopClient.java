@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 @FeignClient(name = "user-service", url = "${services.user-url:}")
 public interface ShopClient {
 
+    /** 按店铺ID取店铺信息，供店铺主页按 shopId 过滤商品（#142）。 */
+    @GetMapping("/shops/{shopId}")
+    Result<ShopBriefDTO> getByShopId(@PathVariable("shopId") String shopId);
+
     @GetMapping("/shops/seller/{sellerId}")
     Result<ShopBriefDTO> getBySeller(@PathVariable("sellerId") String sellerId);
 }

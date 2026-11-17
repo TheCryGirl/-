@@ -145,3 +145,62 @@ CREATE TABLE IF NOT EXISTS message (
     PRIMARY KEY (message_id),
     KEY idx_msg_conv_time (conversation_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内文字消息';
+
+
+-- 站内通知（#139）：平台推送给用户的单向消息，与 C2C 会话无关
+CREATE TABLE IF NOT EXISTS notification (
+    notification_id VARCHAR(32) NOT NULL,
+    user_id         VARCHAR(32) NOT NULL COMMENT '接收人',
+    type            VARCHAR(32) NOT NULL COMMENT 'PAY_SUCCESS/SHIPPED/REFUND_DONE/AFTER_SALE',
+    title           VARCHAR(64) NOT NULL,
+    content         VARCHAR(255) NOT NULL,
+    biz_id          VARCHAR(32)          COMMENT '关联业务ID，如订单号',
+    biz_type        VARCHAR(16)          COMMENT 'ORDER/REFUND/AFTER_SALE',
+    read_at         DATETIME             COMMENT 'null 表示未读',
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notification_id),
+    KEY idx_notify_user_time (user_id, created_at),
+    KEY idx_notify_user_read (user_id, read_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内通知';
+
+-- 店铺关注（#142）：同一用户同一店铺只有一条
+CREATE TABLE IF NOT EXISTS shop_follow (
+    follow_id  VARCHAR(32) NOT NULL,
+    shop_id    VARCHAR(32) NOT NULL,
+    user_id    VARCHAR(32) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (follow_id),
+    UNIQUE KEY uk_follow_user_shop (user_id, shop_id),
+    KEY idx_follow_shop (shop_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='店铺关注';
+
+-- 客服工单（#142）：用户与平台客服之间的可追踪会话
+CREATE TABLE IF NOT EXISTS ticket (
+    ticket_id   VARCHAR(32) NOT NULL,
+    ticket_no   VARCHAR(32) NOT NULL,
+    user_id     VARCHAR(32) NOT NULL,
+    type        VARCHAR(16) NOT NULL COMMENT 'ORDER/REFUND/TECH/OTHER',
+    title       VARCHAR(100) NOT NULL,
+    status      VARCHAR(16) NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN/PROCESSING/RESOLVED/CLOSED',
+    assignee_id VARCHAR(32) DEFAULT NULL,
+    biz_id      VARCHAR(32) DEFAULT NULL COMMENT '关联业务ID',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    resolved_at DATETIME DEFAULT NULL,
+    PRIMARY KEY (ticket_id),
+    UNIQUE KEY uk_ticket_no (ticket_no),
+    KEY idx_ticket_user (user_id, created_at),
+    KEY idx_ticket_status (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='客服工单';
+
+-- 工单消息（#142）
+CREATE TABLE IF NOT EXISTS ticket_message (
+    id          BIGINT NOT NULL AUTO_INCREMENT,
+    ticket_id   VARCHAR(32) NOT NULL,
+    sender_id   VARCHAR(32) NOT NULL,
+    sender_role VARCHAR(16) NOT NULL COMMENT 'USER/ADMIN',
+    content     VARCHAR(1000) NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_ticket_message (ticket_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工单消息';

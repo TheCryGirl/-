@@ -51,6 +51,15 @@ public final class IdGenerator {
         return "M" + randomHex(24);
     }
 
+    /** 纯数字随机串，用于通知/工单/关注等短业务号。 */
+    public static String randomDigits(int length) {
+        StringBuilder builder = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            builder.append(RANDOM.nextInt(10));
+        }
+        return builder.toString();
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

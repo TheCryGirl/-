@@ -91,6 +91,14 @@ export const addressApi = {
   setDefault: (addressId) => http.put(`/users/addresses/${addressId}/default`),
 }
 
+/* ---------------- 站内通知（#139） ---------------- */
+export const notificationApi = {
+  list: (params) => http.get('/notifications', { params }),
+  unreadCount: () => http.get('/notifications/unread-count'),
+  read: (notificationId) => http.put('/notifications/' + notificationId + '/read'),
+  readAll: () => http.put('/notifications/read-all'),
+}
+
 /* ---------------- 店铺（#49） ---------------- */
 export const shopApi = {
   mine: () => http.get('/shops/mine'),
@@ -101,6 +109,10 @@ export const shopApi = {
   // 运费设置（#136）：包邮门槛 + 分地区运费表，整体读取 / 整体保存
   mineFreight: () => http.get('/shops/mine/freight'),
   saveFreight: (payload) => http.put('/shops/mine/freight', payload),
+  detail: (shopId) => http.get(`/shops/${shopId}`),
+  follow: (shopId) => http.post(`/shops/${shopId}/follow`),
+  unfollow: (shopId) => http.delete(`/shops/${shopId}/follow`),
+  following: (params) => http.get('/shops/following', { params }),
 }
 
 /* ---------------- 收藏与浏览足迹（#52） ---------------- */
@@ -235,6 +247,15 @@ export const evaluationApi = {
 /* ---------------- 操作审计（#58） ---------------- */
 export const auditApi = {
   list: (params) => http.get('/audit-logs', { params }),
+}
+
+/* ---------------- 客服工单（#142） ---------------- */
+export const ticketApi = {
+  create: (payload) => http.post('/tickets', payload),
+  list: (params) => http.get('/tickets', { params }),
+  detail: (ticketId) => http.get(`/tickets/${ticketId}`),
+  reply: (ticketId, payload) => http.post(`/tickets/${ticketId}/messages`, payload),
+  updateStatus: (ticketId, status) => http.put(`/tickets/${ticketId}`, { status }),
 }
 
 export { http, extractData, extractList }

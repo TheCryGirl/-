@@ -18,6 +18,36 @@ const routes = [
     meta: { title: '搜索结果' },
   },
   {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('../views/Notifications.vue'),
+    meta: { title: '消息中心', requiresAuth: true },
+  },
+  {
+    path: '/shops/:shopId',
+    name: 'shop-home',
+    component: () => import('../views/ShopHome.vue'),
+    meta: { title: '店铺主页' },
+  },
+  {
+    path: '/following',
+    name: 'following-shops',
+    component: () => import('../views/FollowingShops.vue'),
+    meta: { title: '关注的店铺', requiresAuth: true },
+  },
+  {
+    path: '/tickets',
+    name: 'tickets',
+    component: () => import('../views/Tickets.vue'),
+    meta: { title: '我的工单', requiresAuth: true },
+  },
+  {
+    path: '/admin/tickets',
+    name: 'admin-tickets',
+    component: () => import('../views/admin/AdminTickets.vue'),
+    meta: { title: '客服工单', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
     path: '/products/:id',
     name: 'product-detail',
     component: () => import('../views/ProductDetail.vue'),

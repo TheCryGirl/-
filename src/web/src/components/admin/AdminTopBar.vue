@@ -18,6 +18,7 @@ const navItems = [
   { name: 'admin-config', label: '系统配置' },
   { name: 'admin-evaluations', label: '评价管理' },
   { name: 'admin-audit-logs', label: '审计日志' },
+  { name: 'admin-tickets', label: '客服工单' },
 ]
 
 const userName = computed(() => auth.user?.nickname || auth.user?.account || '管理员')

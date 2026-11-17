@@ -20,6 +20,7 @@ import com.mall.payment.mapper.PaymentCallbackMapper;
 import com.mall.payment.mapper.PaymentMapper;
 import com.mall.payment.service.CallbackResult;
 import com.mall.payment.service.MockPaymentService;
+import com.mall.payment.service.NotificationPublisher;
 import com.mall.payment.service.PaymentCallbackService;
 import com.mall.payment.service.PaymentService;
 import com.mall.payment.service.RefundService;
@@ -47,6 +48,7 @@ public class MockPaymentServiceImpl implements MockPaymentService {
     private final PaymentMapper paymentMapper;
     private final PaymentCallbackMapper callbackMapper;
     private final PaymentCallbackService callbackService;
+    private final NotificationPublisher notificationPublisher;
     private final RefundService refundService;
     private final SignatureService signatureService;
     private final ObjectMapper objectMapper;
@@ -78,6 +80,7 @@ public class MockPaymentServiceImpl implements MockPaymentService {
         }
 
         Payment latest = paymentMapper.selectById(payment.getPaymentId());
+        notificationPublisher.paySuccess(buyerId, latest.getOrderId(), latest.getAmount());
         return MockPayResponse.from(latest, tradeNo);
     }
 

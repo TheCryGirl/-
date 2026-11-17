@@ -19,6 +19,7 @@ import com.mall.order.dto.response.OrderPreviewResponse;
 import com.mall.order.dto.response.OrderLogisticsResponse;
 import com.mall.order.dto.response.LogisticsTrackResponse;
 import com.mall.order.service.LogisticsService;
+import com.mall.order.service.NotificationPublisher;
 import com.mall.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,9 @@ public class OrderController {
 
     private final OrderService orderService;
     private final LogisticsService logisticsService;
+    /** 通知发布器为可选依赖：缺失时不影响订单主流程 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private NotificationPublisher notificationPublisher;
     private final InternalTokenVerifier internalTokenVerifier;
 
     @PostMapping
@@ -155,7 +159,13 @@ public class OrderController {
             @RequestHeader(value = "X-User-Id", required = false) String operatorId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody ShipOrderRequest request) {
-        return Result.success(orderService.ship(orderId, operatorId, role, request));
+        OrderDetailResponse detail = orderService.ship(orderId, operatorId, role, request);
+        if (notificationPublisher != null) {
+            notificationPublisher.notifyBuyer(detail.getBuyerId(), "SHIPPED", "订单已发货",
+                    "订单 " + detail.getOrderId() + " 已发货，物流单号 " + detail.getTrackingNo() + "。",
+                    detail.getOrderId(), "ORDER");
+        }
+        return Result.success(detail);
     }
 
     /**

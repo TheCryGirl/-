@@ -298,7 +298,19 @@ onMounted(() => {
       </el-alert>
 
       <el-form :model="profile" label-width="80px" @submit.prevent>
-        <div class="grid gap-4 sm:grid-cols-2">
+        <el-card shadow="never">
+      <template #header>
+        <span class="text-base font-medium">我的服务</span>
+      </template>
+      <div class="flex flex-wrap gap-2">
+        <RouterLink class="jd-link-btn" :to="{ name: 'notifications' }">消息中心</RouterLink>
+        <RouterLink class="jd-link-btn" :to="{ name: 'following-shops' }">关注的店铺</RouterLink>
+        <RouterLink class="jd-link-btn" :to="{ name: 'tickets' }">我的工单</RouterLink>
+        <RouterLink class="jd-link-btn" :to="{ name: 'after-sales' }">我的售后</RouterLink>
+      </div>
+    </el-card>
+
+    <div class="grid gap-4 sm:grid-cols-2">
           <el-form-item label="昵称">
             <el-input
               v-model="profile.nickname"
