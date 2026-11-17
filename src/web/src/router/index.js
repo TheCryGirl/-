@@ -134,6 +134,12 @@ const routes = [
     meta: { title: '店铺资料', requiresAuth: true, role: 'SELLER' },
   },
   {
+    path: '/seller/freight',
+    name: 'seller-freight',
+    component: () => import('../views/seller/SellerFreight.vue'),
+    meta: { title: '运费设置', requiresAuth: true, role: 'SELLER' },
+  },
+  {
     path: '/seller/refunds',
     name: 'seller-refunds',
     component: () => import('../views/seller/SellerRefunds.vue'),

@@ -89,6 +89,7 @@ public class OrderService {
     private final ProductClient productClient;
     private final TransactionTemplate transactionTemplate;
     private final PlatformConfigService platformConfigService;
+    private final OrderPricingService orderPricingService;
 
     @Value("${order.timeout.minutes:30}")
     private long timeoutMinutes;
@@ -160,7 +161,20 @@ public class OrderService {
 
         String mainOrderId = multiShop ? IdGenerator.mainOrderId() : null;
         String mainOrderNo = multiShop ? IdGenerator.orderNo() : null;
-        long grandTotal = validated.stream().mapToLong(ValidatedItem::subtotal).sum();
+
+        // 计价链（#136）：商品小计 → 满减/满折 → 优惠券 → 加运费；下单与预览共用同一入口，
+        // 因此「预览显示的应付」和「落库的应付」不会出现两套算法。
+        List<OrderPricingService.ShopGoods> shopGoods = bySeller.entrySet().stream()
+                .map(entry -> new OrderPricingService.ShopGoods(entry.getKey(),
+                        entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
+                .toList();
+        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods,
+                address.getProvince());
+        Map<String, OrderPricingService.ShopPricing> pricingBySeller = new HashMap<>();
+        for (OrderPricingService.ShopPricing shop : pricing.shops()) {
+            pricingBySeller.put(shop.sellerId(), shop);
+        }
+        long grandTotal = pricing.payAmount();
 
         List<Order> subOrders = new ArrayList<>();
         List<OrderItem> allItems = new ArrayList<>();
@@ -170,7 +184,8 @@ public class OrderService {
             if (!shopActive(sellerId)) {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
             }
-            long shopTotal = entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum();
+            OrderPricingService.ShopPricing shopPricing = pricingBySeller.get(sellerId);
+            long shopTotal = shopPricing.goodsAmount();
             // 单店结算沿用调用方传入的 orderId，保持幂等记录与既有语义一致；
             // 跨店时第一个子订单也用该 orderId，其余子订单新生成。
             String subOrderId = subOrders.isEmpty() ? orderId : IdGenerator.orderId();
@@ -182,7 +197,9 @@ public class OrderService {
                     .mainOrderId(mainOrderId)
                     .status(OrderStatus.PENDING_PAYMENT)
                     .totalAmount(shopTotal)
-                    .payAmount(shopTotal)
+                    .freightAmount(shopPricing.freightAmount())
+                    .discountAmount(shopPricing.discountAmount())
+                    .payAmount(shopPricing.payAmount())
                     .receiver(address.getReceiver())
                     .receiverPhone(address.getPhone())
                     .addressFull(fullAddress(address))
@@ -300,30 +317,45 @@ public class OrderService {
     }
 
     /**
-     * 下单预览（#135）：接收购物车项，返回按店铺分组的预览。
-     * 校验规则与下单一致（未勾选/失效/下架/停用/库存不足都报错），但不落库、不预占。
-     * 金额一律服务端计算，前端不得自行计算。
+     * 下单预览（#135 分店结构 + #136 运费与优惠）。
+     *
+     * <p>校验规则与下单一致（未勾选/失效/下架/停用/库存不足都报错），但不落库、不预占。
+     * 金额一律走 {@link OrderPricingService} 的计价链，前端不得自行计算；
+     * 收货地址决定运费地区：没传 addressId 时用默认地址，没有地址则提示先选地址。
      */
     public OrderPreviewResponse preview(String buyerId, PreviewOrderRequest request) {
         requireUser(buyerId);
         List<String> cartItemIds = normalizeCartItemIds(request.getCartItemIds());
         List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
         List<ValidatedItem> validated = validateItems(selectedItems);
+        AddressDTO address = resolvePreviewAddress(buyerId, request.getAddressId());
 
         Map<String, List<ValidatedItem>> bySeller = new LinkedHashMap<>();
         for (ValidatedItem item : validated) {
             bySeller.computeIfAbsent(item.product().getSellerId(), seller -> new ArrayList<>()).add(item);
         }
-
-        List<OrderPreviewResponse.ShopPreview> shops = new ArrayList<>();
-        long total = 0L;
-        for (Map.Entry<String, List<ValidatedItem>> entry : bySeller.entrySet()) {
-            String sellerId = entry.getKey();
+        for (String sellerId : bySeller.keySet()) {
             if (!shopActive(sellerId)) {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
             }
-            long shopTotal = entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum();
-            total += shopTotal;
+        }
+
+        List<OrderPricingService.ShopGoods> shopGoods = bySeller.entrySet().stream()
+                .map(entry -> new OrderPricingService.ShopGoods(entry.getKey(),
+                        entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
+                .toList();
+        String region = address == null ? null : address.getProvince();
+        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods, region);
+
+        Map<String, OrderPricingService.ShopPricing> pricingBySeller = new java.util.HashMap<>();
+        for (OrderPricingService.ShopPricing shop : pricing.shops()) {
+            pricingBySeller.put(shop.sellerId(), shop);
+        }
+
+        List<OrderPreviewResponse.ShopPreview> shops = new ArrayList<>();
+        for (Map.Entry<String, List<ValidatedItem>> entry : bySeller.entrySet()) {
+            String sellerId = entry.getKey();
+            OrderPricingService.ShopPricing shopPricing = pricingBySeller.get(sellerId);
             List<OrderPreviewResponse.PreviewItem> items = entry.getValue().stream()
                     .map(item -> new OrderPreviewResponse.PreviewItem(
                             item.cartItem().getCartItemId(),
@@ -336,10 +368,30 @@ public class OrderService {
                             item.cartItem().getQuantity(),
                             item.subtotal()))
                     .toList();
-            shops.add(new OrderPreviewResponse.ShopPreview(sellerId, shopName(sellerId), shopTotal, items));
+            shops.add(new OrderPreviewResponse.ShopPreview(sellerId, shopName(sellerId),
+                    shopPricing.goodsAmount(), shopPricing.freightAmount(),
+                    shopPricing.discountAmount(), shopPricing.payAmount(), items));
         }
-        // 本期应付 = 商品总额；运费与优惠计价链在 #136 接入，前端一律以本接口为准。
-        return new OrderPreviewResponse(total, total, shops.size(), shops);
+        return new OrderPreviewResponse(pricing.goodsAmount(), pricing.freightAmount(),
+                pricing.discountAmount(), pricing.payAmount(), shops.size(), region, shops);
+    }
+
+    /**
+     * 预览用收货地址：显式传入则按 ID 查；否则取默认地址；都没有则提示先选地址。
+     */
+    private AddressDTO resolvePreviewAddress(String buyerId, String addressId) {
+        String wanted = trimToNull(addressId);
+        List<AddressDTO> addresses = listAddresses(buyerId);
+        if (wanted != null) {
+            return addresses.stream()
+                    .filter(address -> wanted.equals(address.getAddressId()))
+                    .findFirst()
+                    .orElseThrow(() -> new BizException(ErrorCode.PARAM_INVALID, "收货地址不存在"));
+        }
+        return addresses.stream()
+                .filter(address -> Boolean.TRUE.equals(address.getIsDefault()))
+                .findFirst()
+                .orElseThrow(() -> new BizException(ErrorCode.PARAM_INVALID, "请先选择收货地址"));
     }
 
     /** 取购物车并按 cartItemIds 过滤，未勾选/已失效的条目直接报错（与契约 5.3 一致）。 */
@@ -1000,12 +1052,17 @@ public class OrderService {
     }
 
     private AddressDTO findAddress(String buyerId, String addressId) {
+        return listAddresses(buyerId).stream()
+                .filter(address -> addressId.equals(address.getAddressId()))
+                .findFirst()
+                .orElseThrow(() -> new BizException(ErrorCode.PARAM_INVALID, "收货地址不存在"));
+    }
+
+    /** 拉取买家的收货地址列表；user-service 不可用时按 10005 报错。 */
+    private List<AddressDTO> listAddresses(String buyerId) {
         try {
             Result<List<AddressDTO>> result = userClient.addresses(buyerId, buyerId);
-            List<AddressDTO> addresses = unwrap(result, "user-service");
-            return addresses.stream().filter(address -> addressId.equals(address.getAddressId()))
-                    .findFirst()
-                    .orElseThrow(() -> new BizException(ErrorCode.PARAM_INVALID, "收货地址不存在"));
+            return unwrap(result, "user-service");
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -1093,6 +1150,8 @@ public class OrderService {
             response.setMainOrderNo(mainOrder == null ? null : mainOrder.getMainOrderNo());
         }
         response.setTotalAmount(order.getTotalAmount());
+        response.setFreightAmount(nullToZero(order.getFreightAmount()));
+        response.setDiscountAmount(nullToZero(order.getDiscountAmount()));
         response.setPayAmount(order.getPayAmount());
         response.setTrackingNo(order.getTrackingNo());
         response.setAddressSnapshot(new AddressSnapshot(order.getReceiver(), order.getReceiverPhone(),

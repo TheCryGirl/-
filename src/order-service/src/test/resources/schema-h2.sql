@@ -31,6 +31,8 @@ CREATE TABLE `order` (
     main_order_id      VARCHAR(32),
     status             VARCHAR(24) NOT NULL,
     total_amount       BIGINT NOT NULL,
+    freight_amount     BIGINT NOT NULL DEFAULT 0,
+    discount_amount    BIGINT NOT NULL DEFAULT 0,
     pay_amount         BIGINT NOT NULL,
     receiver           VARCHAR(32) NOT NULL,
     receiver_phone     VARCHAR(11) NOT NULL,

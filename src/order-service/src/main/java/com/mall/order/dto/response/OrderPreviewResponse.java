@@ -7,10 +7,11 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 下单预览响应（#135）：按店铺分组返回商品明细与金额。
+ * 下单预览响应（#136 接入运费与优惠后的版本）。
  *
- * <p>前端不得自行计算应付金额，一律以本接口返回为准。
- * 本期 payAmount = totalAmount（运费与优惠在 #136 接入计价链）。
+ * <p>按店铺分组返回商品明细与金额，前端**不得自行计算**，一律以本接口为准。
+ * 计价链顺序：商品小计 → 店铺/平台满减、满折 → 优惠券抵扣 → 加运费 → 应付合计；
+ * 因此 {@code payAmount = totalAmount - discountAmount + freightAmount}。
  */
 @Data
 @NoArgsConstructor
@@ -19,10 +20,16 @@ public class OrderPreviewResponse {
 
     /** 商品总额，单位分 */
     private Long totalAmount;
-    /** 应付合计，单位分 */
+    /** 运费合计，单位分 */
+    private Long freightAmount;
+    /** 优惠抵扣合计，单位分 */
+    private Long discountAmount;
+    /** 应付合计 = 商品总额 - 优惠 + 运费，单位分 */
     private Long payAmount;
     /** 参与结算的店铺数 */
     private Integer shopCount;
+    /** 本次预览使用的收货地区（收货地址的省份）；未选地址时为 null */
+    private String region;
     /** 按店铺分组的预览明细 */
     private List<ShopPreview> shops;
 
@@ -35,6 +42,12 @@ public class OrderPreviewResponse {
         private String shopName;
         /** 该店商品小计，单位分 */
         private Long totalAmount;
+        /** 该店运费，单位分 */
+        private Long freightAmount;
+        /** 该店优惠抵扣，单位分 */
+        private Long discountAmount;
+        /** 该店应付 = 小计 - 优惠 + 运费，单位分 */
+        private Long payAmount;
         private List<PreviewItem> items;
     }
 

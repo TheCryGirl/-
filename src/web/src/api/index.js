@@ -98,6 +98,9 @@ export const shopApi = {
   list: (params) => http.get('/shops', { params }),
   updateStatus: (shopId, status) => http.put(`/shops/${shopId}/status`, { status }),
   bySeller: (sellerId) => http.get(`/shops/seller/${sellerId}`),
+  // 运费设置（#136）：包邮门槛 + 分地区运费表，整体读取 / 整体保存
+  mineFreight: () => http.get('/shops/mine/freight'),
+  saveFreight: (payload) => http.put('/shops/mine/freight', payload),
 }
 
 /* ---------------- 收藏与浏览足迹（#52） ---------------- */

@@ -30,6 +30,7 @@ const navItems = [
 const sellerItems = [
   { name: 'seller-products', label: '商品管理' },
   { name: 'seller-shop', label: '店铺资料' },
+  { name: 'seller-freight', label: '运费设置' },
   { name: 'seller-shipments', label: '待发货' },
   { name: 'seller-refunds', label: '退款审核' },
   { name: 'seller-after-sales', label: '售后处理' },

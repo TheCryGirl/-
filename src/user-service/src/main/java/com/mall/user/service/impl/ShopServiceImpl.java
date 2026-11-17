@@ -205,6 +205,7 @@ public class ShopServiceImpl implements ShopService {
         response.setContactPhone(shop.getContactPhone());
         response.setContactWechat(shop.getContactWechat());
         response.setStatus(shop.getStatus());
+        response.setFreightTemplateId(shop.getFreightTemplateId());
         response.setCreatedAt(shop.getCreatedAt());
         response.setUpdatedAt(shop.getUpdatedAt());
         return response;

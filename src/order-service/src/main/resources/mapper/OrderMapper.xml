@@ -10,6 +10,8 @@
         <result property="mainOrderId" column="main_order_id"/>
         <result property="status" column="status"/>
         <result property="totalAmount" column="total_amount"/>
+        <result property="freightAmount" column="freight_amount"/>
+        <result property="discountAmount" column="discount_amount"/>
         <result property="payAmount" column="pay_amount"/>
         <result property="receiver" column="receiver"/>
         <result property="receiverPhone" column="receiver_phone"/>
@@ -26,23 +28,27 @@
     </resultMap>
 
     <sql id="orderColumns">
-        order_id, order_no, buyer_id, seller_id, main_order_id, status, total_amount, pay_amount,
+        order_id, order_no, buyer_id, seller_id, main_order_id, status, total_amount, freight_amount,
+        discount_amount, pay_amount,
         receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
         created_at, updated_at, created_by, updated_by, is_deleted, inventory_released
     </sql>
 
     <!-- 带别名的列清单：供联表/子查询场景使用，避免列名歧义 -->
     <sql id="orderColumnsAliased">
-        o.order_id, o.order_no, o.buyer_id, o.seller_id, o.main_order_id, o.status, o.total_amount, o.pay_amount,
+        o.order_id, o.order_no, o.buyer_id, o.seller_id, o.main_order_id, o.status, o.total_amount,
+        o.freight_amount, o.discount_amount, o.pay_amount,
         o.receiver, o.receiver_phone, o.address_full, o.tracking_no, o.expire_at, o.paid_at,
         o.created_at, o.updated_at, o.created_by, o.updated_by, o.is_deleted, o.inventory_released
     </sql>
 
     <insert id="insert" parameterType="com.mall.order.entity.Order">
-        INSERT INTO `order`(order_id, order_no, buyer_id, seller_id, main_order_id, status, total_amount, pay_amount,
+        INSERT INTO `order`(order_id, order_no, buyer_id, seller_id, main_order_id, status, total_amount,
+                            freight_amount, discount_amount, pay_amount,
                             receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
                             created_at, updated_at, created_by, updated_by, is_deleted, inventory_released)
-        VALUES (#{orderId}, #{orderNo}, #{buyerId}, #{sellerId}, #{mainOrderId}, #{status}, #{totalAmount}, #{payAmount},
+        VALUES (#{orderId}, #{orderNo}, #{buyerId}, #{sellerId}, #{mainOrderId}, #{status}, #{totalAmount},
+                #{freightAmount}, #{discountAmount}, #{payAmount},
                 #{receiver}, #{receiverPhone}, #{addressFull}, #{trackingNo}, #{expireAt}, #{paidAt},
                 #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0, 0)
     </insert>

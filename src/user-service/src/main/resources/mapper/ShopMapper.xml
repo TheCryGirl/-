@@ -4,7 +4,7 @@
 
     <sql id="shopColumns">
         shop_id, seller_id, name, logo, description, contact_phone, contact_wechat,
-        status, created_at, updated_at, is_deleted
+        status, freight_template_id, created_at, updated_at, is_deleted
     </sql>
 
     <insert id="insert">
@@ -31,6 +31,15 @@
         UPDATE shop
         SET status = #{status},
             updated_at = NOW()
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 运费模板换绑（#136）：卖家保存运费配置时同步写入 -->
+    <update id="updateFreightTemplateId">
+        UPDATE shop
+        SET freight_template_id = #{templateId},
+            updated_at = #{updatedAt}
         WHERE shop_id = #{shopId}
           AND is_deleted = 0
     </update>

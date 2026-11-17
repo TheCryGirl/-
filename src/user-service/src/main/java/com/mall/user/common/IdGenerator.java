@@ -33,6 +33,16 @@ public final class IdGenerator {
         return "H" + randomHex(24);
     }
 
+    /** 运费模板ID（#136） */
+    public static String freightTemplateId() {
+        return "FT" + randomHex(22);
+    }
+
+    /** 运费规则ID（#136） */
+    public static String freightRuleId() {
+        return "FR" + randomHex(22);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

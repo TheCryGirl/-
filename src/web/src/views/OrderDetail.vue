@@ -404,11 +404,31 @@ onMounted(load)
         </div>
       </el-card>
 
-      <!-- 金额 -->
+      <!-- 金额：#136 拆分商品金额 / 运费 / 优惠，应付与 pay_amount 一致 -->
       <el-card shadow="never">
-        <div class="flex items-center justify-between gap-3">
-          <span class="text-sm text-gray-600">应付总额</span>
-          <span class="text-xl font-bold text-red-600">¥{{ formatPrice(order.payAmount) }}</span>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">商品金额</span>
+            <span class="text-gray-900" data-testid="order-detail-goods">¥{{ formatPrice(order.totalAmount) }}</span>
+          </div>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">运费</span>
+            <span class="text-gray-900" data-testid="order-detail-freight">
+              ¥{{ formatPrice(order.freightAmount || 0) }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">优惠</span>
+            <span :class="order.discountAmount ? 'text-emerald-600' : 'text-gray-900'" data-testid="order-detail-discount">
+              {{ order.discountAmount ? '-' : '' }}¥{{ formatPrice(order.discountAmount || 0) }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+            <span class="text-sm text-gray-600">应付总额</span>
+            <span class="text-xl font-bold text-red-600" data-testid="order-detail-pay">
+              ¥{{ formatPrice(order.payAmount) }}
+            </span>
+          </div>
         </div>
       </el-card>
 
