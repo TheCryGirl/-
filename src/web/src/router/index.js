@@ -182,6 +182,13 @@ const routes = [
       meta: { title: '系统配置', requiresAuth: true, role: 'ADMIN' },
     },
   {
+    // #138：管理端补录物流轨迹，按订单号精确定位
+    path: '/admin/logistics',
+    name: 'admin-logistics',
+    component: () => import('../views/admin/AdminLogistics.vue'),
+    meta: { title: '物流管理', requiresAuth: true, role: 'ADMIN' },
+  },
+  {
     path: '/admin/evaluations',
     name: 'admin-evaluations',
     component: () => import('../views/admin/AdminEvaluations.vue'),

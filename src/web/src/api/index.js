@@ -160,6 +160,10 @@ export const orderApi = {
   cancel: (orderId) => http.put(`/orders/${orderId}/cancel`),
   ship: (orderId, payload) => http.put(`/orders/${orderId}/ship`, payload),
   confirm: (orderId) => http.put(`/orders/${orderId}/confirm`),
+  /* ---- 物流履约（#138） ---- */
+  logistics: (orderId) => http.get(`/orders/${orderId}/logistics`),
+  appendLogisticsTrack: (orderId, payload) =>
+    http.post(`/orders/${orderId}/logistics/tracks`, payload),
 }
 
 /* ---------------- 支付 ---------------- */

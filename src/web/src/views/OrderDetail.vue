@@ -13,6 +13,8 @@ import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import { formatPrice, formatTime } from '../utils/format'
 import PageHero from '../components/store/PageHero.vue'
+import LogisticsTimeline from '../components/store/LogisticsTimeline.vue'
+import { autoConfirmText } from '../utils/logistics'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +24,11 @@ const order = ref(null)
 const loading = ref(true)
 const loadError = ref('')
 const processing = ref(false)
+
+// 物流信息（#138）：与订单详情分开请求，物流接口失败不影响订单主体展示
+const logistics = ref(null)
+const logisticsLoading = ref(false)
+const logisticsError = ref('')
 
 // 订单评价（#57）：一单一评，买家在订单完成后方可提交
 const evaluations = ref([])
@@ -68,11 +75,33 @@ async function load() {
       return
     }
     order.value = orderData
-    await loadEvaluations()
+    await Promise.all([loadEvaluations(), loadLogistics()])
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载订单失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadLogistics() {
+  // 只有发过货的订单才展示物流区块，也就不必为未发货订单多打一次请求。
+  // （后端对未发货订单也会返回 200 + 空轨迹 + 提示语，这里纯属省一次往返）
+  if (!order.value || !['SHIPPED', 'COMPLETED'].includes(order.value.status)) return
+  logisticsLoading.value = true
+  logisticsError.value = ''
+  try {
+    const { data } = await orderApi.logistics(orderId)
+    if (!isOk(data)) {
+      logisticsError.value = data?.message || '加载物流信息失败'
+      logistics.value = null
+      return
+    }
+    logistics.value = unwrapResult(data)
+  } catch (err) {
+    logisticsError.value = resolveErrorMessage(err, '加载物流信息失败')
+    logistics.value = null
+  } finally {
+    logisticsLoading.value = false
   }
 }
 
@@ -300,6 +329,43 @@ onMounted(load)
         <p class="text-sm text-gray-500 mt-1 break-words">
           {{ order.addressSnapshot?.fullAddress || '-' }}
         </p>
+      </el-card>
+
+      <!-- 物流信息（#138）：时间线只在已发货/已完成时展示 -->
+      <el-card
+        v-if="['SHIPPED', 'COMPLETED'].includes(order.status)"
+        shadow="never"
+      >
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-base font-medium">物流信息</span>
+            <span v-if="logistics?.trackingNo" class="text-xs text-gray-500">
+              {{ logistics.expressCompanyLabel || order.expressCompanyLabel || '快递' }} ·
+              {{ logistics.trackingNo || order.trackingNo }}
+            </span>
+          </div>
+        </template>
+
+        <el-alert
+          v-if="order.status === 'SHIPPED' && (logistics?.autoConfirmRemainingMinutes ?? null) !== null"
+          class="mb-3"
+          type="info"
+          :closable="false"
+          show-icon
+          :title="`预计 ${autoConfirmText(logistics.autoConfirmRemainingMinutes)} 后自动确认收货，也可以现在手动确认`"
+        />
+
+        <p v-if="logistics?.shippedAt || order.shippedAt" class="mb-3 text-xs text-gray-400">
+          发货时间：{{ formatTime(logistics?.shippedAt || order.shippedAt) }}
+        </p>
+
+        <LogisticsTimeline
+          :tracks="logistics?.tracks || []"
+          :loading="logisticsLoading"
+          :error="logisticsError"
+          :empty-message="logistics?.message || '已发货，物流更新中'"
+          @retry="loadLogistics"
+        />
       </el-card>
 
       <!-- 商品信息 -->
