@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { evaluationApi, isOk, orderApi, productApi, unwrapResult } from '../api'
-import { currentRole } from '../stores/auth'
+import { currentUserId } from '../stores/auth'
 import {
   ORDER_STATUS_MAP,
   ORDER_STATUS_TAG,
@@ -35,15 +35,20 @@ const evalSubmitting = ref(false)
 const evalError = ref('')
 const evalFileInput = ref(null)
 
+/** 只要这笔订单是我买的，就能申请售后/评价——卖家身份同样可以（买入与卖出互不影响） */
+const isMyPurchase = computed(
+  () => Boolean(order.value?.buyerId) && order.value.buyerId === currentUserId.value,
+)
+
 const canApplyAfterSale = computed(
   () =>
-    currentRole.value === 'BUYER' &&
+    isMyPurchase.value &&
     ['PAID', 'SHIPPED', 'COMPLETED'].includes(order.value?.status),
 )
 
 const canEvaluate = computed(
   () =>
-    currentRole.value === 'BUYER' &&
+    isMyPurchase.value &&
     order.value?.status === 'COMPLETED' &&
     evaluations.value.length === 0,
 )
