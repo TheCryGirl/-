@@ -1,6 +1,7 @@
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS order_evaluation;
 DROP TABLE IF EXISTS order_compensation;
+DROP TABLE IF EXISTS order_logistics_track;
 DROP TABLE IF EXISTS order_idempotency;
 DROP TABLE IF EXISTS order_item;
 DROP TABLE IF EXISTS `order`;
@@ -38,6 +39,8 @@ CREATE TABLE `order` (
     receiver_phone     VARCHAR(11) NOT NULL,
     address_full       VARCHAR(255) NOT NULL,
     tracking_no        VARCHAR(64),
+    express_company    VARCHAR(16),
+    shipped_at         TIMESTAMP,
     expire_at          TIMESTAMP NOT NULL,
     paid_at            TIMESTAMP,
     created_at         TIMESTAMP NOT NULL,
@@ -125,4 +128,18 @@ CREATE TABLE audit_log (
     created_at    TIMESTAMP NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_audit_id UNIQUE (audit_id)
+);
+
+CREATE TABLE order_logistics_track (
+    id          BIGINT AUTO_INCREMENT NOT NULL,
+    track_id    VARCHAR(32) NOT NULL,
+    order_id    VARCHAR(32) NOT NULL,
+    status      VARCHAR(24) NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    occurred_at TIMESTAMP NOT NULL,
+    raw_json    VARCHAR(2048),
+    created_at  TIMESTAMP NOT NULL,
+    created_by  VARCHAR(32),
+    PRIMARY KEY (id),
+    CONSTRAINT uk_track_id UNIQUE (track_id)
 );

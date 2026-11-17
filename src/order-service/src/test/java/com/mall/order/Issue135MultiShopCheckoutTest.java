@@ -1,10 +1,12 @@
 package com.mall.order;
 
 import com.mall.order.client.CartClient;
+import com.mall.order.client.FreightClient;
 import com.mall.order.client.ProductClient;
 import com.mall.order.client.UserClient;
 import com.mall.order.client.dto.AddressDTO;
 import com.mall.order.client.dto.CartDTO;
+import com.mall.order.client.dto.FreightConfigDTO;
 import com.mall.order.client.dto.CartItemDTO;
 import com.mall.order.client.dto.ProductDetailDTO;
 import com.mall.order.client.dto.ReleaseResponseDTO;
@@ -84,6 +86,9 @@ class Issue135MultiShopCheckoutTest {
     private JdbcTemplate jdbcTemplate;
 
     @MockBean
+    private FreightClient freightClient;
+
+    @MockBean
     private CartClient cartClient;
 
     @MockBean
@@ -94,6 +99,12 @@ class Issue135MultiShopCheckoutTest {
 
     @BeforeEach
     void setUp() {
+        // #136 引入运费计算后，下单会调 FreightClient；本测试只验证
+        // 子订单拆分与状态流转，返回「无运费模板」保持金额断言不变
+        FreightConfigDTO noFreight = new FreightConfigDTO();
+        noFreight.setFreeThreshold(0L);
+        noFreight.setRules(java.util.List.of());
+        when(freightClient.bySeller(anyString())).thenReturn(Result.success(noFreight));
         jdbcTemplate.update("DELETE FROM order_compensation");
         jdbcTemplate.update("DELETE FROM order_idempotency");
         jdbcTemplate.update("DELETE FROM order_item");
@@ -210,6 +221,7 @@ class Issue135MultiShopCheckoutTest {
         orderService.markPaid(subB);
 
         ShipOrderRequest shipA = new ShipOrderRequest();
+        shipA.setExpressCompany("SF");
         shipA.setTrackingNo("SF135A");
         orderService.ship(subA, SELLER_A, "SELLER", shipA);
         assertThat(orderMapper.selectById(subA).getStatus()).isEqualTo(OrderStatus.SHIPPED);
@@ -223,6 +235,7 @@ class Issue135MultiShopCheckoutTest {
                 .isEqualTo(OrderStatus.PAID);
 
         ShipOrderRequest shipB = new ShipOrderRequest();
+        shipB.setExpressCompany("SF");
         shipB.setTrackingNo("SF135B");
         orderService.ship(subB, SELLER_B, "SELLER", shipB);
         orderService.confirm(subB, BUYER);

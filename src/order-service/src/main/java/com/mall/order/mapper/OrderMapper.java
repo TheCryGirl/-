@@ -34,8 +34,22 @@ public interface OrderMapper {
     int markPaid(@Param("orderId") String orderId, @Param("paidAt") LocalDateTime paidAt);
 
     int markShipped(@Param("orderId") String orderId,
+                    @Param("expressCompany") String expressCompany,
                     @Param("trackingNo") String trackingNo,
-                    @Param("updatedAt") LocalDateTime updatedAt);
+                    @Param("shippedAt") LocalDateTime shippedAt);
+
+    /**
+     * 自动确认收货的候选：SHIPPED 且发货时间早于截止点（任务 #138）。
+     * 没有 shipped_at 的历史单不会被扫到，由迁移脚本回填后才会进入。
+     */
+    List<String> selectAutoConfirmCandidates(@Param("deadline") LocalDateTime deadline,
+                                             @Param("limit") int limit);
+
+    /**
+     * 自动确认收货的 CAS 抢占：只把仍是 SHIPPED 的单改成 COMPLETED。
+     * 返回 0 表示已被买家手动确认、或被另一个调度实例抢先处理，调用方直接跳过。
+     */
+    int markAutoCompleted(@Param("orderId") String orderId, @Param("updatedAt") LocalDateTime updatedAt);
 
     int markCompleted(@Param("orderId") String orderId, @Param("updatedAt") LocalDateTime updatedAt);
 

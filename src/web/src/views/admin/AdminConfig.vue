@@ -36,6 +36,13 @@ const RULES = {
     unit: '条',
     hint: '每轮超时扫描最多处理的订单数',
   },
+  // #138：自动确认收货阈值。默认 14400 分钟 = 10 天；验收时改 1 分钟即可造到期订单
+  'order.auto-confirm.minutes': {
+    min: 1,
+    max: 86400,
+    unit: '分钟',
+    hint: '发货后超过该时长未确认收货，系统自动完成订单；1440 分钟 = 1 天',
+  },
 }
 
 const keys = computed(() => Object.keys(labels.value))

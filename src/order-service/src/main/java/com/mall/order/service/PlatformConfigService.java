@@ -26,7 +26,8 @@ public class PlatformConfigService {
     /** 各键的默认值，用于配置中心尚未发布过该键时的兜底 */
     private static final Map<String, String> DEFAULTS = Map.of(
             "order.timeout.minutes", "30",
-            "order.timeout.batch-size", "100");
+            "order.timeout.batch-size", "100",
+            "order.auto-confirm.minutes", "14400");
 
     private final NacosConfigService nacosConfigService;
     private final ConfigAuditMapper configAuditMapper;
@@ -127,6 +128,10 @@ public class PlatformConfigService {
         }
         if ("order.timeout.batch-size".equals(key) && (value < 1 || value > 500)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "扫描批量需在 1~500 之间");
+        }
+        // 下限 1 分钟：验收要求把 N 配成 1 分钟造到期订单；上限 60 天，避免误填成永不确认
+        if ("order.auto-confirm.minutes".equals(key) && (value < 1 || value > 86400)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "自动确认收货分钟数需在 1~86400 之间");
         }
         return String.valueOf(value);
     }

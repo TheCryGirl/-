@@ -77,6 +77,24 @@ class PlatformConfigServiceTest {
     }
 
     @Test
+    void acceptsAutoConfirmMinutesWithinRangeAndRejectsOutside() {
+        doReturn("order.timeout.minutes: 30\norder.auto-confirm.minutes: 14400\n").when(nacos).fetchContent();
+        doNothing().when(nacos).publish(anyString());
+
+        // 验收要求「把 N 配成 1 分钟」，下限必须放到 1
+        Map<String, String> updated = service.update(Map.of("order.auto-confirm.minutes", "1"), "U1");
+        assertEquals("1", updated.get("order.auto-confirm.minutes"));
+
+        BizException zero = assertThrows(BizException.class,
+                () -> service.update(Map.of("order.auto-confirm.minutes", "0"), "U1"));
+        assertEquals(true, zero.getMessage().contains("1~86400"));
+
+        BizException tooLarge = assertThrows(BizException.class,
+                () -> service.update(Map.of("order.auto-confirm.minutes", "100000"), "U1"));
+        assertEquals(true, tooLarge.getMessage().contains("1~86400"));
+    }
+
+    @Test
     void rejectsUnknownKey() {
         BizException e = assertThrows(BizException.class,
                 () -> service.update(Map.of("some.hidden.key", "1"), "U1"));

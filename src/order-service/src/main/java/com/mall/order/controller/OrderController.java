@@ -7,6 +7,7 @@ import com.mall.order.common.Result;
 import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.dto.request.CreateOrderRequest;
 import com.mall.order.dto.request.PreviewOrderRequest;
+import com.mall.order.dto.request.LogisticsTrackRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
 import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.CreateOrderResponse;
@@ -15,6 +16,9 @@ import com.mall.order.dto.response.MainOrderListItem;
 import com.mall.order.dto.response.OrderDetailResponse;
 import com.mall.order.dto.response.OrderListItem;
 import com.mall.order.dto.response.OrderPreviewResponse;
+import com.mall.order.dto.response.OrderLogisticsResponse;
+import com.mall.order.dto.response.LogisticsTrackResponse;
+import com.mall.order.service.LogisticsService;
 import com.mall.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
+    private final LogisticsService logisticsService;
     private final InternalTokenVerifier internalTokenVerifier;
 
     @PostMapping
@@ -151,6 +156,33 @@ public class OrderController {
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody ShipOrderRequest request) {
         return Result.success(orderService.ship(orderId, operatorId, role, request));
+    }
+
+    /**
+     * 订单物流信息（#138）：快递公司、单号与轨迹时间线。
+     *
+     * <p>未发货订单也返回 200，只是 tracks 为空并带提示 message，
+     * 前端按 shipped / tracks 判断即可，不必把「未发货」当成错误处理。
+     */
+    @GetMapping("/{orderId}/logistics")
+    public Result<OrderLogisticsResponse> logistics(
+            @PathVariable String orderId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        return Result.success(logisticsService.detail(orderId, userId, role));
+    }
+
+    /**
+     * 手工补录一条物流轨迹（#138）：本期不接第三方快递 API。
+     * 卖家只能补自己店铺的订单，管理员不受限。
+     */
+    @PostMapping("/{orderId}/logistics/tracks")
+    public Result<LogisticsTrackResponse> appendTrack(
+            @PathVariable String orderId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @Valid @RequestBody LogisticsTrackRequest request) {
+        return Result.success(logisticsService.append(orderId, userId, role, request));
     }
 
     @PutMapping("/{orderId}/confirm")

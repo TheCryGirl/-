@@ -10,6 +10,7 @@ import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.controller.OrderController;
 import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.OrderListItem;
+import com.mall.order.service.LogisticsService;
 import com.mall.order.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -196,7 +197,7 @@ class AdminFinanceSummaryIntegrationTest {
     // ------------------------------------------------------------------ 工具
 
     private OrderController controller() {
-        return new OrderController(orderService, mock(InternalTokenVerifier.class));
+        return new OrderController(orderService, mock(LogisticsService.class), mock(InternalTokenVerifier.class));
     }
 
     private static void assertAdminOnly(Runnable action) {

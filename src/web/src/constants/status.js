@@ -127,6 +127,55 @@ export const PAYMENT_STATUS_TAG = {
   REFUNDED: 'info',
 }
 
+/* ---------------- 物流履约（#138） ---------------- */
+
+/**
+ * 快递公司枚举。
+ *
+ * 与后端 ExpressCompany 一一对应：发货只接受这里的编码，后端也按编码校验，
+ * 两边都不接受自由文本。新增快递公司必须同时改后端枚举，否则发货会被 10001 拒绝。
+ */
+export const EXPRESS_COMPANIES = [
+  { code: 'SF', label: '顺丰速运' },
+  { code: 'JD', label: '京东物流' },
+  { code: 'ZTO', label: '中通快递' },
+  { code: 'YTO', label: '圆通速递' },
+  { code: 'STO', label: '申通快递' },
+  { code: 'YUNDA', label: '韵达速递' },
+  { code: 'JTSD', label: '极兔速递' },
+  { code: 'EMS', label: '中国邮政EMS' },
+]
+
+export const EXPRESS_COMPANY_MAP = Object.fromEntries(
+  EXPRESS_COMPANIES.map((item) => [item.code, item.label]),
+)
+
+/** 物流轨迹状态：abnormal 的节点在时间线上标红 */
+export const LOGISTICS_STATUS_MAP = {
+  COLLECTED: '已揽收',
+  IN_TRANSIT: '运输中',
+  OUT_FOR_DELIVERY: '派送中',
+  SIGNED: '已签收',
+  EXCEPTION: '异常件',
+}
+
+export const LOGISTICS_STATUS_TAG = {
+  COLLECTED: 'info',
+  IN_TRANSIT: 'primary',
+  OUT_FOR_DELIVERY: 'warning',
+  SIGNED: 'success',
+  EXCEPTION: 'danger',
+}
+
+/** 录入轨迹时可选的顺序，异常件放最后，避免误点 */
+export const LOGISTICS_STATUS_OPTIONS = [
+  'COLLECTED',
+  'IN_TRANSIT',
+  'OUT_FOR_DELIVERY',
+  'SIGNED',
+  'EXCEPTION',
+]
+
 /* ---------------- 通用取值函数 ---------------- */
 
 /**

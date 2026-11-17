@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.OrderLogisticsTrackMapper">
+
+    <resultMap id="TrackMap" type="com.mall.order.entity.OrderLogisticsTrack">
+        <id property="id" column="id"/>
+        <result property="trackId" column="track_id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="status" column="status"/>
+        <result property="description" column="description"/>
+        <result property="occurredAt" column="occurred_at"/>
+        <result property="rawJson" column="raw_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="createdBy" column="created_by"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, track_id, order_id, status, description, occurred_at, raw_json, created_at, created_by
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.order.entity.OrderLogisticsTrack">
+        INSERT INTO order_logistics_track(track_id, order_id, status, description, occurred_at,
+                                         raw_json, created_at, created_by)
+        VALUES (#{trackId}, #{orderId}, #{status}, #{description}, #{occurredAt},
+                #{rawJson}, #{createdAt}, #{createdBy})
+    </insert>
+
+    <!-- 按时间正序；occurred_at 相同（同一分钟补录多条）时用自增 id 兜底，保证顺序稳定 -->
+    <select id="selectByOrderId" resultMap="TrackMap">
+        SELECT <include refid="columns"/>
+        FROM order_logistics_track
+        WHERE order_id = #{orderId}
+        ORDER BY occurred_at, id
+    </select>
+
+    <select id="countByOrderId" resultType="long">
+        SELECT COUNT(*) FROM order_logistics_track WHERE order_id = #{orderId}
+    </select>
+
+    <delete id="deleteByOrderId">
+        DELETE FROM order_logistics_track WHERE order_id = #{orderId}
+    </delete>
+</mapper>

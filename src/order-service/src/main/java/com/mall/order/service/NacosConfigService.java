@@ -34,6 +34,7 @@ public class NacosConfigService {
     public static final Map<String, String> WHITELIST = new LinkedHashMap<>() {{
         put("order.timeout.minutes", "订单支付超时（分钟）");
         put("order.timeout.batch-size", "超时扫描单批条数");
+        put("order.auto-confirm.minutes", "发货后自动确认收货（分钟，默认 14400 = 10 天）");
     }};
 
     private static final Duration TIMEOUT = Duration.ofSeconds(5);

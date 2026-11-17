@@ -192,6 +192,7 @@ class OrderServiceTest {
         assertThat(orderMapper.selectById(created.getOrderId()).getStatus()).isEqualTo(OrderStatus.PAID);
 
         ShipOrderRequest ship = new ShipOrderRequest();
+        ship.setExpressCompany("SF");
         ship.setTrackingNo("SF123456");
         assertThat(orderService.ship(created.getOrderId(), SELLER, "SELLER", ship).getStatus())
                 .isEqualTo(OrderStatus.SHIPPED);
