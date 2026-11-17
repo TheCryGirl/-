@@ -10,7 +10,7 @@ import {
   productApi,
   unwrapResult,
 } from '../api'
-import { isLoggedIn } from '../stores/auth'
+import { isLoggedIn, currentUserId } from '../stores/auth'
 import StoreIcon from '../components/store/StoreIcon.vue'
 
 const route = useRoute()
@@ -67,6 +67,11 @@ const priceParts = computed(() => {
 const quantityMax = computed(() => Math.max(1, Math.min(999, selectedSku.value?.stockAvailable ?? 999)))
 
 const soldOut = computed(() => (selectedSku.value?.stockAvailable ?? 0) <= 0)
+
+/** 自己发布的商品不能购买：卖家只能管理，不能下单 */
+const isOwnProduct = computed(
+  () => Boolean(product.value?.sellerId) && product.value.sellerId === currentUserId.value,
+)
 
 watch(selectedSku, () => {
   quantity.value = Math.min(quantityMax.value, Math.max(1, Number(quantity.value) || 1))
@@ -229,6 +234,10 @@ function checkedSku() {
 
 async function addToCart() {
   if (!ensureLogin()) return
+  if (isOwnProduct.value) {
+    setNotice('这是你自己发布的商品，不能购买', 'warning')
+    return
+  }
   const sku = checkedSku()
   if (!sku) return
   if (cartBusy.value) return
@@ -254,6 +263,10 @@ async function addToCart() {
 
 async function buyNow() {
   if (!ensureLogin()) return
+  if (isOwnProduct.value) {
+    setNotice('这是你自己发布的商品，不能购买', 'warning')
+    return
+  }
   const sku = checkedSku()
   if (!sku) return
   if (buyBusy.value) return
@@ -418,6 +431,16 @@ onMounted(() => {
             @close="notice = ''"
           />
 
+          <el-alert
+            v-if="isOwnProduct"
+            type="warning"
+            :closable="false"
+            show-icon
+            class="mb-3"
+            title="这是你自己发布的商品，不能购买"
+            description="如需调整价格、库存或上下架，请到「卖家中心 → 商品管理」。"
+          />
+
           <div class="jd-detail__actions">
             <el-button
               class="jd-detail__fav"
@@ -433,7 +456,7 @@ onMounted(() => {
               type="primary"
               plain
               class="jd-detail__btn"
-              :disabled="soldOut || !selectedSku"
+              :disabled="soldOut || !selectedSku || isOwnProduct"
               :loading="cartBusy"
               @click="addToCart"
             >
@@ -442,11 +465,11 @@ onMounted(() => {
             <el-button
               type="danger"
               class="jd-detail__btn jd-detail__btn--main"
-              :disabled="soldOut || !selectedSku"
+              :disabled="soldOut || !selectedSku || isOwnProduct"
               :loading="buyBusy"
               @click="buyNow"
             >
-              立即购买
+              {{ isOwnProduct ? '不能购买自己的商品' : '立即购买' }}
             </el-button>
           </div>
         </div>

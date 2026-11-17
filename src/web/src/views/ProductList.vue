@@ -12,7 +12,7 @@ import HeroCarousel from '../components/store/HeroCarousel.vue'
 import ServiceStrip from '../components/store/ServiceStrip.vue'
 import { resolveErrorMessage, showError, showInfo, showSuccess } from '../components/ui/message'
 import { curatedItems, flashSaleItems, heroSlides } from '../data/showcase'
-import { isLoggedIn } from '../stores/auth'
+import { currentUserId, isLoggedIn } from '../stores/auth'
 import { formatTotal } from '../utils/format'
 
 const route = useRoute()
@@ -312,6 +312,10 @@ async function toggleFavorite(product) {
 /** 快捷加购：列表没有 SKU，先取详情里的可售规格再加车 */
 async function quickAdd(product, event) {
   if (!requireLogin()) return
+  if (product.sellerId && product.sellerId === currentUserId.value) {
+    showError('这是你自己发布的商品，不能购买')
+    return
+  }
   if (addBusyId.value) return
   addBusyId.value = product.productId
   try {

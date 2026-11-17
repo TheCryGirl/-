@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import StoreIcon from './store/StoreIcon.vue'
+import { currentUserId } from '../stores/auth'
 
 const props = defineProps({
   product: { type: Object, required: true },
@@ -55,6 +56,11 @@ const statusType = computed(() => {
 const stock = computed(() => Number(props.product.stock))
 
 const onSale = computed(() => (props.product.status ?? 'ON_SALE') === 'ON_SALE')
+
+/** 自己发布的商品：卡片上禁止快捷加购，点进详情也会被拦下 */
+const isOwnProduct = computed(
+  () => Boolean(props.product.sellerId) && props.product.sellerId === currentUserId.value,
+)
 </script>
 
 <template>
@@ -71,7 +77,8 @@ const onSale = computed(() => (props.product.status ?? 'ON_SALE') === 'ON_SALE')
       </div>
 
       <div class="jd-card__tags">
-        <span class="jd-card__tag">包邮</span>
+        <span v-if="isOwnProduct" class="jd-card__tag jd-card__tag--own">我发布的</span>
+        <span v-else class="jd-card__tag">包邮</span>
       </div>
 
       <div class="jd-card__quick">
@@ -90,7 +97,8 @@ const onSale = computed(() => (props.product.status ?? 'ON_SALE') === 'ON_SALE')
           type="button"
           class="jd-card__quick-btn"
           aria-label="加入购物车"
-          :disabled="busy || !onSale"
+          :title="isOwnProduct ? '自己发布的商品不能购买' : '加入购物车'"
+          :disabled="busy || !onSale || isOwnProduct"
           @click.stop="emit('add', product, $event)"
         >
           <StoreIcon name="cart" :size="16" />
@@ -185,6 +193,11 @@ const onSale = computed(() => (props.product.status ?? 'ON_SALE') === 'ON_SALE')
 }
 .jd-card__tag--red {
   background: linear-gradient(120deg, #ff6a3d, var(--jd-red));
+  color: #fff;
+}
+/* 自己发布的商品标记 */
+.jd-card__tag--own {
+  background: rgba(17, 24, 39, 0.72);
   color: #fff;
 }
 

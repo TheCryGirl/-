@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cartApi, favoriteApi, isOk, productApi, unwrapResult } from '../api'
@@ -7,7 +7,7 @@ import PageHero from '../components/store/PageHero.vue'
 import StoreIcon from '../components/store/StoreIcon.vue'
 import { resolveErrorMessage, showError, showInfo, showSuccess } from '../components/ui/message'
 import { hotKeywords } from '../data/showcase'
-import { isLoggedIn } from '../stores/auth'
+import { currentUserId, isLoggedIn } from '../stores/auth'
 import { formatTotal } from '../utils/format'
 import { clearSearchHistory, pushSearchHistory, readSearchHistory } from '../utils/searchHistory'
 
@@ -217,6 +217,10 @@ async function toggleFavorite(product) {
 
 async function quickAdd(product) {
   if (!requireLogin()) return
+  if (product.sellerId && product.sellerId === currentUserId.value) {
+    showError('这是你自己发布的商品，不能购买')
+    return
+  }
   if (addBusyId.value) return
   addBusyId.value = product.productId
   try {
