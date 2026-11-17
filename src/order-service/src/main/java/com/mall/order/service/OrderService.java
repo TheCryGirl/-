@@ -13,6 +13,7 @@ import com.mall.order.client.dto.ShopBriefDTO;
 import com.mall.order.client.dto.SkuDTO;
 import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
+import com.mall.order.common.ExpressCompany;
 import com.mall.order.common.IdGenerator;
 import com.mall.order.common.IdempotencyStatus;
 import com.mall.order.common.OrderStateMachine;
@@ -82,6 +83,7 @@ public class OrderService {
     private final ProductClient productClient;
     private final TransactionTemplate transactionTemplate;
     private final PlatformConfigService platformConfigService;
+    private final AutoConfirmPolicy autoConfirmPolicy;
 
     @Value("${order.timeout.minutes:30}")
     private long timeoutMinutes;
@@ -521,11 +523,19 @@ public class OrderService {
                 && !operatorId.equals(order.getSellerId()))) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权操作该订单");
         }
+        // 快递公司必须来自枚举：不接受「顺丰」「SF」混用，落库统一存编码（#138）
+        ExpressCompany company = ExpressCompany.parse(request.getExpressCompany());
+        if (company == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID,
+                    "快递公司不合法，请从列表中选择");
+        }
+        String trackingNo = requireText(request.getTrackingNo(), "物流单号");
+
         if (order.getStatus() == OrderStatus.SHIPPED) {
             return toDetail(order);
         }
         OrderStateMachine.assertCanTransit(order.getStatus(), OrderStatus.SHIPPED);
-        int updated = orderMapper.markShipped(orderId, request.getTrackingNo().trim(), LocalDateTime.now());
+        int updated = orderMapper.markShipped(orderId, company.name(), trackingNo, LocalDateTime.now());
         if (updated == 0) {
             Order latest = requireOrder(orderId);
             if (latest.getStatus() != OrderStatus.SHIPPED) {
@@ -533,6 +543,24 @@ public class OrderService {
             }
         }
         return toDetail(requireOrder(orderId));
+    }
+
+    /**
+     * 自动确认收货（任务 #138）。扫描任务只找候选，状态 CAS 在这里完成。
+     *
+     * <p>与超时取消同构：条件更新影响行数 0 即说明这一单已被别人处理——
+     * 可能是买家手动确认了，也可能是另一个调度实例抢先扫到。
+     * 两种情况下都不该再动它，直接返回 false。
+     *
+     * @return true 表示本次调用真正把订单改成了 COMPLETED
+     */
+    public boolean autoConfirm(String orderId) {
+        int updated = orderMapper.markAutoCompleted(orderId, LocalDateTime.now());
+        if (updated == 0) {
+            return false;
+        }
+        log.info("订单超期自动确认收货, orderId={}", orderId);
+        return true;
     }
 
     public OrderDetailResponse confirm(String orderId, String buyerId) {
@@ -722,6 +750,13 @@ public class OrderService {
         response.setTotalAmount(order.getTotalAmount());
         response.setPayAmount(order.getPayAmount());
         response.setTrackingNo(order.getTrackingNo());
+        response.setExpressCompany(order.getExpressCompany());
+        response.setExpressCompanyLabel(ExpressCompany.labelOf(order.getExpressCompany()));
+        response.setShippedAt(TimeUtils.format(order.getShippedAt()));
+        if (order.getStatus() == OrderStatus.SHIPPED) {
+            response.setAutoConfirmRemainingMinutes(
+                    autoConfirmPolicy.remainingMinutes(order.getShippedAt(), autoConfirmPolicy.minutes()));
+        }
         response.setAddressSnapshot(new AddressSnapshot(order.getReceiver(), order.getReceiverPhone(),
                 order.getAddressFull()));
         response.setItems(orderItemMapper.selectByOrderId(order.getOrderId()).stream()

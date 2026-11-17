@@ -17,6 +17,16 @@ public class OrderDetailResponse {
     private AddressSnapshot addressSnapshot;
     private List<OrderItemResponse> items;
     private String trackingNo;
+    /** 快递公司编码与展示名（#138），未发货时均为 null */
+    private String expressCompany;
+    private String expressCompanyLabel;
+    private String shippedAt;
+    /**
+     * 预计还有几分钟自动确认收货（向上取整，已到期为 0）；
+     * 未发货或已不在 SHIPPED 状态时为 null，前端据此决定是否显示倒计时文案。
+     * 单位取分钟是为了支持「配成 1 分钟」的验收场景，前端自行折算成天/小时。
+     */
+    private Long autoConfirmRemainingMinutes;
     private String createdAt;
     private String paidAt;
     private String expireAt;
