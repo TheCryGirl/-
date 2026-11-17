@@ -90,8 +90,16 @@ public class BrowseHistoryServiceImpl implements BrowseHistoryService {
     }
 
     @Override
-    public void remove(String userId, String productId) {
+    public List<String> recentProductIds(String userId, int limit) {
         requireUser(userId);
+        int safeLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, limit);
+        return browseHistoryMapper.selectRecent(userId, safeLimit).stream()
+                .map(BrowseHistory::getProductId)
+                .toList();
+    }
+
+    @Override
+    public void remove(String userId, String productId) {        requireUser(userId);
         browseHistoryMapper.deleteByUserAndProduct(userId, requireProductId(productId));
     }
 

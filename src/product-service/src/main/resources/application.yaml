@@ -32,6 +32,15 @@ spring:
         enabled: ${NACOS_ENABLED:true}
         fail-fast: false
 
+    openfeign:
+      client:
+        config:
+          default:
+            # #141 推荐要串行取 user-service 的浏览与 order-service 的购买行为，
+            # 下游慢时必须快速失败，降级为冷启动而不是拖住首页
+            connect-timeout: 1000
+            read-timeout: 1500
+
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss

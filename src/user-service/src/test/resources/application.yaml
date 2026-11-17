@@ -37,3 +37,7 @@ audit:
 jwt:
   secret: test-secret-please-change-in-production-0123456789
   expiration-hours: 1
+
+user:
+  # 内部接口令牌（#141 内部浏览行为接口测试用），与 ServiceIngressFilter 对应
+  internal-token: test-internal-token

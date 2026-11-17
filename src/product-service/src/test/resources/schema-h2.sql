@@ -2,6 +2,7 @@ DROP TABLE IF EXISTS stock_reservation_item;
 DROP TABLE IF EXISTS stock_reservation;
 DROP TABLE IF EXISTS sku;
 DROP TABLE IF EXISTS product;
+DROP TABLE IF EXISTS product_setting;
 DROP TABLE IF EXISTS category;
 
 CREATE TABLE category (

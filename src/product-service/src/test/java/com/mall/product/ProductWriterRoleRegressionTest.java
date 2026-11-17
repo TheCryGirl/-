@@ -6,6 +6,7 @@ import com.mall.product.config.InternalTokenVerifier;
 import com.mall.product.controller.ProductController;
 import com.mall.product.service.AuditLogPublisher;
 import com.mall.product.service.ProductService;
+import com.mall.product.service.RecommendService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -25,7 +26,7 @@ class ProductWriterRoleRegressionTest {
     MockMvc mvc;
     @BeforeEach void setup() {
         service=mock(ProductService.class);
-        mvc=MockMvcBuilders.standaloneSetup(new ProductController(service,mock(InternalTokenVerifier.class),mock(AuditLogPublisher.class)))
+        mvc=MockMvcBuilders.standaloneSetup(new ProductController(service,mock(RecommendService.class),mock(InternalTokenVerifier.class),mock(AuditLogPublisher.class)))
                 .setControllerAdvice(new Errors()).build();
     }
     MockHttpServletRequestBuilder request(int op) {

@@ -305,12 +305,56 @@ async function buyNow() {
   }
 }
 
-/* ---------- 4. 生命周期 ---------- */
+/* ---------- 4. 相似商品（#141 个性化推荐 DETAIL 场景） ---------- */
+const similar = ref([])
+const similarLoading = ref(false)
+
+async function loadSimilar() {
+  const productId = route.params.id
+  if (!productId) {
+    similar.value = []
+    return
+  }
+  similarLoading.value = true
+  try {
+    const { data } = await productApi.recommend({ scene: 'DETAIL', productId, limit: 8 })
+    if (!isOk(data)) {
+      similar.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    similar.value = Array.isArray(payload?.items) ? payload.items : []
+  } catch {
+    // 推荐失败不影响详情页主流程，直接不展示该区块
+    similar.value = []
+  } finally {
+    similarLoading.value = false
+  }
+}
+
+function coverOf(item) {
+  const raw = item?.mainImage
+  if (!raw) return ''
+  if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('/')) return raw
+  return `/images/${raw}`
+}
+
+function goProduct(productId) {
+  router.push({ name: 'product-detail', params: { id: productId } })
+}
+
+/* ---------- 5. 生命周期 ---------- */
 onMounted(() => {
   loadCategoryNames()
   load()
   loadEvaluations()
+  loadSimilar()
 })
+
+watch(
+  () => route.params.id,
+  () => loadSimilar(),
+)
 </script>
 
 <template>
@@ -532,12 +576,109 @@ onMounted(() => {
           />
         </div>
       </div>
+
+      <!-- #141 相似商品：同分类热销，横向卡片 -->
+      <section v-if="similar.length" class="jd-detail__similar" data-testid="product-detail-similar">
+        <header class="jd-detail__similar-head">
+          <h2>相似商品</h2>
+          <span>同类目热销，供你对比</span>
+        </header>
+        <div class="jd-detail__similar-rail" :aria-busy="similarLoading ? 'true' : 'false'">
+          <button
+            v-for="item in similar"
+            :key="item.productId"
+            type="button"
+            class="jd-detail__similar-card"
+            @click="goProduct(item.productId)"
+          >
+            <img v-if="coverOf(item)" :src="coverOf(item)" :alt="item.title" loading="lazy" />
+            <span v-else class="jd-detail__similar-placeholder">暂无图片</span>
+            <span class="jd-detail__similar-title">{{ item.title }}</span>
+            <span class="jd-detail__similar-price">¥{{ formatPrice(item.price) }}</span>
+          </button>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped>
 /* 商品详情：与首页同一套视觉语言（京东风格），逻辑与接口调用保持原样 */
+
+/* #141 相似商品横向卡片 */
+.jd-detail__similar {
+  margin-top: 26px;
+}
+.jd-detail__similar-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.jd-detail__similar-head h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--jd-ink);
+}
+.jd-detail__similar-head span {
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__similar-rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+.jd-detail__similar-card {
+  flex: 0 0 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  text-align: left;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--jd-line);
+  scroll-snap-align: start;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.jd-detail__similar-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--jd-shadow-lift);
+}
+.jd-detail__similar-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #f4f5f7;
+}
+.jd-detail__similar-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: #f4f5f7;
+  font-size: 12px;
+  color: var(--jd-ink-4);
+}
+.jd-detail__similar-title {
+  font-size: 13px;
+  color: var(--jd-ink);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.jd-detail__similar-price {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--jd-red);
+}
 
 .jd-detail__top {
   display: grid;
