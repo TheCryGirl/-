@@ -75,9 +75,15 @@ spring:
         - id: payment-service
           uri: lb://payment-service
           predicates:
-            - Path=/api/payments/**
+            # #143 增量：/api/after-sales 为售后仲裁接口的契约路径别名
+            - Path=/api/payments/**,/api/after-sales/**
           filters:
             - StripPrefix=1
+        - id: payment-after-sale-images
+          uri: lb://payment-service
+          predicates:
+            - Path=/after-sale/**
+          # #143 售后凭证静态资源，与 payment-service 的映射路径一致，不加 StripPrefix
 
   # 下游服务超时控制，防止一个服务卡住拖垮整个网关
   http:

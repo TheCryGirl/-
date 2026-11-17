@@ -73,6 +73,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/evaluations/products/**",
             "/images/**",
             "/avatars/**",
+            // #143 售后凭证静态资源：URL 为 UUID 文件名，且只能经上传接口生成，可公开预览
+            "/after-sale/**",
             "/actuator/**"
     );
 
