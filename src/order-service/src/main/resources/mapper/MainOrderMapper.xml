@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.MainOrderMapper">
+
+    <resultMap id="MainOrderMap" type="com.mall.order.entity.MainOrder">
+        <id property="mainOrderId" column="main_order_id"/>
+        <result property="mainOrderNo" column="main_order_no"/>
+        <result property="buyerId" column="buyer_id"/>
+        <result property="status" column="status"/>
+        <result property="payAmount" column="pay_amount"/>
+        <result property="paidAt" column="paid_at"/>
+        <result property="expireAt" column="expire_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="isDeleted" column="is_deleted"/>
+    </resultMap>
+
+    <sql id="mainOrderColumns">
+        main_order_id, main_order_no, buyer_id, status, pay_amount, paid_at, expire_at,
+        created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.order.entity.MainOrder">
+        INSERT INTO main_order(main_order_id, main_order_no, buyer_id, status, pay_amount,
+                               paid_at, expire_at, created_at, updated_at, created_by, updated_by, is_deleted)
+        VALUES (#{mainOrderId}, #{mainOrderNo}, #{buyerId}, #{status}, #{payAmount},
+                #{paidAt}, #{expireAt}, #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0)
+    </insert>
+
+    <select id="selectById" resultMap="MainOrderMap">
+        SELECT <include refid="mainOrderColumns"/>
+        FROM main_order
+        WHERE main_order_id = #{mainOrderId} AND is_deleted = 0
+    </select>
+
+    <select id="selectByBuyer" resultMap="MainOrderMap">
+        SELECT <include refid="mainOrderColumns"/>
+        FROM main_order
+        WHERE buyer_id = #{buyerId} AND is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByBuyer" resultType="long">
+        SELECT COUNT(*)
+        FROM main_order
+        WHERE buyer_id = #{buyerId} AND is_deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <!-- 子订单全部 PAID 才把主订单置 PAID：不存在未支付子订单（PENDING_PAYMENT）时才命中。
+         已取消的子订单不算未支付；主订单自身必须仍是 PENDING_PAYMENT，避免重复支付回调复活。 -->
+    <update id="markPaidIfChildrenPaid">
+        UPDATE main_order
+        SET status = 'PAID', paid_at = #{paidAt}, updated_at = #{paidAt}
+        WHERE main_order_id = #{mainOrderId}
+          AND status = 'PENDING_PAYMENT'
+          AND is_deleted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM `order` o
+              WHERE o.main_order_id = #{mainOrderId}
+                AND o.is_deleted = 0
+                AND o.status = 'PENDING_PAYMENT'
+          )
+    </update>
+
+    <update id="markCancelled">
+        UPDATE main_order
+        SET status = 'CANCELLED', updated_at = #{updatedAt}
+        WHERE main_order_id = #{mainOrderId} AND status = 'PENDING_PAYMENT' AND is_deleted = 0
+    </update>
+
+    <select id="selectTimeoutCandidates" resultType="string">
+        SELECT main_order_id
+        FROM main_order
+        WHERE status = 'PENDING_PAYMENT'
+          AND expire_at &lt;= #{deadline}
+          AND is_deleted = 0
+        ORDER BY expire_at
+        LIMIT #{limit}
+    </select>
+
+    <update id="softDelete">
+        UPDATE main_order
+        SET is_deleted = 1, updated_at = NOW()
+        WHERE main_order_id = #{mainOrderId} AND is_deleted = 0
+    </update>
+</mapper>

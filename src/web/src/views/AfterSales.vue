@@ -88,6 +88,13 @@ async function loadOrder() {
       return
     }
     payment.value = unwrapResult(data)
+    // 跨店合并结算（#135）：子订单没有独立支付单，支付单挂在主订单上
+    if (!payment.value && order.value?.mainOrderId) {
+      const mainRes = await paymentApi.byOrder(order.value.mainOrderId).catch(() => null)
+      if (mainRes && isOk(mainRes.data)) {
+        payment.value = unwrapResult(mainRes.data)
+      }
+    }
     if (payment.value?.status === 'SUCCESS') {
       const rest = Math.max(0, (payment.value.amount || 0) - (payment.value.refundedAmount || 0))
       if (rest > 0 && !form.amount) {

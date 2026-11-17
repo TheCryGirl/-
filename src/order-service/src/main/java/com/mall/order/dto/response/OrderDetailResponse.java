@@ -12,6 +12,10 @@ public class OrderDetailResponse {
     private OrderStatus status;
     private String buyerId;
     private String sellerId;
+    /** 主订单ID（#135）；历史单店订单为 null */
+    private String mainOrderId;
+    /** 主订单号（#135）；历史单店订单为 null */
+    private String mainOrderNo;
     private Long totalAmount;
     private Long payAmount;
     private AddressSnapshot addressSnapshot;

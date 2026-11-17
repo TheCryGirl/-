@@ -4,12 +4,31 @@ DROP TABLE IF EXISTS order_compensation;
 DROP TABLE IF EXISTS order_idempotency;
 DROP TABLE IF EXISTS order_item;
 DROP TABLE IF EXISTS `order`;
+DROP TABLE IF EXISTS main_order;
+
+CREATE TABLE main_order (
+    main_order_id   VARCHAR(32) NOT NULL,
+    main_order_no   VARCHAR(32) NOT NULL,
+    buyer_id        VARCHAR(32) NOT NULL,
+    status          VARCHAR(24) NOT NULL,
+    pay_amount      BIGINT NOT NULL,
+    paid_at         TIMESTAMP,
+    expire_at       TIMESTAMP NOT NULL,
+    created_at      TIMESTAMP NOT NULL,
+    updated_at      TIMESTAMP NOT NULL,
+    created_by      VARCHAR(32),
+    updated_by      VARCHAR(32),
+    is_deleted      TINYINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (main_order_id),
+    CONSTRAINT uk_main_order_no UNIQUE (main_order_no)
+);
 
 CREATE TABLE `order` (
     order_id           VARCHAR(32) NOT NULL,
     order_no           VARCHAR(32) NOT NULL,
     buyer_id           VARCHAR(32) NOT NULL,
     seller_id          VARCHAR(32) NOT NULL,
+    main_order_id      VARCHAR(32),
     status             VARCHAR(24) NOT NULL,
     total_amount       BIGINT NOT NULL,
     pay_amount         BIGINT NOT NULL,

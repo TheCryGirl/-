@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { cartApi, isOk, unwrapResult } from '../api'
+import { cartApi, isOk, orderApi, unwrapResult } from '../api'
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import UiTable from '../components/ui/UiTable.vue'
@@ -30,6 +30,54 @@ const selectedTotalParts = computed(() => {
   const [int, dec] = ((Number(selectedTotal.value) || 0) / 100).toFixed(2).split('.')
   return { int, dec }
 })
+
+/**
+ * 跨店勾选（#135）：按卖家分组展示小计。
+ * 购物车条目本身不带卖家字段，分组依据来自下单预览接口（服务端按商品归属卖家分组）。
+ * 预览未加载成功时退回单组展示，不阻塞勾选与结算。
+ */
+const previewShops = ref([])
+const previewLoading = ref(false)
+const previewError = ref('')
+
+const shopGroups = computed(() => {
+  if (!previewShops.value.length) return []
+  const selectedIds = new Set(selectedItems.value.map((i) => i.cartItemId))
+  return previewShops.value
+    .map((shop) => ({
+      ...shop,
+      items: (shop.items || []).filter((i) => selectedIds.has(i.cartItemId)),
+    }))
+    .filter((shop) => shop.items.length)
+})
+
+async function loadPreview() {
+  if (!selectedItems.value.length) {
+    previewShops.value = []
+    previewError.value = ''
+    return
+  }
+  previewLoading.value = true
+  previewError.value = ''
+  try {
+    // 预览只依赖购物车项；addressId 由后端在 #136 计价链接入时才需要
+    const { data } = await orderApi.preview({
+      cartItemIds: selectedItems.value.map((i) => i.cartItemId),
+    })
+    if (!isOk(data)) {
+      previewError.value = data?.message || '预览加载失败'
+      previewShops.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    previewShops.value = Array.isArray(payload?.shops) ? payload.shops : []
+  } catch (err) {
+    previewError.value = resolveErrorMessage(err, '预览加载失败')
+    previewShops.value = []
+  } finally {
+    previewLoading.value = false
+  }
+}
 
 const columns = computed(() => [
   { key: 'select', label: '', width: 54, align: 'center', slot: 'select' },
@@ -164,6 +212,14 @@ function goShopping() {
   router.push({ name: 'products' })
 }
 
+// 勾选变化后重新预览分店小计（#135）；预览失败不阻塞结算
+watch(
+  () => selectedItems.value.map((i) => `${i.cartItemId}:${i.quantity}`).join(','),
+  () => {
+    loadPreview()
+  },
+)
+
 onMounted(load)
 </script>
 
@@ -283,6 +339,15 @@ onMounted(load)
         </UiTable>
       </el-card>
 
+      <div v-if="shopGroups.length > 1" class="jd-cart-shops" data-testid="cart-shop-groups">
+        <div v-for="shop in shopGroups" :key="shop.sellerId" class="jd-cart-shops__row">
+          <span class="jd-cart-shops__name">{{ shop.shopName || shop.sellerId }}</span>
+          <span class="jd-cart-shops__count">{{ shop.items.length }} 种商品</span>
+          <span class="jd-cart-shops__subtotal">小计 ¥{{ formatPrice(shop.totalAmount) }}</span>
+        </div>
+        <p v-if="previewError" class="text-xs text-gray-400 mt-1">分店小计加载失败，合计金额不受影响</p>
+      </div>
+
       <div class="jd-cart-summary">
         <span class="jd-cart-summary__text">
           已选 <strong>{{ selectedCount }}</strong> 件，合计
@@ -311,6 +376,35 @@ onMounted(load)
 .el-button:focus-visible {
   outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
+}
+
+/* 跨店分组小计（#135）：结算条上方按店铺展示 */
+.jd-cart-shops {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: #fafafa;
+}
+.jd-cart-shops__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--jd-ink-3);
+  padding: 4px 0;
+}
+.jd-cart-shops__name {
+  font-weight: 600;
+  color: var(--jd-ink-1, #111827);
+}
+.jd-cart-shops__count {
+  color: var(--jd-ink-4, #9ca3af);
+}
+.jd-cart-shops__subtotal {
+  margin-left: auto;
+  color: var(--jd-red);
+  font-weight: 600;
 }
 
 /* 结算条：贴底并带一点渐变，滚动时始终可见 */

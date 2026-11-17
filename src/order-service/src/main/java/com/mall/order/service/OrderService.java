@@ -21,19 +21,25 @@ import com.mall.order.common.PageResult;
 import com.mall.order.common.Result;
 import com.mall.order.common.TimeUtils;
 import com.mall.order.dto.request.CreateOrderRequest;
+import com.mall.order.dto.request.PreviewOrderRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
 import com.mall.order.dto.response.AddressSnapshot;
 import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.CreateOrderResponse;
 import com.mall.order.dto.response.FinanceSummaryRows;
+import com.mall.order.dto.response.MainOrderDetailResponse;
+import com.mall.order.dto.response.MainOrderListItem;
 import com.mall.order.dto.response.OrderDetailResponse;
 import com.mall.order.dto.response.OrderItemResponse;
 import com.mall.order.dto.response.OrderListItem;
+import com.mall.order.dto.response.OrderPreviewResponse;
+import com.mall.order.entity.MainOrder;
 import com.mall.order.entity.Order;
 import com.mall.order.entity.OrderIdempotency;
 import com.mall.order.entity.OrderItem;
 import com.mall.order.mapper.CompensationMapper;
 import com.mall.order.mapper.IdempotencyMapper;
+import com.mall.order.mapper.MainOrderMapper;
 import com.mall.order.mapper.OrderItemMapper;
 import com.mall.order.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
@@ -76,6 +82,7 @@ public class OrderService {
     private final OrderItemMapper orderItemMapper;
     private final IdempotencyMapper idempotencyMapper;
     private final CompensationMapper compensationMapper;
+    private final MainOrderMapper mainOrderMapper;
     private final CompensationService compensationService;
     private final CartClient cartClient;
     private final UserClient userClient;
@@ -137,6 +144,206 @@ public class OrderService {
 
     private CreateOrderResponse createFresh(String orderId, String key, String buyerId,
                                             String addressId, List<String> cartItemIds) {
+        List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
+        AddressDTO address = findAddress(buyerId, addressId);
+        List<ValidatedItem> validated = validateItems(selectedItems);
+
+        // 按店铺分组（#135）：LinkedHashMap 保持购物车勾选顺序，跨店时生成主订单 + 子订单
+        Map<String, List<ValidatedItem>> bySeller = new LinkedHashMap<>();
+        for (ValidatedItem item : validated) {
+            bySeller.computeIfAbsent(item.product().getSellerId(), seller -> new ArrayList<>()).add(item);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expireAt = now.plusMinutes(Math.max(1, platformConfigService.currentLong("order.timeout.minutes")));
+        boolean multiShop = bySeller.size() > 1;
+
+        String mainOrderId = multiShop ? IdGenerator.mainOrderId() : null;
+        String mainOrderNo = multiShop ? IdGenerator.orderNo() : null;
+        long grandTotal = validated.stream().mapToLong(ValidatedItem::subtotal).sum();
+
+        List<Order> subOrders = new ArrayList<>();
+        List<OrderItem> allItems = new ArrayList<>();
+        for (Map.Entry<String, List<ValidatedItem>> entry : bySeller.entrySet()) {
+            String sellerId = entry.getKey();
+            // 商品状态同步可能失败，下单前再向用户服务确认一次店铺营业状态（#49）
+            if (!shopActive(sellerId)) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
+            }
+            long shopTotal = entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum();
+            // 单店结算沿用调用方传入的 orderId，保持幂等记录与既有语义一致；
+            // 跨店时第一个子订单也用该 orderId，其余子订单新生成。
+            String subOrderId = subOrders.isEmpty() ? orderId : IdGenerator.orderId();
+            Order subOrder = Order.builder()
+                    .orderId(subOrderId)
+                    .orderNo(IdGenerator.orderNo())
+                    .buyerId(buyerId)
+                    .sellerId(sellerId)
+                    .mainOrderId(mainOrderId)
+                    .status(OrderStatus.PENDING_PAYMENT)
+                    .totalAmount(shopTotal)
+                    .payAmount(shopTotal)
+                    .receiver(address.getReceiver())
+                    .receiverPhone(address.getPhone())
+                    .addressFull(fullAddress(address))
+                    .expireAt(expireAt)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .createdBy(buyerId)
+                    .updatedBy(buyerId)
+                    .isDeleted(0)
+                    .inventoryReleased(0)
+                    .build();
+            subOrders.add(subOrder);
+            for (ValidatedItem item : entry.getValue()) {
+                // 同店多条目按 SKU 去重合并数量：order_item 有 (order_id, sku_id) 唯一约束，
+                // 且库存预占按 SKU 汇总，重复 SKU 直接插明细会撞唯一键。
+                OrderItem existing = allItems.stream()
+                        .filter(oi -> oi.getOrderId().equals(subOrderId) && oi.getSkuId().equals(item.sku().getSkuId()))
+                        .findFirst().orElse(null);
+                if (existing != null) {
+                    existing.setQuantity(existing.getQuantity() + item.cartItem().getQuantity());
+                    existing.setSubtotal(existing.getSubtotal() + item.subtotal());
+                } else {
+                    allItems.add(item.toOrderItem(subOrderId, now));
+                }
+            }
+        }
+
+        MainOrder mainOrder = null;
+        if (multiShop) {
+            mainOrder = MainOrder.builder()
+                    .mainOrderId(mainOrderId)
+                    .mainOrderNo(mainOrderNo)
+                    .buyerId(buyerId)
+                    .status(OrderStatus.PENDING_PAYMENT)
+                    .payAmount(grandTotal)
+                    .expireAt(expireAt)
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .createdBy(buyerId)
+                    .updatedBy(buyerId)
+                    .isDeleted(0)
+                    .build();
+        }
+
+        final MainOrder mainOrderToInsert = mainOrder;
+        transactionTemplate.executeWithoutResult(status -> {
+            if (mainOrderToInsert != null) {
+                mainOrderMapper.insert(mainOrderToInsert);
+            }
+            for (Order subOrder : subOrders) {
+                orderMapper.insert(subOrder);
+            }
+            orderItemMapper.insertBatch(allItems);
+        });
+
+        // 库存预占按子订单逐店进行：预占记录以子订单号为键，取消/退款时按店独立释放。
+        // 任一店预占失败：软删除全部子订单与主订单，已预占成功的店立即释放并写补偿兜底。
+        List<Order> reserved = new ArrayList<>();
+        try {
+            for (Order subOrder : subOrders) {
+                List<ReserveItemDTO> reserveItems = allItems.stream()
+                        .filter(item -> item.getOrderId().equals(subOrder.getOrderId()))
+                        .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
+                        .toList();
+                reserveUnderOwnership(key, subOrder.getOrderId(), expireAt, reserveItems);
+                reserved.add(subOrder);
+            }
+            if (multiShop) {
+                finishReservation(key, subOrders);
+            }
+        } catch (BizException e) {
+            // 先释放已预占成功的店（此时订单尚未软删除，释放标记可正常抢占），
+            // 再软删除全部子订单与主订单，避免悬空预占。
+            for (Order done : reserved) {
+                releaseInventory(done.getOrderId());
+            }
+            for (Order subOrder : subOrders) {
+                orderMapper.softDelete(subOrder.getOrderId());
+                orderItemMapper.softDeleteByOrderId(subOrder.getOrderId());
+            }
+            if (mainOrder != null) {
+                mainOrderMapper.softDelete(mainOrderId);
+            }
+            // 预占请求超时但下游稍后提交时，补偿任务会继续尝试释放（含未确认成功的当前店）。
+            for (Order subOrder : subOrders) {
+                compensationService.enqueue(subOrder.getOrderId());
+            }
+            idempotencyMapper.markFailed(key, LocalDateTime.now());
+            throw e;
+        }
+
+        for (String cartItemId : cartItemIds) {
+            try {
+                Result<Void> result = cartClient.deleteItem(internalToken, buyerId, cartItemId);
+                if (result != null && result.getCode() != ErrorCode.SUCCESS) {
+                    log.warn("清理购物车失败, cartItemId={}, code={}", cartItemId, result.getCode());
+                }
+            } catch (Exception e) {
+                log.warn("清理购物车异常, cartItemId={}", cartItemId, e);
+            }
+        }
+
+        Order first = subOrders.get(0);
+        CreateOrderResponse response = new CreateOrderResponse(first.getOrderId(), first.getOrderNo(),
+                multiShop ? grandTotal : first.getPayAmount(), TimeUtils.format(expireAt));
+        if (multiShop) {
+            response.setMainOrderId(mainOrderId);
+            response.setMainOrderNo(mainOrderNo);
+            response.setSubOrders(subOrders.stream()
+                    .map(o -> new CreateOrderResponse.SubOrderBrief(o.getOrderId(), o.getOrderNo(),
+                            o.getSellerId(), o.getPayAmount()))
+                    .toList());
+        }
+        return response;
+    }
+
+    /**
+     * 下单预览（#135）：接收购物车项，返回按店铺分组的预览。
+     * 校验规则与下单一致（未勾选/失效/下架/停用/库存不足都报错），但不落库、不预占。
+     * 金额一律服务端计算，前端不得自行计算。
+     */
+    public OrderPreviewResponse preview(String buyerId, PreviewOrderRequest request) {
+        requireUser(buyerId);
+        List<String> cartItemIds = normalizeCartItemIds(request.getCartItemIds());
+        List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
+        List<ValidatedItem> validated = validateItems(selectedItems);
+
+        Map<String, List<ValidatedItem>> bySeller = new LinkedHashMap<>();
+        for (ValidatedItem item : validated) {
+            bySeller.computeIfAbsent(item.product().getSellerId(), seller -> new ArrayList<>()).add(item);
+        }
+
+        List<OrderPreviewResponse.ShopPreview> shops = new ArrayList<>();
+        long total = 0L;
+        for (Map.Entry<String, List<ValidatedItem>> entry : bySeller.entrySet()) {
+            String sellerId = entry.getKey();
+            if (!shopActive(sellerId)) {
+                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
+            }
+            long shopTotal = entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum();
+            total += shopTotal;
+            List<OrderPreviewResponse.PreviewItem> items = entry.getValue().stream()
+                    .map(item -> new OrderPreviewResponse.PreviewItem(
+                            item.cartItem().getCartItemId(),
+                            item.product().getProductId(),
+                            item.sku().getSkuId(),
+                            item.product().getTitle(),
+                            item.sku().getSpecName(),
+                            item.product().getMainImage(),
+                            item.sku().getPrice(),
+                            item.cartItem().getQuantity(),
+                            item.subtotal()))
+                    .toList();
+            shops.add(new OrderPreviewResponse.ShopPreview(sellerId, shopName(sellerId), shopTotal, items));
+        }
+        // 本期应付 = 商品总额；运费与优惠计价链在 #136 接入，前端一律以本接口为准。
+        return new OrderPreviewResponse(total, total, shops.size(), shops);
+    }
+
+    /** 取购物车并按 cartItemIds 过滤，未勾选/已失效的条目直接报错（与契约 5.3 一致）。 */
+    private List<CartItemDTO> selectCartItems(String buyerId, List<String> cartItemIds) {
         CartDTO cart = callCart(buyerId);
         Map<String, CartItemDTO> cartById = new LinkedHashMap<>();
         if (cart.getItems() != null) {
@@ -159,13 +366,13 @@ public class OrderService {
             }
             selectedItems.add(item);
         }
+        return selectedItems;
+    }
 
-        AddressDTO address = findAddress(buyerId, addressId);
+    /** 校验商品/SKU/库存并计算金额快照；跨店不再拒绝（#135），按店铺分组在调用方完成。 */
+    private List<ValidatedItem> validateItems(List<CartItemDTO> selectedItems) {
         Map<String, ProductDetailDTO> productCache = new HashMap<>();
-        List<OrderItem> orderItems = new ArrayList<>();
-        String sellerId = null;
-        long total = 0L;
-
+        List<ValidatedItem> validated = new ArrayList<>();
         for (CartItemDTO cartItem : selectedItems) {
             ProductDetailDTO product = productCache.computeIfAbsent(cartItem.getProductId(),
                     productId -> callProduct(productId));
@@ -188,89 +395,29 @@ public class OrderService {
             if (sku.getStockAvailable() != null && sku.getStockAvailable() < quantity) {
                 throw new BizException(ErrorCode.STOCK_INSUFFICIENT, "库存不足: " + product.getTitle());
             }
-            if (sellerId == null) {
-                sellerId = product.getSellerId();
-                // 商品状态同步可能失败，下单前再向用户服务确认一次店铺营业状态（#49）
-                if (!shopActive(sellerId)) {
-                    throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
-                }
-            } else if (!sellerId.equals(product.getSellerId())) {
-                throw new BizException(ErrorCode.PARAM_INVALID, "一次只能结算同一卖家的商品");
-            }
-            long price = sku.getPrice();
-            long subtotal = price * quantity;
-            total += subtotal;
-            orderItems.add(OrderItem.builder()
+            validated.add(new ValidatedItem(cartItem, product, sku, sku.getPrice() * quantity));
+        }
+        return validated;
+    }
+
+    /** 校验通过的一条购物车项：商品/SKU 快照 + 小计（单位分）。 */
+    private record ValidatedItem(CartItemDTO cartItem, ProductDetailDTO product, SkuDTO sku, long subtotal) {
+        OrderItem toOrderItem(String orderId, LocalDateTime now) {
+            return OrderItem.builder()
                     .orderId(orderId)
                     .skuId(sku.getSkuId())
                     .productId(product.getProductId())
                     .productTitle(product.getTitle())
                     .specName(sku.getSpecName())
-                    .priceSnapshot(price)
-                    .quantity(quantity)
+                    .priceSnapshot(sku.getPrice())
+                    .quantity(cartItem.getQuantity())
                     .subtotal(subtotal)
                     .mainImage(product.getMainImage())
                     .sellerId(product.getSellerId())
-                    .createdAt(LocalDateTime.now())
+                    .createdAt(now)
                     .isDeleted(0)
-                    .build());
+                    .build();
         }
-
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime expireAt = now.plusMinutes(Math.max(1, platformConfigService.currentLong("order.timeout.minutes")));
-        Order order = Order.builder()
-                .orderId(orderId)
-                .orderNo(IdGenerator.orderNo())
-                .buyerId(buyerId)
-                .sellerId(sellerId)
-                .status(OrderStatus.PENDING_PAYMENT)
-                .totalAmount(total)
-                .payAmount(total)
-                .receiver(address.getReceiver())
-                .receiverPhone(address.getPhone())
-                .addressFull(fullAddress(address))
-                .expireAt(expireAt)
-                .createdAt(now)
-                .updatedAt(now)
-                .createdBy(buyerId)
-                .updatedBy(buyerId)
-                .isDeleted(0)
-                .inventoryReleased(0)
-                .build();
-
-        transactionTemplate.executeWithoutResult(status -> {
-            orderMapper.insert(order);
-            orderItemMapper.insertBatch(orderItems);
-        });
-
-        List<ReserveItemDTO> reserveItems = orderItems.stream()
-                .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
-                .toList();
-        try {
-            reserveUnderOwnership(key, orderId, expireAt, reserveItems);
-        } catch (BizException e) {
-            // 若预占请求超时但下游稍后提交，补偿任务会继续尝试释放。
-            compensationService.enqueue(orderId);
-            // 契约要求预占失败删除订单主记录与明细。这里使用逻辑删除。
-            orderMapper.softDelete(orderId);
-            orderItemMapper.softDeleteByOrderId(orderId);
-            idempotencyMapper.markFailed(key, LocalDateTime.now());
-            throw e;
-        }
-
-        for (String cartItemId : cartItemIds) {
-            try {
-                Result<Void> result = cartClient.deleteItem(internalToken, buyerId, cartItemId);
-                if (result != null && result.getCode() != ErrorCode.SUCCESS) {
-                    log.warn("清理购物车失败, cartItemId={}, code={}", cartItemId, result.getCode());
-                }
-            } catch (Exception e) {
-                log.warn("清理购物车异常, cartItemId={}", cartItemId, e);
-            }
-        }
-
-        return new CreateOrderResponse(orderId, order.getOrderNo(), order.getPayAmount(),
-                TimeUtils.format(expireAt));
     }
 
     /**
@@ -285,12 +432,33 @@ public class OrderService {
     private void reserveUnderOwnership(String key, String orderId, LocalDateTime expireAt,
                                        List<ReserveItemDTO> reserveItems) {
         callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems));
+        // 跨店结算（#135）：同一幂等键下按子订单逐店预占，执行权保持 RESERVING，
+        // 由 finishReservation 在全部子订单预占成功后统一落终态；单店结算行为不变。
+        Order order = orderMapper.selectById(orderId);
+        if (order != null && order.getMainOrderId() != null) {
+            return;
+        }
         int updated = idempotencyMapper.markSuccessIfReserving(key, orderId, LocalDateTime.now());
         if (updated == 0) {
             // 执行权已被超时回收任务重置，说明本线程持锁时间超出阈值。
             // 此时库存已预占成功，必须交给补偿任务兜底，避免预占悬空。
             log.warn("幂等执行权已被回收，转补偿处理, idemKey={}, orderId={}", key, orderId);
             compensationService.enqueue(orderId);
+        }
+    }
+
+    /**
+     * 跨店结算（#135）：全部子订单预占成功后把幂等键落终态。
+     * 执行权被回收时，为每个子订单写补偿任务兜底，避免预占悬空。
+     */
+    private void finishReservation(String key, List<Order> subOrders) {
+        Order first = subOrders.get(0);
+        int updated = idempotencyMapper.markSuccessIfReserving(key, first.getOrderId(), LocalDateTime.now());
+        if (updated == 0) {
+            log.warn("幂等执行权已被回收，转补偿处理, idemKey={}, mainOrderId={}", key, first.getMainOrderId());
+            for (Order subOrder : subOrders) {
+                compensationService.enqueue(subOrder.getOrderId());
+            }
         }
     }
 
@@ -353,6 +521,10 @@ public class OrderService {
         }
         try {
             reserveUnderOwnership(existing.getIdemKey(), order.getOrderId(), order.getExpireAt(), reserveItems);
+            // 跨店结算（#135）：持有者崩溃后由 resume 补做其余子订单的预占
+            if (order.getMainOrderId() != null) {
+                resumeSiblingReservations(existing.getIdemKey(), order);
+            }
         } catch (BizException e) {
             compensationService.enqueue(order.getOrderId());
             orderMapper.softDelete(order.getOrderId());
@@ -361,6 +533,29 @@ public class OrderService {
             throw e;
         }
         return createResponse(order);
+    }
+
+    /**
+     * 跨店结算的续做（#135）：首个子订单预占成功后，检查同主订单下的其余子订单。
+     * 预占以「订单存在且未删除」为完成标志——createFresh 先落库再预占，失败即软删除，
+     * 因此存活子订单要么已预占成功，要么正由持有执行权的请求处理中。
+     */
+    private void resumeSiblingReservations(String key, Order first) {
+        List<Order> siblings = orderMapper.selectByMainOrderId(first.getMainOrderId());
+        for (Order sibling : siblings) {
+            if (sibling.getOrderId().equals(first.getOrderId())) {
+                continue;
+            }
+            List<OrderItem> items = orderItemMapper.selectByOrderId(sibling.getOrderId());
+            if (items.isEmpty()) {
+                throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "订单明细缺失，请重新提交");
+            }
+            List<ReserveItemDTO> reserveItems = items.stream()
+                    .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
+                    .toList();
+            reserveUnderOwnership(key, sibling.getOrderId(), sibling.getExpireAt(), reserveItems);
+        }
+        finishReservation(key, siblings);
     }
 
     /**
@@ -461,6 +656,7 @@ public class OrderService {
     public void markPaid(String orderId) {
         Order order = requireOrder(orderId);
         if (order.getStatus() == OrderStatus.PAID) {
+            promoteMainOrderIfPaid(order);
             return;
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
@@ -473,6 +669,21 @@ public class OrderService {
             if (latest.getStatus() != OrderStatus.PAID) {
                 throw new BizException(ErrorCode.ORDER_STATE_INVALID, "订单支付状态更新失败");
             }
+        }
+        promoteMainOrderIfPaid(order);
+    }
+
+    /**
+     * 子订单支付后尝试把主订单置 PAID（#135）：
+     * 条件 UPDATE 要求不存在未支付子订单，全部 PAID 才生效；并发回调下只生效一次。
+     */
+    private void promoteMainOrderIfPaid(Order order) {
+        if (order.getMainOrderId() == null) {
+            return;
+        }
+        int updated = mainOrderMapper.markPaidIfChildrenPaid(order.getMainOrderId(), LocalDateTime.now());
+        if (updated > 0) {
+            log.info("主订单全部子订单已支付, mainOrderId={}", order.getMainOrderId());
         }
     }
 
@@ -513,6 +724,128 @@ public class OrderService {
         }
         releaseInventory(orderId);
         return detail(orderId, buyerId, "BUYER");
+    }
+
+    /**
+     * 取消主订单（#135）：所有未支付子订单一起取消并释放库存预占。
+     * 已支付/已发货的子订单不受影响；主订单状态用条件 UPDATE 抢占，重复取消幂等。
+     */
+    public MainOrderDetailResponse cancelMain(String mainOrderId, String buyerId) {
+        requireUser(buyerId);
+        MainOrder mainOrder = requireMainOrder(mainOrderId);
+        if (!buyerId.equals(mainOrder.getBuyerId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权取消他人的订单");
+        }
+        if (mainOrder.getStatus() == OrderStatus.CANCELLED) {
+            return mainDetail(mainOrderId, buyerId, "BUYER");
+        }
+        if (mainOrder.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw new BizException(ErrorCode.ORDER_STATE_INVALID, "主订单已支付，不能整体取消");
+        }
+        int updated = mainOrderMapper.markCancelled(mainOrderId, LocalDateTime.now());
+        if (updated == 0) {
+            MainOrder latest = requireMainOrder(mainOrderId);
+            if (latest.getStatus() != OrderStatus.CANCELLED) {
+                throw new BizException(ErrorCode.ORDER_STATE_INVALID, "主订单状态不允许取消");
+            }
+        }
+        for (Order subOrder : orderMapper.selectByMainOrderId(mainOrderId)) {
+            if (subOrder.getStatus() != OrderStatus.PENDING_PAYMENT) {
+                continue;
+            }
+            int cancelled = orderMapper.markCancelled(subOrder.getOrderId(), LocalDateTime.now());
+            if (cancelled > 0) {
+                releaseInventory(subOrder.getOrderId());
+            }
+        }
+        return mainDetail(mainOrderId, buyerId, "BUYER");
+    }
+
+    /** 主订单详情（#135）：仅买家本人或管理员可看，子订单按店铺展开。 */
+    public MainOrderDetailResponse mainDetail(String mainOrderId, String userId, String role) {
+        MainOrder mainOrder = requireMainOrder(mainOrderId);
+        if (userId == null || userId.isBlank()
+                || (!"ADMIN".equalsIgnoreCase(role) && !userId.equals(mainOrder.getBuyerId()))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看该订单");
+        }
+        MainOrderDetailResponse response = new MainOrderDetailResponse();
+        response.setMainOrderId(mainOrder.getMainOrderId());
+        response.setMainOrderNo(mainOrder.getMainOrderNo());
+        response.setBuyerId(mainOrder.getBuyerId());
+        response.setStatus(mainOrder.getStatus());
+        response.setPayAmount(mainOrder.getPayAmount());
+        response.setPaidAt(TimeUtils.format(mainOrder.getPaidAt()));
+        response.setExpireAt(TimeUtils.format(mainOrder.getExpireAt()));
+        response.setCreatedAt(TimeUtils.format(mainOrder.getCreatedAt()));
+        response.setSubOrders(orderMapper.selectByMainOrderId(mainOrderId).stream()
+                .map(this::toDetail).toList());
+        return response;
+    }
+
+    /** 主订单列表（#135）：买家视角，按创建时间倒序分页。 */
+    public PageResult<MainOrderListItem> listMain(String buyerId, String status, int page, int size) {
+        requireUser(buyerId);
+        if (status != null && !status.isBlank()) {
+            try {
+                OrderStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "订单状态不合法");
+            }
+        }
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        String safeStatus = trimToNull(status);
+        List<MainOrder> mains = mainOrderMapper.selectByBuyer(buyerId, safeStatus,
+                (safePage - 1) * safeSize, safeSize);
+        List<MainOrderListItem> items = new ArrayList<>();
+        for (MainOrder mainOrder : mains) {
+            MainOrderListItem item = new MainOrderListItem();
+            item.setMainOrderId(mainOrder.getMainOrderId());
+            item.setMainOrderNo(mainOrder.getMainOrderNo());
+            item.setStatus(mainOrder.getStatus());
+            item.setPayAmount(mainOrder.getPayAmount());
+            item.setCreatedAt(TimeUtils.format(mainOrder.getCreatedAt()));
+            item.setExpireAt(TimeUtils.format(mainOrder.getExpireAt()));
+            List<Order> subOrders = orderMapper.selectByMainOrderId(mainOrder.getMainOrderId());
+            item.setSubOrderCount(subOrders.size());
+            int itemCount = 0;
+            for (Order subOrder : subOrders) {
+                itemCount += orderItemMapper.selectByOrderId(subOrder.getOrderId()).size();
+            }
+            item.setItemCount(itemCount);
+            items.add(item);
+        }
+        long total = mainOrderMapper.countByBuyer(buyerId, safeStatus);
+        return PageResult.of(items, total, safePage, safeSize);
+    }
+
+    /**
+     * 主订单超时取消入口（#135）。扫描任务只找候选，状态 CAS 在这里完成。
+     * 与买家取消并发时，markCancelled 只有一方命中，另一方直接跳过。
+     */
+    public boolean cancelMainTimeout(String mainOrderId) {
+        int updated = mainOrderMapper.markCancelled(mainOrderId, LocalDateTime.now());
+        if (updated == 0) {
+            return false;
+        }
+        for (Order subOrder : orderMapper.selectByMainOrderId(mainOrderId)) {
+            if (subOrder.getStatus() != OrderStatus.PENDING_PAYMENT) {
+                continue;
+            }
+            if (orderMapper.markCancelled(subOrder.getOrderId(), LocalDateTime.now()) > 0) {
+                releaseInventory(subOrder.getOrderId());
+            }
+        }
+        log.info("主订单超时取消, mainOrderId={}", mainOrderId);
+        return true;
+    }
+
+    private MainOrder requireMainOrder(String mainOrderId) {
+        MainOrder mainOrder = mainOrderId == null ? null : mainOrderMapper.selectById(mainOrderId.trim());
+        if (mainOrder == null) {
+            throw new BizException(ErrorCode.ORDER_NOT_FOUND, "订单不存在");
+        }
+        return mainOrder;
     }
 
     public OrderDetailResponse ship(String orderId, String operatorId, String role, ShipOrderRequest request) {
@@ -556,8 +889,13 @@ public class OrderService {
 
     /**
      * 超时取消入口。扫描任务只找候选，状态 CAS 在这里完成。
+     * 跨店子订单（#135）的整体取消由主订单扫描负责，这里跳过，避免只取消一半。
      */
     public boolean cancelTimeout(String orderId) {
+        Order order = orderMapper.selectById(orderId);
+        if (order != null && order.getMainOrderId() != null) {
+            return false;
+        }
         int updated = orderMapper.markCancelled(orderId, LocalDateTime.now());
         if (updated == 0) {
             return false;
@@ -647,6 +985,20 @@ public class OrderService {
         }
     }
 
+    /** 店铺名（#135 预览分组展示）；查询失败回退为卖家ID，不阻塞预览。 */
+    private String shopName(String sellerId) {
+        try {
+            Result<ShopBriefDTO> result = userClient.shopBySeller(sellerId);
+            if (result != null && result.getCode() == ErrorCode.SUCCESS && result.getData() != null
+                    && result.getData().getName() != null && !result.getData().getName().isBlank()) {
+                return result.getData().getName();
+            }
+        } catch (Exception e) {
+            log.warn("查询店铺名称失败，回退为卖家ID, sellerId={}", sellerId, e);
+        }
+        return sellerId;
+    }
+
     private AddressDTO findAddress(String buyerId, String addressId) {
         try {
             Result<List<AddressDTO>> result = userClient.addresses(buyerId, buyerId);
@@ -708,8 +1060,24 @@ public class OrderService {
     }
 
     private CreateOrderResponse createResponse(Order order) {
-        return new CreateOrderResponse(order.getOrderId(), order.getOrderNo(), order.getPayAmount(),
-                TimeUtils.format(order.getExpireAt()));
+        CreateOrderResponse response = new CreateOrderResponse(order.getOrderId(), order.getOrderNo(),
+                order.getPayAmount(), TimeUtils.format(order.getExpireAt()));
+        // 跨店结算（#135）：幂等重放也要返回主订单号与各子订单号
+        if (order.getMainOrderId() != null) {
+            MainOrder mainOrder = mainOrderMapper.selectById(order.getMainOrderId());
+            List<Order> siblings = orderMapper.selectByMainOrderId(order.getMainOrderId());
+            if (mainOrder != null && !siblings.isEmpty()) {
+                response.setMainOrderId(mainOrder.getMainOrderId());
+                response.setMainOrderNo(mainOrder.getMainOrderNo());
+                response.setPayAmount(mainOrder.getPayAmount());
+                response.setExpireAt(TimeUtils.format(mainOrder.getExpireAt()));
+                response.setSubOrders(siblings.stream()
+                        .map(o -> new CreateOrderResponse.SubOrderBrief(o.getOrderId(), o.getOrderNo(),
+                                o.getSellerId(), o.getPayAmount()))
+                        .toList());
+            }
+        }
+        return response;
     }
 
     private OrderDetailResponse toDetail(Order order) {
@@ -719,6 +1087,11 @@ public class OrderService {
         response.setStatus(order.getStatus());
         response.setBuyerId(order.getBuyerId());
         response.setSellerId(order.getSellerId());
+        response.setMainOrderId(order.getMainOrderId());
+        if (order.getMainOrderId() != null) {
+            MainOrder mainOrder = mainOrderMapper.selectById(order.getMainOrderId());
+            response.setMainOrderNo(mainOrder == null ? null : mainOrder.getMainOrderNo());
+        }
         response.setTotalAmount(order.getTotalAmount());
         response.setPayAmount(order.getPayAmount());
         response.setTrackingNo(order.getTrackingNo());
@@ -739,6 +1112,11 @@ public class OrderService {
         item.setStatus(order.getStatus());
         item.setPayAmount(order.getPayAmount());
         item.setCreatedAt(TimeUtils.format(order.getCreatedAt()));
+        item.setMainOrderId(order.getMainOrderId());
+        if (order.getMainOrderId() != null) {
+            MainOrder mainOrder = mainOrderMapper.selectById(order.getMainOrderId());
+            item.setMainOrderNo(mainOrder == null ? null : mainOrder.getMainOrderNo());
+        }
         item.setItems(orderItemMapper.selectByOrderId(order.getOrderId()).stream()
                 .map(this::toItemResponse).toList());
         return item;

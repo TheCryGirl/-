@@ -180,6 +180,15 @@ public class RefundNotificationDispatcher {
     }
 
     private Result<Void> invoke(RefundNotificationTask task) {
+        // 跨店合并结算（#135）：整笔自动退款的 order_id 是主订单ID，
+        // 订单侧没有可置 REFUNDED 的主订单状态、库存侧也没有主订单预占记录，
+        // 资金退回已在退款单落库，这里按幂等成功处理，避免任务无限重试。
+        // 按店售后退款已在创建时定位到子订单ID，不受影响。
+        if (task.getOrderId() != null && task.getOrderId().startsWith("M")) {
+            log.info("主订单整笔退款无需订单/库存通知, mainOrderId={}, eventType={}",
+                    task.getOrderId(), task.getEventType());
+            return Result.success(null);
+        }
         if (RefundNotificationTxService.EVENT_ORDER_REFUNDED.equals(task.getEventType())) {
             return orderClient.markRefunded(task.getOrderId());
         }

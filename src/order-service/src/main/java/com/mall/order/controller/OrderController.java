@@ -6,11 +6,15 @@ import com.mall.order.common.PageResult;
 import com.mall.order.common.Result;
 import com.mall.order.config.InternalTokenVerifier;
 import com.mall.order.dto.request.CreateOrderRequest;
+import com.mall.order.dto.request.PreviewOrderRequest;
 import com.mall.order.dto.request.ShipOrderRequest;
 import com.mall.order.dto.response.AdminFinanceSummaryResponse;
 import com.mall.order.dto.response.CreateOrderResponse;
+import com.mall.order.dto.response.MainOrderDetailResponse;
+import com.mall.order.dto.response.MainOrderListItem;
 import com.mall.order.dto.response.OrderDetailResponse;
 import com.mall.order.dto.response.OrderListItem;
+import com.mall.order.dto.response.OrderPreviewResponse;
 import com.mall.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +42,44 @@ public class OrderController {
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody CreateOrderRequest request) {
         return Result.success(orderService.create(buyerId, idempotencyKey, request));
+    }
+
+    /**
+     * 下单预览（#135）：按店铺分组返回商品与金额，前端不得自行计算应付。
+     * 路径写在 /{orderId} 之前，避免被详情路由吞掉。
+     */
+    @PostMapping("/preview")
+    public Result<OrderPreviewResponse> preview(
+            @RequestHeader(value = "X-User-Id", required = false) String buyerId,
+            @Valid @RequestBody PreviewOrderRequest request) {
+        return Result.success(orderService.preview(buyerId, request));
+    }
+
+    /** 主订单列表（#135）：买家跨店订单按主订单聚合。 */
+    @GetMapping("/main")
+    public Result<PageResult<MainOrderListItem>> listMain(
+            @RequestHeader(value = "X-User-Id", required = false) String buyerId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return Result.success(orderService.listMain(buyerId, status, page, size));
+    }
+
+    /** 主订单详情（#135）：聚合支付视角，子订单按店铺展开。 */
+    @GetMapping("/main/{mainOrderId}")
+    public Result<MainOrderDetailResponse> mainDetail(
+            @PathVariable String mainOrderId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        return Result.success(orderService.mainDetail(mainOrderId, userId, role));
+    }
+
+    /** 取消主订单（#135）：所有未支付子订单一起取消并释放库存预占。 */
+    @PutMapping("/main/{mainOrderId}/cancel")
+    public Result<MainOrderDetailResponse> cancelMain(
+            @PathVariable String mainOrderId,
+            @RequestHeader(value = "X-User-Id", required = false) String buyerId) {
+        return Result.success(orderService.cancelMain(mainOrderId, buyerId));
     }
 
     @GetMapping

@@ -24,6 +24,11 @@ public final class IdGenerator {
         return "O" + LocalDateTime.now().format(ORDER_NO_FORMATTER) + randomHex(12);
     }
 
+    /** 主订单 ID（#135）：M 前缀 + 时间戳 + 12 位十六进制随机后缀，长度 27。 */
+    public static String mainOrderId() {
+        return "M" + LocalDateTime.now().format(ORDER_NO_FORMATTER) + randomHex(12);
+    }
+
     /**
      * 日期 + 6 位随机数，满足“全局唯一且不可枚举”的订单号要求。
      */

@@ -1,5 +1,6 @@
 package com.mall.payment.client;
 
+import com.mall.payment.client.dto.MainOrderDTO;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.common.Result;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -18,6 +19,11 @@ public interface OrderClient {
     @GetMapping("/orders/{orderId}")
     Result<OrderDTO> getOrder(@PathVariable("orderId") String orderId,
                               @RequestHeader("X-User-Id") String userId);
+
+    /** 主订单详情（#135）：跨店合并结算时按主订单发起支付。 */
+    @GetMapping("/orders/main/{mainOrderId}")
+    Result<MainOrderDTO> getMainOrder(@PathVariable("mainOrderId") String mainOrderId,
+                                      @RequestHeader("X-User-Id") String userId);
 
     @PostMapping("/orders/{orderId}/paid")
     Result<Void> markPaid(@PathVariable("orderId") String orderId);

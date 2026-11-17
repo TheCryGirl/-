@@ -12,6 +12,7 @@ import {
 } from '../constants/status'
 import { resolveErrorMessage } from '../components/ui/message'
 import { formatPrice, formatTime, formatTotal } from '../utils/format'
+import { groupOrderRows } from '../utils/orderGroup'
 
 const router = useRouter()
 const role = ref('buyer')
@@ -24,6 +25,30 @@ const loading = ref(true)
 const loadError = ref('')
 
 const FILTER_STATUSES = ['PENDING_PAYMENT', 'PAID', 'SHIPPED', 'COMPLETED', 'CANCELLED']
+
+/**
+ * 跨店合并结算（#135）：买家视角把同一主订单的子订单聚合成一行，可展开查看。
+ * 历史单店订单（mainOrderId 为 null）保持原样逐单展示。卖家视角不聚合（按店发货）。
+ * 聚合逻辑在 utils/orderGroup.js，node --test 直接覆盖。
+ */
+const expandedMains = ref(new Set())
+
+const displayRows = computed(() => groupOrderRows(orders.value, role.value))
+
+function toggleMain(row) {
+  const next = new Set(expandedMains.value)
+  if (next.has(row.mainOrderId)) next.delete(row.mainOrderId)
+  else next.add(row.mainOrderId)
+  expandedMains.value = next
+}
+
+function goMain(row) {
+  router.push({ name: 'main-order-detail', params: { id: row.mainOrderId } })
+}
+
+function payMain(row) {
+  router.push({ name: 'main-order-pay', params: { id: row.mainOrderId } })
+}
 
 const statusOptions = computed(() => [
   { value: '', label: '全部' },
@@ -158,33 +183,106 @@ onMounted(load)
     <template v-else>
       <el-card shadow="never">
         <div class="divide-y divide-gray-100">
-          <div
-            v-for="o in orders"
-            :key="o.orderId"
-            class="py-3 first:pt-0 last:pb-0 -mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            tabindex="0"
-            role="button"
-            :aria-label="`查看订单 ${o.orderNo}`"
-            :data-testid="`order-list-row-${o.orderId}`"
-            @click="goDetail(o)"
-            @keyup.enter="goDetail(o)"
-          >
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <span class="text-sm text-gray-500 break-all">{{ o.orderNo }}</span>
-              <el-tag :type="statusTag(ORDER_STATUS_TAG, o.status)" size="small">
-                {{ statusText(ORDER_STATUS_MAP, o.status) }}
-              </el-tag>
-            </div>
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-900">共 {{ o.items?.length || 1 }} 件商品</p>
-                <p class="text-xs text-gray-500 mt-1">{{ formatTime(o.createdAt) }}</p>
+          <template v-for="row in displayRows" :key="row.kind === 'main' ? row.mainOrderId : row.order.orderId">
+            <!-- 跨店主订单聚合行（#135）：可展开看子订单 -->
+            <div v-if="row.kind === 'main'" class="py-3 first:pt-0 last:pb-0">
+              <div
+                class="-mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                tabindex="0"
+                role="button"
+                :aria-label="`查看合并订单 ${row.mainOrderNo}`"
+                :data-testid="`order-list-main-${row.mainOrderId}`"
+                @click="goMain(row)"
+                @keyup.enter="goMain(row)"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <span class="text-sm text-gray-500 break-all">
+                    {{ row.mainOrderNo }}
+                    <el-tag size="small" type="warning" class="ml-2">跨店合并</el-tag>
+                  </span>
+                  <el-tag :type="statusTag(ORDER_STATUS_TAG, row.status)" size="small">
+                    {{ statusText(ORDER_STATUS_MAP, row.status) }}
+                  </el-tag>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-gray-900">{{ row.subs.length }} 家店铺，共 {{ row.itemCount }} 件商品</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ formatTime(row.createdAt) }}</p>
+                  </div>
+                  <p class="text-sm text-red-600 font-medium whitespace-nowrap">¥{{ formatPrice(row.payAmount) }}</p>
+                </div>
               </div>
-              <p class="text-sm text-red-600 font-medium whitespace-nowrap">
-                ¥{{ formatPrice(o.payAmount) }}
-              </p>
+              <div class="flex flex-wrap items-center justify-end gap-2 mt-2">
+                <el-button
+                  v-if="row.status === 'PENDING_PAYMENT'"
+                  type="primary"
+                  size="small"
+                  :data-testid="`order-list-main-pay-${row.mainOrderId}`"
+                  @click="payMain(row)"
+                >
+                  去支付
+                </el-button>
+                <el-button
+                  size="small"
+                  :data-testid="`order-list-main-toggle-${row.mainOrderId}`"
+                  @click="toggleMain(row)"
+                >
+                  {{ expandedMains.has(row.mainOrderId) ? '收起子订单' : '展开子订单' }}
+                </el-button>
+              </div>
+              <div v-if="expandedMains.has(row.mainOrderId)" class="mt-2 space-y-2">
+                <div
+                  v-for="sub in row.subs"
+                  :key="sub.orderId"
+                  class="flex flex-wrap items-center justify-between gap-2 rounded border border-gray-100 px-3 py-2 cursor-pointer hover:bg-gray-50"
+                  tabindex="0"
+                  role="button"
+                  :data-testid="`order-list-sub-${sub.orderId}`"
+                  @click="goDetail(sub)"
+                  @keyup.enter="goDetail(sub)"
+                >
+                  <div class="min-w-0">
+                    <p class="text-xs text-gray-500 break-all">{{ sub.orderNo }}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">共 {{ sub.items?.length || 0 }} 件商品</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <el-tag :type="statusTag(ORDER_STATUS_TAG, sub.status)" size="small">
+                      {{ statusText(ORDER_STATUS_MAP, sub.status) }}
+                    </el-tag>
+                    <span class="text-sm text-red-600">¥{{ formatPrice(sub.payAmount) }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+
+            <!-- 单店订单行（含历史 main_order_id 为 null 的订单） -->
+            <div
+              v-else
+              class="py-3 first:pt-0 last:pb-0 -mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              tabindex="0"
+              role="button"
+              :aria-label="`查看订单 ${row.order.orderNo}`"
+              :data-testid="`order-list-row-${row.order.orderId}`"
+              @click="goDetail(row.order)"
+              @keyup.enter="goDetail(row.order)"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span class="text-sm text-gray-500 break-all">{{ row.order.orderNo }}</span>
+                <el-tag :type="statusTag(ORDER_STATUS_TAG, row.order.status)" size="small">
+                  {{ statusText(ORDER_STATUS_MAP, row.order.status) }}
+                </el-tag>
+              </div>
+              <div class="flex flex-wrap items-center gap-3">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-gray-900">共 {{ row.order.items?.length || 1 }} 件商品</p>
+                  <p class="text-xs text-gray-500 mt-1">{{ formatTime(row.order.createdAt) }}</p>
+                </div>
+                <p class="text-sm text-red-600 font-medium whitespace-nowrap">
+                  ¥{{ formatPrice(row.order.payAmount) }}
+                </p>
+              </div>
+            </div>
+          </template>
         </div>
       </el-card>
 

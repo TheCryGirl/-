@@ -142,6 +142,12 @@ function pay() {
   router.push({ name: 'order-pay', params: { id: orderId } })
 }
 
+function goMainOrder() {
+  if (order.value?.mainOrderId) {
+    router.push({ name: 'main-order-detail', params: { id: order.value.mainOrderId } })
+  }
+}
+
 function applyAfterSale() {
   router.push({ name: 'after-sales', query: { orderId } })
 }
@@ -282,6 +288,12 @@ onMounted(load)
           <div class="min-w-0">
             <p class="text-sm text-gray-500 break-all">订单号：{{ order.orderNo }}</p>
             <p class="text-xs text-gray-400 mt-1">下单时间：{{ formatTime(order.createdAt) }}</p>
+            <p v-if="order.mainOrderId" class="text-xs text-gray-400 mt-1">
+              所属合并订单：
+              <el-button link type="primary" size="small" data-testid="order-detail-main-link" @click="goMainOrder">
+                {{ order.mainOrderNo || order.mainOrderId }}
+              </el-button>
+            </p>
           </div>
           <el-tag :type="statusTag(ORDER_STATUS_TAG, order.status)">
             {{ statusText(ORDER_STATUS_MAP, order.status) }}
@@ -403,12 +415,20 @@ onMounted(load)
       <!-- 操作 -->
       <div class="flex flex-wrap justify-end gap-2">
         <el-button
-          v-if="order.status === 'PENDING_PAYMENT'"
+          v-if="order.status === 'PENDING_PAYMENT' && !order.mainOrderId"
           type="primary"
           data-testid="order-detail-pay"
           @click="pay"
         >
           去支付
+        </el-button>
+        <el-button
+          v-if="order.status === 'PENDING_PAYMENT' && order.mainOrderId"
+          type="primary"
+          data-testid="order-detail-main-pay"
+          @click="goMainOrder"
+        >
+          去合并支付
         </el-button>
         <el-button
           v-if="order.status === 'PENDING_PAYMENT'"
