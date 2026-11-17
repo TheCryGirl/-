@@ -13,6 +13,9 @@ public interface OrderMapper {
 
     Order selectById(@Param("orderId") String orderId);
 
+    /** 主订单下的全部店铺子订单（#135）。 */
+    List<Order> selectByMainOrderId(@Param("mainOrderId") String mainOrderId);
+
     List<Order> selectList(@Param("buyerId") String buyerId,
                            @Param("sellerId") String sellerId,
                            @Param("status") String status,

@@ -101,6 +101,10 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         }
 
         Payment payment = paymentMapper.selectLatestByOrderId(order.getOrderId());
+        // 跨店合并结算（#135）：子订单没有独立支付单，支付单挂在主订单上
+        if (payment == null && order.getMainOrderId() != null && !order.getMainOrderId().isBlank()) {
+            payment = paymentMapper.selectLatestByOrderId(order.getMainOrderId());
+        }
         if (payment == null) {
             throw new BizException(ErrorCode.PAYMENT_NOT_FOUND, "支付单不存在");
         }

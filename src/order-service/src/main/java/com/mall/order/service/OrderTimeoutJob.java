@@ -1,5 +1,6 @@
 package com.mall.order.service;
 
+import com.mall.order.mapper.MainOrderMapper;
 import com.mall.order.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ import java.util.List;
 public class OrderTimeoutJob {
 
     private final OrderMapper orderMapper;
+    private final MainOrderMapper mainOrderMapper;
     private final OrderService orderService;
 
     @Value("${order.timeout.minutes:30}")
@@ -46,6 +48,18 @@ public class OrderTimeoutJob {
         }
         if (!candidates.isEmpty()) {
             log.info("待支付超时扫描完成, candidates={}, cancelled={}", candidates.size(), cancelled);
+        }
+        // 主订单超时（#135）：跨店合并结算的主订单到期后整体取消，未支付子订单一起释放库存。
+        // 子订单与主订单 expire_at 相同，先扫子订单再扫主订单，两者 CAS 互不冲突。
+        List<String> mainCandidates = mainOrderMapper.selectTimeoutCandidates(deadline, Math.max(1, batchSize));
+        int mainCancelled = 0;
+        for (String mainOrderId : mainCandidates) {
+            if (orderService.cancelMainTimeout(mainOrderId)) {
+                mainCancelled++;
+            }
+        }
+        if (!mainCandidates.isEmpty()) {
+            log.info("主订单超时扫描完成, candidates={}, cancelled={}", mainCandidates.size(), mainCancelled);
         }
         orderService.retryUnreleasedInventory();
         orderService.retryCompensations();

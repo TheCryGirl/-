@@ -154,7 +154,13 @@ export const cartApi = {
 export const orderApi = {
   create: (payload, idempotencyKey) =>
     http.post('/orders', payload, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  // 下单预览（#135）：按店铺分组返回金额，前端不得自行计算应付
+  preview: (payload) => http.post('/orders/preview', payload),
   list: (params) => http.get('/orders', { params }),
+  // 主订单（#135 跨店合并结算）：列表按主订单聚合，详情展开子订单
+  listMain: (params) => http.get('/orders/main', { params }),
+  mainDetail: (mainOrderId) => http.get(`/orders/main/${mainOrderId}`),
+  cancelMain: (mainOrderId) => http.put(`/orders/main/${mainOrderId}/cancel`),
   financeSummary: () => http.get('/orders/admin/finance-summary'),
   detail: (orderId) => http.get(`/orders/${orderId}`),
   cancel: (orderId) => http.put(`/orders/${orderId}/cancel`),

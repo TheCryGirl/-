@@ -36,6 +36,19 @@ const routes = [
     meta: { title: '确认订单', requiresAuth: true },
   },
   {
+    // 跨店合并结算（#135）：主订单支付与详情。静态段 main 写在 /orders/:id 之前
+    path: '/orders/main/:id/pay',
+    name: 'main-order-pay',
+    component: () => import('../views/MainOrderPay.vue'),
+    meta: { title: '合并支付', requiresAuth: true },
+  },
+  {
+    path: '/orders/main/:id',
+    name: 'main-order-detail',
+    component: () => import('../views/MainOrderDetail.vue'),
+    meta: { title: '合并订单详情', requiresAuth: true },
+  },
+  {
     path: '/orders/:id/pay',
     name: 'order-pay',
     component: () => import('../views/OrderPay.vue'),

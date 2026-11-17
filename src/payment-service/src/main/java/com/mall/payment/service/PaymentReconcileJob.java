@@ -3,6 +3,7 @@ package com.mall.payment.service;
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.ProductClient;
 import com.mall.payment.client.dto.ConfirmStockResponse;
+import com.mall.payment.client.dto.MainOrderDTO;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.OrderStatus;
@@ -86,6 +87,16 @@ public class PaymentReconcileJob {
      */
     private boolean reconcileOne(Payment payment) {
         try {
+            // 跨店合并结算（#135）：支付单 order_id 为主订单ID，逐个子订单补齐
+            if (payment.getOrderId() != null && payment.getOrderId().startsWith("M")) {
+                if (!reconcileMainOrder(payment)) {
+                    return false;
+                }
+                paymentMapper.markReconciled(payment.getPaymentId(), LocalDateTime.now());
+                log.warn("主订单支付后对账补齐成功, paymentId={}, mainOrderId={}",
+                        payment.getPaymentId(), payment.getOrderId());
+                return true;
+            }
             if (!reconcileOrder(payment)) {
                 return false;
             }
@@ -100,6 +111,89 @@ public class PaymentReconcileJob {
             log.error("支付后对账异常, paymentId={}, orderId={}",
                     payment.getPaymentId(), payment.getOrderId(), e);
             return false;
+        }
+    }
+
+    /**
+     * 主订单对账（#135）：逐个子订单补齐支付通知与库存确认。
+     * 已取消的子订单跳过（库存已在取消时释放）；主订单已取消则停止对账，交由人工/自动退款处理。
+     */
+    private boolean reconcileMainOrder(Payment payment) {
+        MainOrderDTO mainOrder = queryMainOrder(payment);
+        if (mainOrder == null) {
+            return false;
+        }
+        if (mainOrder.getStatus() == OrderStatus.CANCELLED) {
+            log.error("对账发现主订单已取消但支付成功，需人工处理, paymentId={}, mainOrderId={}",
+                    payment.getPaymentId(), payment.getOrderId());
+            return false;
+        }
+        if (mainOrder.getSubOrders() == null || mainOrder.getSubOrders().isEmpty()) {
+            log.warn("对账查询主订单缺少子订单, mainOrderId={}", payment.getOrderId());
+            return false;
+        }
+        boolean allOk = true;
+        for (OrderDTO subOrder : mainOrder.getSubOrders()) {
+            if (subOrder.getStatus() == OrderStatus.CANCELLED) {
+                continue;
+            }
+            if (!reconcileSubOrderPaid(subOrder)) {
+                allOk = false;
+            }
+            if (!reconcileSubOrderStock(subOrder.getOrderId())) {
+                allOk = false;
+            }
+        }
+        return allOk;
+    }
+
+    private boolean reconcileSubOrderPaid(OrderDTO subOrder) {
+        if (subOrder.getStatus() == OrderStatus.PAID
+                || subOrder.getStatus() == OrderStatus.SHIPPED
+                || subOrder.getStatus() == OrderStatus.COMPLETED) {
+            return true;
+        }
+        if (subOrder.getStatus() == OrderStatus.REFUNDED) {
+            log.error("对账发现子订单已退款但支付成功，需人工处理, orderId={}", subOrder.getOrderId());
+            return false;
+        }
+        Result<Void> result = orderClient.markPaid(subOrder.getOrderId());
+        if (result == null || result.getCode() != 0) {
+            log.warn("对账补齐子订单支付状态失败, orderId={}, code={}",
+                    subOrder.getOrderId(), result == null ? null : result.getCode());
+            return false;
+        }
+        return true;
+    }
+
+    private boolean reconcileSubOrderStock(String orderId) {
+        Result<ConfirmStockResponse> result =
+                productClient.confirmStock(new StockConfirmRequest(orderId));
+        if (result == null || result.getCode() != 0) {
+            log.warn("对账补齐库存扣减失败, orderId={}, code={}",
+                    orderId, result == null ? null : result.getCode());
+            return false;
+        }
+        ConfirmStockResponse data = result.getData();
+        if (data == null || !data.confirmed()) {
+            log.warn("对账补齐库存扣减未生效, orderId={}", orderId);
+            return false;
+        }
+        return true;
+    }
+
+    private MainOrderDTO queryMainOrder(Payment payment) {
+        try {
+            Result<MainOrderDTO> result = orderClient.getMainOrder(payment.getOrderId(), payment.getBuyerId());
+            if (result == null || result.getCode() != 0 || result.getData() == null) {
+                log.warn("对账查询主订单失败, mainOrderId={}, code={}",
+                        payment.getOrderId(), result == null ? null : result.getCode());
+                return null;
+            }
+            return result.getData();
+        } catch (Exception e) {
+            log.warn("对账查询主订单异常, mainOrderId={}", payment.getOrderId(), e);
+            return null;
         }
     }
 

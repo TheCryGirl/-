@@ -1,11 +1,33 @@
 -- 订单服务数据库表
 -- 依据《05-接口契约》第五节与第十节。
 
+-- 主订单（#135 多店铺合并结算）：跨店一次支付时聚合各店铺子订单。
+-- 历史单店订单不产生主订单，order.main_order_id 为 null 时按单店兼容。
+CREATE TABLE IF NOT EXISTS main_order (
+    main_order_id   VARCHAR(32)  NOT NULL COMMENT '主订单ID',
+    main_order_no   VARCHAR(32)  NOT NULL COMMENT '主订单号，对外展示',
+    buyer_id        VARCHAR(32)  NOT NULL COMMENT '买家ID',
+    status          VARCHAR(24)  NOT NULL COMMENT 'PENDING_PAYMENT/PAID/CANCELLED',
+    pay_amount      BIGINT       NOT NULL COMMENT '应付合计，单位分，等于各子订单pay_amount之和',
+    paid_at         DATETIME     DEFAULT NULL COMMENT '支付时间（全部子订单支付完成）',
+    expire_at       DATETIME     NOT NULL COMMENT '待支付过期时间',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_by      VARCHAR(32)  DEFAULT NULL COMMENT '创建人',
+    updated_by      VARCHAR(32)  DEFAULT NULL COMMENT '更新人',
+    is_deleted      TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (main_order_id),
+    UNIQUE KEY uk_main_order_no (main_order_no),
+    KEY idx_main_buyer_status (buyer_id, status, created_at),
+    KEY idx_main_status_expire (status, expire_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='主订单（跨店合并结算）';
+
 CREATE TABLE IF NOT EXISTS `order` (
     order_id           VARCHAR(32)  NOT NULL COMMENT '订单ID',
     order_no           VARCHAR(32)  NOT NULL COMMENT '订单号，对外展示',
     buyer_id           VARCHAR(32)  NOT NULL COMMENT '买家ID',
     seller_id          VARCHAR(32)  NOT NULL COMMENT '卖家ID',
+    main_order_id      VARCHAR(32)  DEFAULT NULL COMMENT '主订单ID（#135）；历史单店订单为null',
     status             VARCHAR(24)  NOT NULL COMMENT 'PENDING_PAYMENT/PAID/SHIPPED/COMPLETED/CANCELLED/REFUNDED',
     total_amount       BIGINT       NOT NULL COMMENT '商品总额，单位分',
     pay_amount         BIGINT       NOT NULL COMMENT '应付金额，单位分',
@@ -25,7 +47,8 @@ CREATE TABLE IF NOT EXISTS `order` (
     UNIQUE KEY uk_order_no (order_no),
     KEY idx_buyer_status (buyer_id, status, created_at),
     KEY idx_seller_status (seller_id, status, created_at),
-    KEY idx_status_created (status, created_at)
+    KEY idx_status_created (status, created_at),
+    KEY idx_main_order_id (main_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
 
 CREATE TABLE IF NOT EXISTS order_item (

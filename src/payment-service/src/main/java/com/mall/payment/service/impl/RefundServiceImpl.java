@@ -1,6 +1,7 @@
 package com.mall.payment.service.impl;
 
 import com.mall.payment.client.OrderClient;
+import com.mall.payment.client.dto.MainOrderDTO;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
@@ -92,7 +93,9 @@ public class RefundServiceImpl implements RefundService {
         Refund refund = new Refund();
         refund.setRefundId(IdGenerator.refundId());
         refund.setPaymentId(paymentId);
-        refund.setOrderId(payment.getOrderId());
+        // 跨店合并结算（#135）：支付单 order_id 是主订单ID，退款通知必须落到具体子订单。
+        // 有卖家归属（售后按店发起）时反查该卖家的子订单；整笔自动退款无卖家归属，保留主订单ID。
+        refund.setOrderId(resolveRefundOrderId(payment, sellerIdOverride));
         refund.setBuyerId(buyerId);
         String sellerId = sellerIdOverride != null && !sellerIdOverride.isBlank()
                 ? sellerIdOverride : payment.getSellerId();
@@ -279,8 +282,60 @@ public class RefundServiceImpl implements RefundService {
         }
     }
 
+    /**
+     * 退款单应通知的订单ID（#135）。
+     *
+     * <p>单店支付单：退款通知原订单。跨店支付单（order_id 为主订单ID）：
+     * 售后退款带卖家归属，反查主订单找到该卖家的子订单，退款通知与库存回补都落到子订单；
+     * 找不到子订单时保留主订单ID并记录告警，由人工介入，不静默通知错误对象。
+     * 整笔自动退款（无卖家归属）保留主订单ID，仅记录资金退回，不触发子订单状态变更。
+     */
+    private String resolveRefundOrderId(Payment payment, String sellerIdOverride) {
+        String paymentOrderId = payment.getOrderId();
+        if (paymentOrderId == null || !paymentOrderId.startsWith("M")) {
+            return paymentOrderId;
+        }
+        if (sellerIdOverride == null || sellerIdOverride.isBlank()) {
+            return paymentOrderId;
+        }
+        try {
+            Result<MainOrderDTO> result = orderClient.getMainOrder(paymentOrderId, payment.getBuyerId());
+            if (result != null && result.getCode() == 0 && result.getData() != null
+                    && result.getData().getSubOrders() != null) {
+                for (OrderDTO subOrder : result.getData().getSubOrders()) {
+                    if (sellerIdOverride.equals(subOrder.getSellerId())) {
+                        return subOrder.getOrderId();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("反查主订单子订单失败, paymentId={}, mainOrderId={}",
+                    payment.getPaymentId(), paymentOrderId, e);
+        }
+        log.error("跨店退款未能定位子订单，退款通知保留主订单ID需人工处理, paymentId={}, mainOrderId={}, sellerId={}",
+                payment.getPaymentId(), paymentOrderId, sellerIdOverride);
+        return paymentOrderId;
+    }
+
     private String resolveSellerId(Refund refund) {
         try {
+            // 跨店合并结算（#135）：历史退款的 order_id 可能是主订单ID，先按主订单反查
+            if (refund.getOrderId() != null && refund.getOrderId().startsWith("M")) {
+                Result<MainOrderDTO> mainResult =
+                        orderClient.getMainOrder(refund.getOrderId(), refund.getBuyerId());
+                if (mainResult != null && mainResult.getCode() == 0 && mainResult.getData() != null
+                        && mainResult.getData().getSubOrders() != null
+                        && !mainResult.getData().getSubOrders().isEmpty()) {
+                    // 无卖家归属的整笔退款无法定位唯一子订单，取第一个子订单的卖家仅作展示兜底
+                    String sellerId = mainResult.getData().getSubOrders().get(0).getSellerId();
+                    if (sellerId != null && !sellerId.isBlank()) {
+                        return sellerId;
+                    }
+                }
+                log.warn("主订单缺少子订单卖家信息, refundId={}, mainOrderId={}",
+                        refund.getRefundId(), refund.getOrderId());
+                return null;
+            }
             Result<OrderDTO> result = orderClient.getOrder(refund.getOrderId(), refund.getBuyerId());
             if (result == null || result.getCode() != 0 || result.getData() == null) {
                 log.warn("补齐退款卖家信息失败, refundId={}, orderId={}, code={}",

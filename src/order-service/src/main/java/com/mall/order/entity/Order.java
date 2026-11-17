@@ -17,6 +17,8 @@ public class Order {
     private String orderNo;
     private String buyerId;
     private String sellerId;
+    /** 主订单ID（#135）；历史单店订单为 null */
+    private String mainOrderId;
     private OrderStatus status;
     private Long totalAmount;
     private Long payAmount;

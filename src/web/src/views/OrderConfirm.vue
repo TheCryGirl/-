@@ -19,6 +19,38 @@ const submitting = ref(false)
 const total = computed(() => items.value.reduce((sum, i) => sum + i.price * i.quantity, 0))
 const totalQuantity = computed(() => items.value.reduce((sum, i) => sum + i.quantity, 0))
 
+/**
+ * 跨店结算预览（#135）：按店铺分块展示，金额一律以预览接口为准，前端不自行计算应付。
+ * 预览失败时退回本地商品清单展示，但提交仍走服务端下单校验。
+ */
+const preview = ref(null)
+const previewLoading = ref(false)
+const previewError = ref('')
+
+const previewShops = computed(() => preview.value?.shops || [])
+const isMultiShop = computed(() => previewShops.value.length > 1)
+const previewPayAmount = computed(() => preview.value?.payAmount ?? total.value)
+
+async function loadPreview() {
+  if (!items.value.length) return
+  previewLoading.value = true
+  previewError.value = ''
+  try {
+    const { data } = await orderApi.preview({ cartItemIds: items.value.map((i) => i.cartItemId) })
+    if (!isOk(data)) {
+      previewError.value = data?.message || '结算预览加载失败'
+      preview.value = null
+      return
+    }
+    preview.value = unwrapResult(data)
+  } catch (err) {
+    previewError.value = resolveErrorMessage(err, '结算预览加载失败')
+    preview.value = null
+  } finally {
+    previewLoading.value = false
+  }
+}
+
 /** 后端同时输出 isDefault 与 defaultAddress，两个名字都兼容 */
 function isDefaultAddress(addr) {
   return Boolean(addr.defaultAddress ?? addr.isDefault)
@@ -66,6 +98,7 @@ async function load() {
     } else if (addresses.value.length) {
       selectedAddressId.value = addresses.value[0].addressId
     }
+    await loadPreview()
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载结算信息失败')
   } finally {
@@ -104,7 +137,12 @@ async function submit() {
     }
     sessionStorage.removeItem('checkoutItems')
     showSuccess('下单成功')
-    router.push({ name: 'order-pay', params: { id: order.orderId } })
+    // 跨店结算（#135）：跳主订单支付页，一次支付覆盖全部子订单
+    if (order.mainOrderId) {
+      router.push({ name: 'main-order-pay', params: { id: order.mainOrderId } })
+    } else {
+      router.push({ name: 'order-pay', params: { id: order.orderId } })
+    }
   } catch (err) {
     showError(resolveErrorMessage(err, '下单失败'))
   } finally {
@@ -189,8 +227,39 @@ onMounted(load)
         </el-radio-group>
       </el-card>
 
-      <!-- 商品清单 -->
-      <el-card shadow="never">
+      <!-- 商品清单：跨店时按店铺分块（#135），单店保持原清单 -->
+      <template v-if="isMultiShop">
+        <el-card
+          v-for="shop in previewShops"
+          :key="shop.sellerId"
+          shadow="never"
+          :data-testid="`order-confirm-shop-${shop.sellerId}`"
+        >
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-base font-medium">{{ shop.shopName || shop.sellerId }}</span>
+              <span class="text-xs text-gray-400">
+                店铺小计 ¥{{ formatPrice(shop.totalAmount) }}
+              </span>
+            </div>
+          </template>
+          <div class="divide-y divide-gray-100">
+            <div
+              v-for="item in shop.items"
+              :key="item.cartItemId"
+              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 break-words">{{ item.productTitle }}</p>
+                <p class="text-xs text-gray-500 mt-1">{{ item.specName || '默认规格' }} × {{ item.quantity }}</p>
+              </div>
+              <p class="text-sm text-red-600 font-medium whitespace-nowrap">¥{{ formatPrice(item.subtotal) }}</p>
+            </div>
+          </div>
+        </el-card>
+      </template>
+
+      <el-card v-else shadow="never">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-base font-medium">商品清单</span>
@@ -239,11 +308,15 @@ onMounted(load)
       <!-- 合计 -->
       <el-card shadow="never">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span class="text-sm text-gray-600">共 {{ totalQuantity }} 件</span>
+          <span class="text-sm text-gray-600" data-testid="order-confirm-summary">
+            <template v-if="isMultiShop">共 {{ previewShops.length }} 家店铺，</template>{{ totalQuantity }} 件
+          </span>
           <div class="flex flex-wrap items-center gap-4">
             <span class="text-sm text-gray-600">
               应付合计
-              <span class="text-xl font-semibold text-red-600">¥{{ formatPrice(total) }}</span>
+              <span class="text-xl font-semibold text-red-600" data-testid="order-confirm-pay-amount">
+                ¥{{ formatPrice(previewPayAmount) }}
+              </span>
             </span>
             <el-button
               type="primary"
@@ -256,6 +329,9 @@ onMounted(load)
             </el-button>
           </div>
         </div>
+        <p v-if="previewError" class="text-xs text-amber-600 mt-2">
+          分店预览加载失败（{{ previewError }}），应付金额以提交订单时服务端计算为准
+        </p>
       </el-card>
     </template>
   </div>
