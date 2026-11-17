@@ -72,6 +72,8 @@ class JwtAuthFilterWhiteListTest {
         assertTrue(white(HttpMethod.GET, "/api/categories/C01"));
         assertTrue(white(HttpMethod.GET, "/images/a.png"));
         assertTrue(white(HttpMethod.GET, "/actuator/health"));
+        // #143 售后凭证静态资源可匿名 GET，用于 img 预览
+        assertTrue(white(HttpMethod.GET, "/after-sale/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6.png"));
     }
 
     @Test
@@ -97,6 +99,9 @@ class JwtAuthFilterWhiteListTest {
         assertFalse(white(HttpMethod.GET, "/api/cart"));
         assertFalse(white(HttpMethod.GET, "/api/payments/PAY1"));
         assertFalse(white(HttpMethod.GET, "/api/users/me"));
+        // #143 售后查询与凭证上传必须登录，只有静态资源可匿名
+        assertFalse(white(HttpMethod.GET, "/api/after-sales"));
+        assertFalse(white(HttpMethod.POST, "/api/after-sales/attachments/upload"));
     }
 
     @Test

@@ -5,7 +5,7 @@
 
     <sql id="columns">
         ticket_id, order_id, payment_id, buyer_id, seller_id, after_sale_type,
-        amount, reason, status, refund_id, return_tracking_no, exchange_tracking_no,
+        amount, reason, reason_code, status, refund_id, return_tracking_no, exchange_tracking_no,
         audit_remark, audited_by, audited_at, buyer_shipped_at, seller_shipped_at,
         idempotency_key, active_flag, created_at, updated_at, created_by, updated_by,
         is_deleted
@@ -14,12 +14,12 @@
     <insert id="insert" parameterType="com.mall.payment.entity.AfterSaleTicket">
         INSERT INTO after_sale_ticket (
             ticket_id, order_id, payment_id, buyer_id, seller_id, after_sale_type,
-            amount, reason, status, refund_id, return_tracking_no, exchange_tracking_no,
+            amount, reason, reason_code, status, refund_id, return_tracking_no, exchange_tracking_no,
             audit_remark, audited_by, audited_at, buyer_shipped_at, seller_shipped_at,
             idempotency_key, active_flag, created_by, updated_by, is_deleted
         ) VALUES (
             #{ticketId}, #{orderId}, #{paymentId}, #{buyerId}, #{sellerId},
-            #{afterSaleType}, #{amount}, #{reason,jdbcType=VARCHAR}, #{status},
+            #{afterSaleType}, #{amount}, #{reason,jdbcType=VARCHAR}, #{reasonCode,jdbcType=VARCHAR}, #{status},
             #{refundId,jdbcType=VARCHAR}, #{returnTrackingNo,jdbcType=VARCHAR},
             #{exchangeTrackingNo,jdbcType=VARCHAR}, #{auditRemark,jdbcType=VARCHAR},
             #{auditedBy,jdbcType=VARCHAR}, #{auditedAt,jdbcType=TIMESTAMP},
@@ -207,4 +207,66 @@
           AND after_sale_type IN ('REFUND_ONLY', 'RETURN_REFUND')
           AND is_deleted = 0
     </update>
+
+    <update id="markCancelled">
+        UPDATE after_sale_ticket
+        SET status = 'CANCELLED',
+            active_flag = NULL,
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{buyerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'PENDING'
+          AND buyer_id = #{buyerId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- REJECTED 终态 active_flag 为 NULL，申请仲裁重新置 1；
+         若该订单已有另一条进行中售后单，uk_order_active 会拒绝本次 reopening -->
+    <update id="markArbitrating">
+        UPDATE after_sale_ticket
+        SET status = 'ARBITRATING',
+            active_flag = 1,
+            updated_by = #{buyerId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'REJECTED'
+          AND buyer_id = #{buyerId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="markArbitrationRefunded">
+        UPDATE after_sale_ticket
+        SET status = 'REFUNDED',
+            active_flag = NULL,
+            refund_id = #{refundId},
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{operatorId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'ARBITRATING'
+          AND after_sale_type IN ('REFUND_ONLY', 'RETURN_REFUND')
+          AND is_deleted = 0
+    </update>
+
+    <update id="markArbitrationRejected">
+        UPDATE after_sale_ticket
+        SET status = 'REJECTED',
+            active_flag = NULL,
+            audit_remark = #{remark,jdbcType=VARCHAR},
+            updated_by = #{operatorId},
+            updated_at = NOW()
+        WHERE ticket_id = #{ticketId}
+          AND status = 'ARBITRATING'
+          AND is_deleted = 0
+    </update>
+
+    <select id="selectByRefundId" resultType="com.mall.payment.entity.AfterSaleTicket">
+        SELECT <include refid="columns"/>
+        FROM after_sale_ticket
+        WHERE refund_id = #{refundId}
+          AND is_deleted = 0
+        ORDER BY created_at DESC, ticket_id DESC
+        LIMIT 1
+    </select>
 </mapper>

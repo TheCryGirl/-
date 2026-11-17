@@ -2,8 +2,10 @@ package com.mall.payment.service.impl;
 
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.dto.OrderDTO;
+import com.mall.payment.common.AfterSaleReasonCode;
 import com.mall.payment.common.AfterSaleStatus;
 import com.mall.payment.common.AfterSaleType;
+import com.mall.payment.common.ArbitrationDecision;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
@@ -12,21 +14,30 @@ import com.mall.payment.common.PageResult;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.RefundStatus;
 import com.mall.payment.common.Result;
+import com.mall.payment.dto.request.ArbitrateRequest;
 import com.mall.payment.dto.request.CreateAfterSaleRequest;
 import com.mall.payment.dto.request.RefundRequest;
+import com.mall.payment.dto.request.SupplementRequest;
 import com.mall.payment.dto.response.AfterSaleResponse;
 import com.mall.payment.dto.response.RefundResponse;
+import com.mall.payment.entity.AfterSaleAttachment;
+import com.mall.payment.entity.AfterSaleEvent;
 import com.mall.payment.entity.AfterSaleTicket;
 import com.mall.payment.entity.Payment;
+import com.mall.payment.mapper.AfterSaleAttachmentMapper;
+import com.mall.payment.mapper.AfterSaleEventMapper;
 import com.mall.payment.mapper.AfterSaleMapper;
 import com.mall.payment.mapper.PaymentMapper;
+import com.mall.payment.service.AfterSaleAttachmentStorageService;
 import com.mall.payment.service.AfterSaleService;
 import com.mall.payment.service.AfterSaleTxService;
 import com.mall.payment.service.RefundService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,6 +52,10 @@ import java.util.Locale;
  *   <li>退款金额：复用 RefundService 的 payment.refunded_amount 条件预占</li>
  * </ul>
  * 所有本地写操作在一个事务内完成；订单通知与库存回补由 RefundService 在事务提交后触发。
+ *
+ * <p>#143 增量：每次状态变更写一条时间线事件（after_sale_event）；买家撤销
+ * （PENDING -> CANCELLED）；平台仲裁（REJECTED -> ARBITRATING，管理员裁定
+ * REFUNDED | REJECTED）；仲裁期间双方补充说明与凭证，材料对双方可见。
  */
 @Slf4j
 @Service
@@ -49,12 +64,18 @@ public class AfterSaleServiceImpl implements AfterSaleService {
 
     private static final int MAX_PAGE_SIZE = 100;
     private static final int IDEMPOTENCY_KEY_MAX_LENGTH = 64;
+    private static final String ROLE_ADMIN = "ADMIN";
+    private static final String ROLE_SELLER = "SELLER";
+    private static final String ROLE_BUYER = "BUYER";
 
     private final AfterSaleMapper afterSaleMapper;
     private final AfterSaleTxService afterSaleTxService;
     private final OrderClient orderClient;
     private final PaymentMapper paymentMapper;
     private final RefundService refundService;
+    private final AfterSaleAttachmentMapper attachmentMapper;
+    private final AfterSaleEventMapper eventMapper;
+    private final AfterSaleAttachmentStorageService attachmentStorageService;
 
     @Override
     public AfterSaleResponse create(String buyerId, String idempotencyKey,
@@ -73,12 +94,15 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         AfterSaleTicket existing = afterSaleMapper.selectByIdempotencyKey(key);
         if (existing != null) {
             checkBuyerAccess(existing, buyerId);
-            return AfterSaleResponse.from(existing);
+            return full(existing);
         }
         AfterSaleTicket active = afterSaleMapper.selectActiveByOrderId(request.getOrderId());
         if (active != null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "该订单已有进行中的售后单");
         }
+
+        validateReasonCode(request.getReasonCode(), request.getReason());
+        attachmentStorageService.validateUrls(request.getAttachmentUrls());
 
         long amount = 0;
         if (request.getType() != AfterSaleType.EXCHANGE) {
@@ -130,6 +154,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         ticket.setAfterSaleType(request.getType());
         ticket.setAmount(amount);
         ticket.setReason(request.getReason());
+        ticket.setReasonCode(request.getReasonCode());
         ticket.setStatus(AfterSaleStatus.PENDING);
         ticket.setIdempotencyKey(key);
         ticket.setActiveFlag(true);
@@ -137,12 +162,16 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         ticket.setUpdatedBy(buyerId);
         ticket.setIsDeleted(false);
 
-        AfterSaleTicket saved = afterSaleTxService.insertIfAbsent(ticket);
+        List<AfterSaleAttachment> attachments = toAttachments(
+                buyerId, ROLE_BUYER, request.getAttachmentUrls());
+        AfterSaleEvent createEvent = toEvent(null, AfterSaleStatus.PENDING, buyerId, request.getReason());
+        AfterSaleTicket saved = afterSaleTxService.insertIfAbsent(ticket, attachments, createEvent);
         checkBuyerAccess(saved, buyerId);
         AfterSaleTicket latest = afterSaleMapper.selectById(saved.getTicketId());
-        log.info("售后单创建成功, ticketId={}, orderId={}, type={}, amount={}",
-                latest.getTicketId(), latest.getOrderId(), latest.getAfterSaleType(), latest.getAmount());
-        return AfterSaleResponse.from(latest);
+        log.info("售后单创建成功, ticketId={}, orderId={}, type={}, amount={}, reasonCode={}",
+                latest.getTicketId(), latest.getOrderId(), latest.getAfterSaleType(),
+                latest.getAmount(), latest.getReasonCode());
+        return full(latest);
     }
 
     @Override
@@ -153,8 +182,8 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         AfterSaleStatus statusFilter = parseStatus(status);
         AfterSaleType typeFilter = parseType(type);
 
-        boolean admin = "ADMIN".equalsIgnoreCase(role);
-        boolean seller = "SELLER".equalsIgnoreCase(role);
+        boolean admin = ROLE_ADMIN.equalsIgnoreCase(role);
+        boolean seller = ROLE_SELLER.equalsIgnoreCase(role);
         String buyerFilter = null;
         String sellerFilter = null;
         if (seller) {
@@ -183,7 +212,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
     public AfterSaleResponse detail(String userId, String role, String ticketId) {
         AfterSaleTicket ticket = requireTicket(ticketId);
         checkDetailAccess(ticket, userId, role);
-        return AfterSaleResponse.from(ticket);
+        return full(ticket);
     }
 
     @Override
@@ -193,13 +222,19 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         AfterSaleTicket ticket = requireTicket(ticketId);
         checkSellerAccess(ticket, operatorId, role);
 
+        if (ticket.getStatus() == AfterSaleStatus.ARBITRATING) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仲裁中的售后单卖家不能审核");
+        }
+        if (ticket.getStatus() == AfterSaleStatus.CANCELLED) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后单已撤销，不能审核");
+        }
         if (ticket.getStatus() == AfterSaleStatus.REFUNDED
                 || ticket.getStatus() == AfterSaleStatus.COMPLETED) {
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         if (!approved) {
             if (ticket.getStatus() == AfterSaleStatus.REJECTED) {
-                return AfterSaleResponse.from(ticket);
+                return full(ticket);
             }
             if (ticket.getStatus() != AfterSaleStatus.PENDING) {
                 throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许驳回");
@@ -209,11 +244,12 @@ public class AfterSaleServiceImpl implements AfterSaleService {
             if (updated == 0) {
                 AfterSaleTicket latest = requireTicket(ticketId);
                 if (latest.getStatus() == AfterSaleStatus.REJECTED) {
-                    return AfterSaleResponse.from(latest);
+                    return full(latest);
                 }
                 throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
             }
-            return AfterSaleResponse.from(requireTicket(ticketId));
+            recordEvent(ticketId, AfterSaleStatus.PENDING, AfterSaleStatus.REJECTED, operatorId, remark);
+            return full(requireTicket(ticketId));
         }
 
         if (ticket.getStatus() == AfterSaleStatus.REJECTED) {
@@ -227,13 +263,15 @@ public class AfterSaleServiceImpl implements AfterSaleService {
                 if (latest.getStatus() == AfterSaleStatus.REJECTED) {
                     throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后单已被驳回");
                 }
+            } else {
+                recordEvent(ticketId, AfterSaleStatus.PENDING, AfterSaleStatus.APPROVED, operatorId, remark);
             }
         }
 
         ticket = requireTicket(ticketId);
         if (ticket.getAfterSaleType() == AfterSaleType.REFUND_ONLY) {
             if (ticket.getStatus() == AfterSaleStatus.REFUNDED) {
-                return AfterSaleResponse.from(ticket);
+                return full(ticket);
             }
             if (ticket.getStatus() != AfterSaleStatus.APPROVED) {
                 throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许退款");
@@ -246,7 +284,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
                 || ticket.getStatus() == AfterSaleStatus.SELLER_RECEIVED
                 || ticket.getStatus() == AfterSaleStatus.REFUNDED
                 || ticket.getStatus() == AfterSaleStatus.COMPLETED) {
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许该操作");
     }
@@ -266,23 +304,25 @@ public class AfterSaleServiceImpl implements AfterSaleService {
                 AfterSaleTicket latest = requireTicket(ticketId);
                 if (latest.getStatus() == AfterSaleStatus.BUYER_SHIPPED
                         && trackingNo.equals(latest.getReturnTrackingNo())) {
-                    return AfterSaleResponse.from(latest);
+                    return full(latest);
                 }
                 if (isAfterBuyerShipped(latest.getStatus())) {
-                    return AfterSaleResponse.from(latest);
+                    return full(latest);
                 }
                 throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许提交退货物流");
             }
-            return AfterSaleResponse.from(requireTicket(ticketId));
+            recordEvent(ticketId, AfterSaleStatus.APPROVED, AfterSaleStatus.BUYER_SHIPPED,
+                    buyerId, "买家提交退货物流：" + trackingNo);
+            return full(requireTicket(ticketId));
         }
         if (ticket.getStatus() == AfterSaleStatus.BUYER_SHIPPED) {
             if (trackingNo.equals(ticket.getReturnTrackingNo())) {
-                return AfterSaleResponse.from(ticket);
+                return full(ticket);
             }
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "退货物流已提交，不能修改");
         }
         if (isAfterBuyerShipped(ticket.getStatus())) {
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许提交退货物流");
     }
@@ -297,7 +337,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仅退货退款需要确认收货");
         }
         if (ticket.getStatus() == AfterSaleStatus.REFUNDED) {
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         if (ticket.getStatus() == AfterSaleStatus.BUYER_SHIPPED) {
             int updated = afterSaleMapper.markSellerReceived(
@@ -308,6 +348,9 @@ public class AfterSaleServiceImpl implements AfterSaleService {
                         && latest.getStatus() != AfterSaleStatus.REFUNDED) {
                     throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
                 }
+            } else {
+                recordEvent(ticketId, AfterSaleStatus.BUYER_SHIPPED, AfterSaleStatus.SELLER_RECEIVED,
+                        operatorId, remark);
             }
         } else if (ticket.getStatus() != AfterSaleStatus.SELLER_RECEIVED) {
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许确认收货");
@@ -315,31 +358,33 @@ public class AfterSaleServiceImpl implements AfterSaleService {
 
         ticket = requireTicket(ticketId);
         if (ticket.getStatus() == AfterSaleStatus.REFUNDED) {
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         if (ticket.getStatus() != AfterSaleStatus.SELLER_RECEIVED) {
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "当前售后状态不允许退款");
         }
         if (ticket.getRefundId() != null) {
             // 渠道退款处理中，重复确认收货不再发起新退款
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         RefundResponse refund = executeRefund(ticket, operatorId, role, remark);
         if (refund.getStatus() != RefundStatus.SUCCESS) {
             // 渠道异步退款：售后单停在 SELLER_RECEIVED，退款成功回调再置 REFUNDED
             afterSaleMapper.attachRefundId(ticketId, refund.getRefundId());
-            return AfterSaleResponse.from(requireTicket(ticketId));
+            return full(requireTicket(ticketId));
         }
         int updated = afterSaleMapper.markReturnRefunded(
                 ticketId, ticket.getSellerId(), refund.getRefundId(), remark, LocalDateTime.now());
         if (updated == 0) {
             AfterSaleTicket latest = requireTicket(ticketId);
             if (latest.getStatus() == AfterSaleStatus.REFUNDED) {
-                return AfterSaleResponse.from(latest);
+                return full(latest);
             }
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
         }
-        return AfterSaleResponse.from(requireTicket(ticketId));
+        recordEvent(ticketId, AfterSaleStatus.SELLER_RECEIVED, AfterSaleStatus.REFUNDED,
+                operatorId, remark);
+        return full(requireTicket(ticketId));
     }
 
     @Override
@@ -353,7 +398,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         }
         if (ticket.getStatus() == AfterSaleStatus.COMPLETED) {
             if (trackingNo.equals(ticket.getExchangeTrackingNo())) {
-                return AfterSaleResponse.from(ticket);
+                return full(ticket);
             }
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "换货物流已提交，不能修改");
         }
@@ -365,35 +410,192 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         if (updated == 0) {
             AfterSaleTicket latest = requireTicket(ticketId);
             if (latest.getStatus() == AfterSaleStatus.COMPLETED) {
-                return AfterSaleResponse.from(latest);
+                return full(latest);
             }
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
         }
-        return AfterSaleResponse.from(requireTicket(ticketId));
+        recordEvent(ticketId, AfterSaleStatus.BUYER_SHIPPED, AfterSaleStatus.COMPLETED,
+                operatorId, remark);
+        return full(requireTicket(ticketId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AfterSaleResponse cancel(String ticketId, String buyerId, String remark) {
+        AfterSaleTicket ticket = requireTicket(ticketId);
+        checkBuyerAccess(ticket, buyerId);
+        if (ticket.getStatus() == AfterSaleStatus.CANCELLED) {
+            return full(ticket);
+        }
+        if (ticket.getStatus() != AfterSaleStatus.PENDING) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仅待审核的售后单可撤销");
+        }
+        int updated = afterSaleMapper.markCancelled(
+                ticketId, buyerId, remark, LocalDateTime.now());
+        if (updated == 0) {
+            AfterSaleTicket latest = requireTicket(ticketId);
+            if (latest.getStatus() == AfterSaleStatus.CANCELLED) {
+                return full(latest);
+            }
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
+        }
+        recordEvent(ticketId, AfterSaleStatus.PENDING, AfterSaleStatus.CANCELLED, buyerId, remark);
+        return full(requireTicket(ticketId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AfterSaleResponse requestArbitration(String ticketId, String buyerId, String remark) {
+        AfterSaleTicket ticket = requireTicket(ticketId);
+        checkBuyerAccess(ticket, buyerId);
+        if (ticket.getStatus() == AfterSaleStatus.ARBITRATING) {
+            return full(ticket);
+        }
+        if (ticket.getStatus() != AfterSaleStatus.REJECTED) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仅卖家驳回后可申请平台仲裁");
+        }
+        int updated;
+        try {
+            updated = afterSaleMapper.markArbitrating(
+                    ticketId, buyerId, remark, LocalDateTime.now());
+        } catch (DuplicateKeyException e) {
+            // REJECTED 终态 active_flag 为 NULL，申请仲裁重新置 1；
+            // 若同一订单已有另一条进行中售后单，uk_order_active 会拒绝本次恢复
+            throw new BizException(ErrorCode.PARAM_INVALID, "该订单已有进行中的售后单，无法申请仲裁");
+        }
+        if (updated == 0) {
+            AfterSaleTicket latest = requireTicket(ticketId);
+            if (latest.getStatus() == AfterSaleStatus.ARBITRATING) {
+                return full(latest);
+            }
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
+        }
+        recordEvent(ticketId, AfterSaleStatus.REJECTED, AfterSaleStatus.ARBITRATING, buyerId, remark);
+        return full(requireTicket(ticketId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AfterSaleResponse supplement(String ticketId, String userId, String role,
+                                        SupplementRequest request) {
+        AfterSaleTicket ticket = requireTicket(ticketId);
+        checkDetailAccess(ticket, userId, role);
+        if (ticket.getStatus() != AfterSaleStatus.ARBITRATING) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仅仲裁中的售后单可补充材料");
+        }
+        String remark = request.getRemark() == null ? null : request.getRemark().trim();
+        boolean hasRemark = remark != null && !remark.isEmpty();
+        List<String> urls = request.getAttachmentUrls();
+        boolean hasAttachments = urls != null && !urls.isEmpty();
+        if (!hasRemark && !hasAttachments) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "补充说明与凭证至少提供其一");
+        }
+        attachmentStorageService.validateUrls(urls);
+        if (hasAttachments) {
+            bindAttachments(ticketId, userId, role, urls);
+        }
+        recordEvent(ticketId, AfterSaleStatus.ARBITRATING, AfterSaleStatus.ARBITRATING,
+                userId, hasRemark ? remark : "补充凭证");
+        return full(requireTicket(ticketId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AfterSaleResponse arbitrate(String ticketId, String operatorId, String role,
+                                       ArbitrateRequest request) {
+        requireAdmin(role);
+        AfterSaleTicket ticket = requireTicket(ticketId);
+        if (ticket.getStatus() != AfterSaleStatus.ARBITRATING) {
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "仅仲裁中的售后单可裁定");
+        }
+        String remark = request.getRemark() == null ? null : request.getRemark().trim();
+        if (request.getDecision() == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "裁定结果不能为空");
+        }
+        if (remark == null || remark.isEmpty()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "裁定理由不能为空");
+        }
+
+        if (request.getDecision() == ArbitrationDecision.REJECT) {
+            int updated = afterSaleMapper.markArbitrationRejected(
+                    ticketId, operatorId, remark, LocalDateTime.now());
+            if (updated == 0) {
+                AfterSaleTicket latest = requireTicket(ticketId);
+                if (latest.getStatus() == AfterSaleStatus.REJECTED) {
+                    return full(latest);
+                }
+                throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
+            }
+            recordEvent(ticketId, AfterSaleStatus.ARBITRATING, AfterSaleStatus.REJECTED,
+                    operatorId, remark);
+            return full(requireTicket(ticketId));
+        }
+
+        // REFUND：联动退款链路，售后单与退款单状态保持一致
+        if (ticket.getAfterSaleType() == AfterSaleType.EXCHANGE) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "换货售后不支持退款裁定");
+        }
+        if (ticket.getAmount() == null || ticket.getAmount() <= 0) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "售后金额异常，无法退款");
+        }
+        if (ticket.getRefundId() != null) {
+            return full(ticket);
+        }
+        RefundResponse refund = executeRefund(ticket, operatorId, role, remark);
+        if (refund.getStatus() != RefundStatus.SUCCESS) {
+            // 渠道异步退款：售后单停在 ARBITRATING，退款成功回调再置 REFUNDED
+            afterSaleMapper.attachRefundId(ticketId, refund.getRefundId());
+            recordEvent(ticketId, AfterSaleStatus.ARBITRATING, AfterSaleStatus.ARBITRATING,
+                    operatorId, "裁定支持退款，渠道退款处理中：" + remark);
+            return full(requireTicket(ticketId));
+        }
+        int updated = afterSaleMapper.markArbitrationRefunded(
+                ticketId, refund.getRefundId(), operatorId, remark, LocalDateTime.now());
+        if (updated == 0) {
+            // 并发裁定下，本事务可能已创建并审核了自己的退款单，但售后单已被他人裁定：
+            // 这里必须抛异常回滚本事务的退款与额度预占，保证一笔售后单只产生一笔退款。
+            // 顺序重试会命中上方 refundId 守卫直接返回，不会走到这里。
+            throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后单已被裁定，请刷新后重试");
+        }
+        recordEvent(ticketId, AfterSaleStatus.ARBITRATING, AfterSaleStatus.REFUNDED,
+                operatorId, remark);
+        return full(requireTicket(ticketId));
+    }
+
+    @Override
+    public List<String> uploadAttachments(String userId, List<MultipartFile> files) {
+        if (userId == null || userId.isBlank()) {
+            throw new BizException(ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
+        }
+        List<String> urls = attachmentStorageService.storeAll(files);
+        log.info("售后凭证上传成功, userId={}, count={}", userId, urls.size());
+        return urls;
     }
 
     private AfterSaleResponse executeRefundOnly(AfterSaleTicket ticket, String operatorId,
                                                 String role, String remark) {
         if (ticket.getRefundId() != null) {
             // 渠道退款处理中，重复审核不再发起新退款
-            return AfterSaleResponse.from(ticket);
+            return full(ticket);
         }
         RefundResponse refund = executeRefund(ticket, operatorId, role, remark);
         if (refund.getStatus() != RefundStatus.SUCCESS) {
             // 渠道异步退款：售后单停在 APPROVED，退款成功回调再置 REFUNDED
             afterSaleMapper.attachRefundId(ticket.getTicketId(), refund.getRefundId());
-            return AfterSaleResponse.from(requireTicket(ticket.getTicketId()));
+            return full(requireTicket(ticket.getTicketId()));
         }
         int updated = afterSaleMapper.markRefundOnlyRefunded(
                 ticket.getTicketId(), ticket.getSellerId(), refund.getRefundId(), remark, LocalDateTime.now());
         if (updated == 0) {
             AfterSaleTicket latest = requireTicket(ticket.getTicketId());
             if (latest.getStatus() == AfterSaleStatus.REFUNDED) {
-                return AfterSaleResponse.from(latest);
+                return full(latest);
             }
             throw new BizException(ErrorCode.AFTER_SALE_STATE_INVALID, "售后状态已变化，请刷新后重试");
         }
-        return AfterSaleResponse.from(requireTicket(ticket.getTicketId()));
+        recordEvent(ticket.getTicketId(), AfterSaleStatus.APPROVED, AfterSaleStatus.REFUNDED,
+                operatorId, remark);
+        return full(requireTicket(ticket.getTicketId()));
     }
 
     private RefundResponse executeRefund(AfterSaleTicket ticket, String operatorId, String role, String remark) {
@@ -405,6 +607,56 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         return refundService.auditRefund(refund.getRefundId(), true, operatorId, role, remark);
     }
 
+    private void validateReasonCode(AfterSaleReasonCode reasonCode, String reason) {
+        if (reasonCode == AfterSaleReasonCode.OTHER
+                && (reason == null || reason.isBlank())) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "选择其他原因时必须填写说明");
+        }
+    }
+
+    private void bindAttachments(String ticketId, String userId, String role, List<String> urls) {
+        for (AfterSaleAttachment attachment : toAttachments(userId, role, urls)) {
+            attachment.setTicketId(ticketId);
+            attachmentMapper.insert(attachment);
+        }
+    }
+
+    private List<AfterSaleAttachment> toAttachments(String userId, String role, List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return List.of();
+        }
+        return urls.stream().map(url -> {
+            AfterSaleAttachment attachment = new AfterSaleAttachment();
+            attachment.setUrl(url);
+            attachment.setUploadedBy(userId);
+            attachment.setUploaderRole(role);
+            return attachment;
+        }).toList();
+    }
+
+    private void recordEvent(String ticketId, AfterSaleStatus from, AfterSaleStatus to,
+                             String operatorId, String remark) {
+        AfterSaleEvent event = toEvent(from, to, operatorId, remark);
+        event.setTicketId(ticketId);
+        eventMapper.insert(event);
+    }
+
+    private AfterSaleEvent toEvent(AfterSaleStatus from, AfterSaleStatus to,
+                                   String operatorId, String remark) {
+        AfterSaleEvent event = new AfterSaleEvent();
+        event.setFromStatus(from);
+        event.setToStatus(to);
+        event.setOperatorId(operatorId);
+        event.setRemark(remark);
+        return event;
+    }
+
+    private AfterSaleResponse full(AfterSaleTicket ticket) {
+        return AfterSaleResponse.from(ticket,
+                attachmentMapper.selectByTicketId(ticket.getTicketId()),
+                eventMapper.selectByTicketId(ticket.getTicketId()));
+    }
+
     private AfterSaleTicket requireTicket(String ticketId) {
         AfterSaleTicket ticket = ticketId == null ? null : afterSaleMapper.selectById(ticketId);
         if (ticket == null) {
@@ -413,11 +665,17 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         return ticket;
     }
 
+    private void requireAdmin(String role) {
+        if (!ROLE_ADMIN.equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限执行平台仲裁");
+        }
+    }
+
     private void checkDetailAccess(AfterSaleTicket ticket, String userId, String role) {
-        if ("ADMIN".equalsIgnoreCase(role)) {
+        if (ROLE_ADMIN.equalsIgnoreCase(role)) {
             return;
         }
-        if ("SELLER".equalsIgnoreCase(role)) {
+        if (ROLE_SELLER.equalsIgnoreCase(role)) {
             if (!userId.equals(ticket.getSellerId())) {
                 throw new BizException(ErrorCode.FORBIDDEN, "无权查看该售后单");
             }
@@ -429,10 +687,10 @@ public class AfterSaleServiceImpl implements AfterSaleService {
     }
 
     private void checkSellerAccess(AfterSaleTicket ticket, String userId, String role) {
-        if ("ADMIN".equalsIgnoreCase(role)) {
+        if (ROLE_ADMIN.equalsIgnoreCase(role)) {
             return;
         }
-        if (!"SELLER".equalsIgnoreCase(role) || !userId.equals(ticket.getSellerId())) {
+        if (!ROLE_SELLER.equalsIgnoreCase(role) || !userId.equals(ticket.getSellerId())) {
             throw new BizException(ErrorCode.FORBIDDEN, "无权处理该售后单");
         }
     }

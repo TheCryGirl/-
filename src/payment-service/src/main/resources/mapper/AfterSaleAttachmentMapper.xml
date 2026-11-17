@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.AfterSaleAttachmentMapper">
+
+    <insert id="insert" parameterType="com.mall.payment.entity.AfterSaleAttachment"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO after_sale_attachment (ticket_id, url, uploaded_by, uploader_role)
+        VALUES (#{ticketId}, #{url}, #{uploadedBy,jdbcType=VARCHAR}, #{uploaderRole,jdbcType=VARCHAR})
+    </insert>
+
+    <select id="selectByTicketId" resultType="com.mall.payment.entity.AfterSaleAttachment">
+        SELECT id, ticket_id, url, uploaded_by, uploader_role, created_at
+        FROM after_sale_attachment
+        WHERE ticket_id = #{ticketId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="countByTicketId" resultType="int">
+        SELECT COUNT(*) FROM after_sale_attachment WHERE ticket_id = #{ticketId}
+    </select>
+</mapper>

@@ -81,4 +81,32 @@ public interface AfterSaleMapper {
     /** 渠道退款成功后按退款单号同步售后单为 REFUNDED（条件更新，幂等） */
     int markRefundedByRefundId(@Param("refundId") String refundId,
                                @Param("now") LocalDateTime now);
+
+    /** #143 买家撤销：PENDING -> CANCELLED，终态置 active_flag=NULL */
+    int markCancelled(@Param("ticketId") String ticketId,
+                      @Param("buyerId") String buyerId,
+                      @Param("remark") String remark,
+                      @Param("now") LocalDateTime now);
+
+    /** #143 买家申请仲裁：REJECTED -> ARBITRATING，重新置 active_flag=1（仲裁期间锁定） */
+    int markArbitrating(@Param("ticketId") String ticketId,
+                        @Param("buyerId") String buyerId,
+                        @Param("remark") String remark,
+                        @Param("now") LocalDateTime now);
+
+    /** #143 管理员裁定支持退款：ARBITRATING -> REFUNDED，挂退款单号 */
+    int markArbitrationRefunded(@Param("ticketId") String ticketId,
+                                @Param("refundId") String refundId,
+                                @Param("operatorId") String operatorId,
+                                @Param("remark") String remark,
+                                @Param("now") LocalDateTime now);
+
+    /** #143 管理员裁定驳回：ARBITRATING -> REJECTED */
+    int markArbitrationRejected(@Param("ticketId") String ticketId,
+                                @Param("operatorId") String operatorId,
+                                @Param("remark") String remark,
+                                @Param("now") LocalDateTime now);
+
+    /** #143 按退款单号查售后单，用于渠道异步退款成功时补记时间线 */
+    AfterSaleTicket selectByRefundId(@Param("refundId") String refundId);
 }
