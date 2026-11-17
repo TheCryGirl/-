@@ -8,6 +8,7 @@ import {
   historyApi,
   isOk,
   productApi,
+  shopApi,
   unwrapResult,
 } from '../api'
 import { isLoggedIn, currentUserId } from '../stores/auth'
@@ -69,6 +70,8 @@ const quantityMax = computed(() => Math.max(1, Math.min(999, selectedSku.value?.
 const soldOut = computed(() => (selectedSku.value?.stockAvailable ?? 0) <= 0)
 
 /** 自己发布的商品不能购买：卖家只能管理，不能下单 */
+const shopIdForSeller = ref('')
+
 const isOwnProduct = computed(
   () => Boolean(product.value?.sellerId) && product.value.sellerId === currentUserId.value,
 )
@@ -128,6 +131,18 @@ function changeEvalPage(next) {
   loadEvaluations()
 }
 
+async function resolveShopForSeller(sellerId) {
+  shopIdForSeller.value = ''
+  if (!sellerId) return
+  try {
+    const { data } = await shopApi.bySeller(sellerId)
+    const shop = unwrapResult(data)
+    shopIdForSeller.value = shop?.shopId || ''
+  } catch {
+    shopIdForSeller.value = ''
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -143,6 +158,7 @@ async function load() {
       return
     }
     product.value = productData
+    resolveShopForSeller(productData?.sellerId)
     // 无 SKU 时保持 selectedSku 为空，加购/购买必须提示而不是假成功
     selectedSku.value = productData.skus?.length ? productData.skus[0] : null
     // 收藏状态与浏览足迹都是登录后的附加能力，失败不影响商品展示
@@ -362,6 +378,17 @@ onMounted(() => {
               <span class="jd-price__dec">.{{ priceParts.dec }}</span>
             </span>
             <span class="jd-detail__tax">已含税 · 满 99 包邮</span>
+          </div>
+
+          <div class="jd-detail__shop">
+            <RouterLink
+              v-if="shopIdForSeller"
+              :to="{ name: 'shop-home', params: { shopId: shopIdForSeller } }"
+              class="jd-link-btn"
+            >
+              进入店铺
+            </RouterLink>
+            <span class="text-xs text-[var(--jd-ink-4)]">查看该卖家的全部在售商品</span>
           </div>
 
           <ul class="jd-detail__promises">
