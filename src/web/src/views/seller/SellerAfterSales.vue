@@ -458,7 +458,7 @@ onMounted(fetchList)
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   multiple
-                  class="hidden"
+                  class="sr-only"
                   :data-testid="`seller-after-sale-supplement-file-${ticket.ticketId}`"
                   @change="onSupplementFileChange(ticket, $event)"
                 />

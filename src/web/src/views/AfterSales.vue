@@ -626,7 +626,7 @@ onMounted(loadAll)
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
                       multiple
-                      class="hidden"
+                      class="sr-only"
                       data-testid="after-sales-evidence"
                       @change="onEvidenceChange"
                     />
@@ -852,7 +852,7 @@ onMounted(loadAll)
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
                     multiple
-                    class="hidden"
+                    class="sr-only"
                     :data-testid="`after-sales-supplement-file-${ticket.ticketId}`"
                     @change="onSupplementChange(ticket, $event)"
                   />
