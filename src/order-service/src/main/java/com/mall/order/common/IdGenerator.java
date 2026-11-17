@@ -24,6 +24,14 @@ public final class IdGenerator {
         return "O" + LocalDateTime.now().format(ORDER_NO_FORMATTER) + randomHex(12);
     }
 
+    public static String randomDigits(int count) {
+        StringBuilder builder = new StringBuilder(count);
+        for (int i = 0; i < count; i++) {
+            builder.append(RANDOM.nextInt(10));
+        }
+        return builder.toString();
+    }
+
     /**
      * 日期 + 6 位随机数，满足“全局唯一且不可枚举”的订单号要求。
      */
@@ -31,12 +39,14 @@ public final class IdGenerator {
         return LocalDateTime.now().format(ORDER_NO_FORMATTER) + randomDigits(6);
     }
 
-    public static String randomDigits(int count) {
-        StringBuilder builder = new StringBuilder(count);
-        for (int i = 0; i < count; i++) {
-            builder.append(RANDOM.nextInt(10));
-        }
-        return builder.toString();
+    /**
+     * 物流轨迹 ID：T + 14 位时间 + 8 位十六进制随机，长度 23。
+     *
+     * <p>与订单号同思路：不可枚举。轨迹是逐条追加的，用「时间前缀 + 随机后缀」
+     * 既保留可读的先后关系，也不会因为自增而暴露平台录入了多少条轨迹。
+     */
+    public static String trackId() {
+        return "T" + LocalDateTime.now().format(ORDER_NO_FORMATTER) + randomHex(8);
     }
 
     public static String randomHex(int length) {

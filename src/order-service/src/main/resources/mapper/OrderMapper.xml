@@ -14,6 +14,8 @@
         <result property="receiverPhone" column="receiver_phone"/>
         <result property="addressFull" column="address_full"/>
         <result property="trackingNo" column="tracking_no"/>
+        <result property="expressCompany" column="express_company"/>
+        <result property="shippedAt" column="shipped_at"/>
         <result property="expireAt" column="expire_at"/>
         <result property="paidAt" column="paid_at"/>
         <result property="createdAt" column="created_at"/>
@@ -26,17 +28,20 @@
 
     <sql id="orderColumns">
         order_id, order_no, buyer_id, seller_id, status, total_amount, pay_amount,
-        receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
-        created_at, updated_at, created_by, updated_by, is_deleted, inventory_released
+        receiver, receiver_phone, address_full, tracking_no, express_company, shipped_at,
+        expire_at, paid_at, created_at, updated_at, created_by, updated_by, is_deleted,
+        inventory_released
     </sql>
 
     <insert id="insert" parameterType="com.mall.order.entity.Order">
         INSERT INTO `order`(order_id, order_no, buyer_id, seller_id, status, total_amount, pay_amount,
-                            receiver, receiver_phone, address_full, tracking_no, expire_at, paid_at,
-                            created_at, updated_at, created_by, updated_by, is_deleted, inventory_released)
+                            receiver, receiver_phone, address_full, tracking_no, express_company,
+                            shipped_at, expire_at, paid_at, created_at, updated_at, created_by,
+                            updated_by, is_deleted, inventory_released)
         VALUES (#{orderId}, #{orderNo}, #{buyerId}, #{sellerId}, #{status}, #{totalAmount}, #{payAmount},
-                #{receiver}, #{receiverPhone}, #{addressFull}, #{trackingNo}, #{expireAt}, #{paidAt},
-                #{createdAt}, #{updatedAt}, #{createdBy}, #{updatedBy}, 0, 0)
+                #{receiver}, #{receiverPhone}, #{addressFull}, #{trackingNo}, #{expressCompany},
+                #{shippedAt}, #{expireAt}, #{paidAt}, #{createdAt}, #{updatedAt}, #{createdBy},
+                #{updatedBy}, 0, 0)
     </insert>
 
     <select id="selectById" resultMap="OrderMap">
@@ -113,10 +118,32 @@
         WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT' AND is_deleted = 0
     </update>
 
+    <!-- 发货：同时写快递公司、单号与发货时间；shipped_at 是自动确认收货的起算点 -->
     <update id="markShipped">
         UPDATE `order`
-        SET status = 'SHIPPED', tracking_no = #{trackingNo}, updated_at = #{updatedAt}
+        SET status = 'SHIPPED', express_company = #{expressCompany}, tracking_no = #{trackingNo},
+            shipped_at = #{shippedAt}, updated_at = #{shippedAt}
         WHERE order_id = #{orderId} AND status = 'PAID' AND is_deleted = 0
+    </update>
+
+    <!-- 自动确认收货候选：SHIPPED 且发货时间已超期。
+         shipped_at IS NOT NULL 必须显式写：老库回填前的存量单不能凭空算成已超期。 -->
+    <select id="selectAutoConfirmCandidates" resultType="string">
+        SELECT order_id
+        FROM `order`
+        WHERE status = 'SHIPPED'
+          AND shipped_at IS NOT NULL
+          AND shipped_at &lt;= #{deadline}
+          AND is_deleted = 0
+        ORDER BY shipped_at
+        LIMIT #{limit}
+    </select>
+
+    <!-- 自动确认收货：条件更新抢占。影响行数 0 说明这一单已被别人处理，跳过即可 -->
+    <update id="markAutoCompleted">
+        UPDATE `order`
+        SET status = 'COMPLETED', updated_at = #{updatedAt}
+        WHERE order_id = #{orderId} AND status = 'SHIPPED' AND is_deleted = 0
     </update>
 
     <update id="markCompleted">

@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS `order` (
     receiver_phone     VARCHAR(11)  NOT NULL COMMENT '收货电话快照',
     address_full       VARCHAR(255) NOT NULL COMMENT '完整收货地址快照',
     tracking_no        VARCHAR(64)  DEFAULT NULL COMMENT '物流单号',
+    express_company    VARCHAR(16)  DEFAULT NULL COMMENT '快递公司编码，见 ExpressCompany 枚举',
+    shipped_at         DATETIME     DEFAULT NULL COMMENT '发货时间，自动确认收货的起算点',
     expire_at          DATETIME     NOT NULL COMMENT '待支付过期时间',
     paid_at            DATETIME     DEFAULT NULL COMMENT '支付时间',
     created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -25,7 +27,8 @@ CREATE TABLE IF NOT EXISTS `order` (
     UNIQUE KEY uk_order_no (order_no),
     KEY idx_buyer_status (buyer_id, status, created_at),
     KEY idx_seller_status (seller_id, status, created_at),
-    KEY idx_status_created (status, created_at)
+    KEY idx_status_created (status, created_at),
+    KEY idx_status_shipped (status, shipped_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单主表';
 
 CREATE TABLE IF NOT EXISTS order_item (
@@ -121,3 +124,18 @@ CREATE TABLE IF NOT EXISTS audit_log (
     KEY idx_audit_operator (operator_id, created_at),
     KEY idx_audit_action (action, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台关键操作审计日志';
+
+CREATE TABLE IF NOT EXISTS order_logistics_track (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    track_id    VARCHAR(32)  NOT NULL COMMENT '轨迹ID',
+    order_id    VARCHAR(32)  NOT NULL COMMENT '订单ID',
+    status      VARCHAR(24)  NOT NULL COMMENT 'COLLECTED/IN_TRANSIT/OUT_FOR_DELIVERY/SIGNED/EXCEPTION',
+    description VARCHAR(255) NOT NULL COMMENT '轨迹描述文本',
+    occurred_at DATETIME     NOT NULL COMMENT '发生时间，时间线按此正序排列',
+    raw_json    VARCHAR(2048) DEFAULT NULL COMMENT '录入时的原始报文，供以后对接外部接口对账',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '录入时间',
+    created_by  VARCHAR(32)  DEFAULT NULL COMMENT '录入人（卖家/管理员）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_track_id (track_id),
+    KEY idx_track_order_time (order_id, occurred_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物流轨迹（任务 #138，手工录入）';

@@ -24,6 +24,10 @@ public class Order {
     private String receiverPhone;
     private String addressFull;
     private String trackingNo;
+    /** 快递公司编码，见 ExpressCompany；未发货为 null */
+    private String expressCompany;
+    /** 发货时间：自动确认收货从这里起算 */
+    private LocalDateTime shippedAt;
     private LocalDateTime expireAt;
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;
