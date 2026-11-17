@@ -16,6 +16,8 @@ const categoryId = defineModel('categoryId', { type: String, default: '' })
 const sort = defineModel('sort', { type: String, default: 'default' })
 const minPrice = defineModel('minPrice', { type: [String, Number], default: '' })
 const maxPrice = defineModel('maxPrice', { type: [String, Number], default: '' })
+/** #141：属性筛选——是否把无货商品也列出来（默认只列有货，与 BR-08 一致） */
+const showOutOfStock = defineModel('showOutOfStock', { type: Boolean, default: false })
 
 const pricePresets = [
   { label: '100 以下', min: '', max: '100' },
@@ -181,6 +183,19 @@ function onReset() {
               {{ preset.label }}
             </button>
           </div>
+        </section>
+
+        <section class="jd-filter__section">
+          <div class="jd-filter__label-row">
+            <span class="jd-filter__label">库存</span>
+          </div>
+          <el-switch
+            v-model="showOutOfStock"
+            active-text="显示无货商品"
+            inactive-text="只看有货"
+            data-testid="product-list-stock-switch"
+            @change="onApply"
+          />
         </section>
 
         <section class="jd-filter__section">

@@ -16,10 +16,12 @@ import com.mall.product.dto.response.ImageUploadResponse;
 import com.mall.product.dto.response.ProductBriefResponse;
 import com.mall.product.dto.response.ProductDetailResponse;
 import com.mall.product.dto.response.ProductListItem;
+import com.mall.product.dto.response.RecommendResponse;
 import com.mall.product.dto.response.SkuResponse;
 import com.mall.product.dto.response.VisibilitySyncResponse;
 import com.mall.product.service.AuditLogPublisher;
 import com.mall.product.service.ProductService;
+import com.mall.product.service.RecommendService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -42,12 +44,16 @@ import java.util.List;
 public class ProductController {
 
     private final ProductService productService;
+    private final RecommendService recommendService;
     private final InternalTokenVerifier internalTokenVerifier;
     private final AuditLogPublisher auditLogPublisher;
 
     /**
      * 商品列表。带 status 参数时仅对管理员生效（商品审核页按状态筛选），
      * 普通用户仍按 BR-08 只看在售且在库商品。
+     *
+     * <p>#141：带 keyword 时走检索链路，按相关度排序并在响应体 {@code suggestions} 里给纠错候选；
+     * {@code inStock} 控制「只看有货 / 只看无货 / 不限（默认只看有货）」。
      */
     @GetMapping
     public Result<PageResult<ProductListItem>> list(
@@ -55,12 +61,28 @@ public class ProductController {
             @RequestParam(required = false) String categoryId,
             @RequestParam(required = false) Long minPrice,
             @RequestParam(required = false) Long maxPrice,
+            @RequestParam(required = false) Boolean inStock,
             @RequestParam(defaultValue = "default") String sort,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestHeader(value = "X-User-Role", required = false) String role) {
-        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, sort, status, role, page, size));
+        return Result.success(productService.list(keyword, categoryId, minPrice, maxPrice, inStock, sort, status,
+                role, page, size));
+    }
+
+    /**
+     * 个性化推荐（#141）：scene=HOME 首页猜你喜欢 / scene=DETAIL 详情页相似商品。
+     *
+     * <p>未登录（无 X-User-Id）按冷启动处理，返回全站热销，不返回空列表。
+     */
+    @GetMapping("/recommend")
+    public Result<RecommendResponse> recommend(
+            @RequestParam(defaultValue = "HOME") String scene,
+            @RequestParam(required = false) String productId,
+            @RequestParam(defaultValue = "8") int limit,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        return Result.success(recommendService.recommend(scene, productId, userId, limit));
     }
 
     /**

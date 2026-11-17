@@ -67,6 +67,7 @@ public class ProductService {
     private final SkuMapper skuMapper;
     private final CategoryMapper categoryMapper;
     private final ShopClient shopClient;
+    private final ProductSearchService productSearchService;
 
     @Value("${product.upload-dir:uploads}")
     private String uploadDir;
@@ -199,6 +200,18 @@ public class ProductService {
      */
     public PageResult<ProductListItem> list(String keyword, String categoryId, Long minPrice, Long maxPrice,
                                             String sort, String status, String role, int page, int size) {
+        return list(keyword, categoryId, minPrice, maxPrice, null, sort, status, role, page, size);
+    }
+
+    /**
+     * 商品列表（#141 增加「是否有库存」筛选）。
+     *
+     * <p>带关键词或指定库存范围时走检索链路（二元分词 + 相关度排序 + 纠错候选），
+     * 否则沿用原有 SQL 列表，保持既有分页语义不变。
+     */
+    public PageResult<ProductListItem> list(String keyword, String categoryId, Long minPrice, Long maxPrice,
+                                            Boolean inStock, String sort, String status, String role,
+                                            int page, int size) {
         if ("ADMIN".equalsIgnoreCase(role) && status != null && !status.isBlank()) {
             return listForAdmin(status, page, size);
         }
@@ -212,11 +225,16 @@ public class ProductService {
         if (!SORT_WHITELIST.contains(safeSort)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "排序方式不合法");
         }
+        if (keyword != null && !keyword.isBlank()) {
+            return productSearchService.search(keyword, categoryId, minPrice, maxPrice, inStock, safeSort, page, size);
+        }
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
+        String stockScope = inStock == null ? "IN" : (inStock ? "IN" : "OUT");
         List<ProductListItem> items = productMapper.selectPublicList(trimToNull(keyword), trimToNull(categoryId),
-                minPrice, maxPrice, safeSort, (safePage - 1) * safeSize, safeSize);
-        long total = productMapper.countPublic(trimToNull(keyword), trimToNull(categoryId), minPrice, maxPrice);
+                minPrice, maxPrice, stockScope, safeSort, (safePage - 1) * safeSize, safeSize);
+        long total = productMapper.countPublic(trimToNull(keyword), trimToNull(categoryId), minPrice, maxPrice,
+                stockScope);
         return PageResult.of(items, total, safePage, safeSize);
     }
 

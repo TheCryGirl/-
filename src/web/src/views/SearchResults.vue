@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { cartApi, favoriteApi, isOk, productApi, unwrapResult } from '../api'
@@ -23,6 +23,8 @@ const size = ref(20)
 const sort = ref('default')
 const loading = ref(false)
 const loadError = ref('')
+/** #141 纠错候选：后端根据商品词表算出的「只差一个字」的词，只提示不改写查询 */
+const suggestions = ref([])
 
 const history = ref([])
 const recommendations = ref([])
@@ -59,15 +61,18 @@ async function load() {
       loadError.value = data?.message || '加载商品失败'
       products.value = []
       total.value = 0
+      suggestions.value = []
       return
     }
     const payload = unwrapResult(data)
     products.value = Array.isArray(payload) ? payload : payload?.list ?? []
     total.value = Array.isArray(payload) ? payload.length : payload?.total ?? products.value.length
+    suggestions.value = Array.isArray(payload?.suggestions) ? payload.suggestions : []
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载商品失败')
     products.value = []
     total.value = 0
+    suggestions.value = []
   } finally {
     loading.value = false
   }
@@ -359,6 +364,20 @@ watch(isLoggedIn, loadFavorites)
 
       <p v-if="loadError" class="result-error">{{ loadError }}</p>
 
+      <!-- #141 纠错提示：只提示，不自动改写用户输入的查询 -->
+      <p v-if="!loading && !loadError && suggestions.length" class="result-suggest" data-testid="search-suggestion">
+        您是不是想找
+        <button
+          v-for="word in suggestions"
+          :key="word"
+          type="button"
+          class="result-suggest__word"
+          @click="searchByWord(word)"
+        >
+          {{ word }}
+        </button>
+      </p>
+
       <div v-if="loading" class="result-grid">
         <div v-for="i in 8" :key="`sk-${i}`" class="skeleton-card">
           <div class="skeleton-card__img jd-skeleton"></div>
@@ -600,6 +619,31 @@ watch(isLoggedIn, loadFavorites)
 .result-error {
   color: var(--jd-red);
   font-size: 12px;
+}
+/* #141 纠错提示 */
+.result-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff8f6;
+  border: 1px solid #ffe2dd;
+  font-size: 13px;
+  color: var(--jd-ink-3);
+}
+.result-suggest__word {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--jd-red-soft);
+  color: var(--jd-red);
+  font-weight: 600;
+}
+.result-suggest__word:hover {
+  background: var(--jd-red);
+  color: #fff;
 }
 .result-empty {
   display: flex;

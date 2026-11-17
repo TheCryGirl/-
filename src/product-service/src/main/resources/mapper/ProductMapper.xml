@@ -99,7 +99,10 @@
         WHERE <include refid="publicWhere"/>
         GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
                  p.status, p.created_at, p.sales_count
-        HAVING SUM(s.stock_available) &gt; 0
+        <choose>
+            <when test="stockScope == 'OUT'">HAVING SUM(s.stock_available) = 0</when>
+            <otherwise>HAVING SUM(s.stock_available) &gt; 0</otherwise>
+        </choose>
         ORDER BY
         <choose>
             <when test="sort == 'newest'">p.created_at DESC</when>
@@ -120,7 +123,10 @@
         JOIN sku s ON s.product_id = p.product_id
             WHERE <include refid="publicWhere"/>
             GROUP BY p.product_id
-            HAVING SUM(s.stock_available) &gt; 0
+            <choose>
+                <when test="stockScope == 'OUT'">HAVING SUM(s.stock_available) = 0</when>
+                <otherwise>HAVING SUM(s.stock_available) &gt; 0</otherwise>
+            </choose>
         ) t
     </select>
 
@@ -205,6 +211,93 @@
         SET status = 'ON_SALE', updated_at = NOW(), updated_by = #{updatedBy}
         WHERE seller_id = #{sellerId} AND status = 'SUSPENDED' AND is_deleted = 0
     </update>
+
+    <!-- ===================== #141 检索与推荐 ===================== -->
+
+    <sql id="searchRowColumns">
+        p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+        c.name AS category_name, p.status, p.sales_count, p.created_at,
+        MIN(s.price) AS price, COALESCE(SUM(s.stock_available), 0) AS stock
+    </sql>
+
+    <!-- 关键词在 Java 侧匹配，SQL 只负责可见性与属性筛选 -->
+    <select id="selectSearchRows" resultType="com.mall.product.dto.response.ProductSearchRow">
+        SELECT <include refid="searchRowColumns"/>
+        FROM product p
+            JOIN category c ON c.category_id = p.category_id AND c.is_deleted = 0
+            JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE p.is_deleted = 0
+          AND p.status = 'ON_SALE'
+        <if test="categoryId != null and categoryId != ''">
+            AND p.category_id = #{categoryId}
+        </if>
+        <if test="minPrice != null">
+            AND s.price &gt;= #{minPrice}
+        </if>
+        <if test="maxPrice != null">
+            AND s.price &lt;= #{maxPrice}
+        </if>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 c.name, p.status, p.sales_count, p.created_at
+        <if test="stockScope == 'OUT'">
+            HAVING SUM(s.stock_available) = 0
+        </if>
+        <if test="stockScope == 'IN'">
+            HAVING SUM(s.stock_available) &gt; 0
+        </if>
+        ORDER BY p.sales_count DESC, p.created_at DESC
+    </select>
+
+    <select id="selectSpecNames" resultType="com.mall.product.dto.response.ProductSpecRow">
+        SELECT s.product_id, s.spec_name
+        FROM sku s
+            JOIN product p ON p.product_id = s.product_id AND p.is_deleted = 0
+        WHERE s.is_deleted = 0
+          AND p.status = 'ON_SALE'
+    </select>
+
+    <sql id="recommendWhere">
+        p.is_deleted = 0
+        AND p.status = 'ON_SALE'
+        <if test="excludeIds != null and excludeIds.size() > 0">
+            AND p.product_id NOT IN
+            <foreach collection="excludeIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+    </sql>
+
+    <!-- 候选推荐：同一分类下按销量降序，且只保留有货商品 -->
+    <select id="selectRecommendRows" resultType="com.mall.product.dto.response.ProductSearchRow">
+        SELECT <include refid="searchRowColumns"/>
+        FROM product p
+            JOIN category c ON c.category_id = p.category_id AND c.is_deleted = 0
+            JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE <include refid="recommendWhere"/>
+          AND p.category_id IN
+        <foreach collection="categoryIds" item="categoryId" open="(" separator="," close=")">
+            #{categoryId}
+        </foreach>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 c.name, p.status, p.sales_count, p.created_at
+        HAVING SUM(s.stock_available) &gt; 0
+        ORDER BY p.sales_count DESC, p.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 冷启动 / 补位：全站热销 -->
+    <select id="selectHotRows" resultType="com.mall.product.dto.response.ProductSearchRow">
+        SELECT <include refid="searchRowColumns"/>
+        FROM product p
+            JOIN category c ON c.category_id = p.category_id AND c.is_deleted = 0
+            JOIN sku s ON s.product_id = p.product_id AND s.is_deleted = 0
+        WHERE <include refid="recommendWhere"/>
+        GROUP BY p.product_id, p.seller_id, p.title, p.subtitle, p.main_image, p.category_id,
+                 c.name, p.status, p.sales_count, p.created_at
+        HAVING SUM(s.stock_available) &gt; 0
+        ORDER BY p.sales_count DESC, p.created_at DESC
+        LIMIT #{limit}
+    </select>
 </mapper>
 
 

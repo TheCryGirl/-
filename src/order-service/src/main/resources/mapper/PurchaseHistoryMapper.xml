@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.order.mapper.PurchaseHistoryMapper">
+
+    <select id="selectRecentPurchasedProductIds" resultType="string">
+        SELECT oi.product_id
+        FROM order_item oi
+            JOIN `order` o ON o.order_id = oi.order_id
+        WHERE o.buyer_id = #{buyerId}
+          AND o.is_deleted = 0
+          AND oi.is_deleted = 0
+          AND o.status IN ('PAID', 'SHIPPED', 'COMPLETED')
+        GROUP BY oi.product_id
+        ORDER BY MAX(o.created_at) DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

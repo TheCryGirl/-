@@ -31,9 +31,15 @@ const categoryId = ref('')
 const sort = ref('default')
 const minPrice = ref('')
 const maxPrice = ref('')
+const showOutOfStock = ref(false)
 const page = ref(1)
 const size = ref(20)
 const total = ref(0)
+
+/* ---------------- 猜你喜欢（#141 个性化推荐） ---------------- */
+const recommendItems = ref([])
+const recommendLoading = ref(false)
+const recommendFailed = ref(false)
 
 /* ---------------- 界面状态 ---------------- */
 const drawerOpen = ref(false)
@@ -59,8 +65,15 @@ const activeFilters = computed(() => {
   if (categoryId.value) list.push({ key: 'category', text: `分类「${categoryName(categoryId.value)}」` })
   if (hasPrice(minPrice.value)) list.push({ key: 'min', text: `≥ ¥${minPrice.value}` })
   if (hasPrice(maxPrice.value)) list.push({ key: 'max', text: `≤ ¥${maxPrice.value}` })
+  if (showOutOfStock.value) list.push({ key: 'stock', text: '含无货商品' })
   return list
 })
+
+/**
+ * 推荐区没有数据或接口失败时回退到运营精选（静态数据），
+ * 保证首页不出现空白区块。
+ */
+const useFallbackShowcase = computed(() => recommendFailed.value || !recommendItems.value.length)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
@@ -138,6 +151,8 @@ async function load(resetPage = true) {
     if (categoryId.value) params.categoryId = categoryId.value
     if (hasPrice(minPrice.value)) params.minPrice = Math.round(Number(minPrice.value) * 100)
     if (hasPrice(maxPrice.value)) params.maxPrice = Math.round(Number(maxPrice.value) * 100)
+    // #141：默认只看有货，打开「显示无货商品」后显式传 inStock=false
+    if (showOutOfStock.value) params.inStock = false
 
     const { data } = await productApi.list(params)
     if (!isOk(data)) {
@@ -188,18 +203,42 @@ async function loadFavorites() {
   }
 }
 
+/**
+ * 首页「猜你喜欢」：读后端个性化推荐（#141）。
+ * 失败或无数据时由 useFallbackShowcase 切回静态精选，不显示空白。
+ */
+async function loadRecommend() {
+  recommendLoading.value = true
+  recommendFailed.value = false
+  try {
+    const { data } = await productApi.recommend({ scene: 'HOME', limit: 8 })
+    if (!isOk(data)) {
+      recommendFailed.value = true
+      recommendItems.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    recommendItems.value = Array.isArray(payload?.items) ? payload.items : []
+  } catch (err) {
+    recommendFailed.value = true
+    recommendItems.value = []
+  } finally {
+    recommendLoading.value = false
+  }
+}
+
 /* ---------------- 交互 ---------------- */
 function applyFilters() {
   load(true)
   syncQuery()
 }
-
 function resetFilters() {
   keyword.value = ''
   categoryId.value = ''
   sort.value = 'default'
   minPrice.value = ''
   maxPrice.value = ''
+  showOutOfStock.value = false
   filterError.value = ''
   drawerOpen.value = false
   applyFilters()
@@ -210,6 +249,7 @@ function removeFilter(key) {
   if (key === 'category') categoryId.value = ''
   if (key === 'min') minPrice.value = ''
   if (key === 'max') maxPrice.value = ''
+  if (key === 'stock') showOutOfStock.value = false
   applyFilters()
 }
 
@@ -383,6 +423,13 @@ onMounted(() => {
   loadCategories()
   load(false)
   loadFavorites()
+  loadRecommend()
+})
+
+// 登录态变化后推荐依据会变（浏览/购买行为只在登录后才有），重新拉一次
+watch(isLoggedIn, () => {
+  loadFavorites()
+  loadRecommend()
 })
 
 // 顶部搜索框会改写地址栏：这里跟随路由变化重新查询
@@ -398,8 +445,6 @@ watch(
     load(false)
   },
 )
-
-watch(isLoggedIn, loadFavorites)
 </script>
 
 <template>
@@ -437,8 +482,45 @@ watch(isLoggedIn, loadFavorites)
     <!-- 限时秒杀 -->
     <FlashSale :items="flashSaleItems" @select="resolveToProduct" />
 
-    <!-- 精选好物 -->
-    <CuratedShowcase :items="curatedItems" @select="resolveToProduct" />
+    <!-- 猜你喜欢（#141）：读个性化推荐；无数据或接口失败时回退静态精选，不留空白 -->
+    <section v-if="!useFallbackShowcase" id="jd-likes" class="jd-likes">
+      <header class="jd-feed__head">
+        <div class="jd-feed__title">
+          <span class="jd-feed__bar"></span>
+          <div>
+            <h2>猜你喜欢</h2>
+            <p>按最近浏览与购买记录推荐，已购买的商品不会再出现</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="jd-feed__filter"
+          :disabled="recommendLoading"
+          data-testid="home-recommend-refresh"
+          @click="loadRecommend"
+        >
+          <StoreIcon name="refresh" :size="15" />
+          {{ recommendLoading ? '更新中…' : '换一批' }}
+        </button>
+      </header>
+
+      <div class="jd-feed__grid">
+        <ProductCard
+          v-for="(p, i) in recommendItems"
+          :key="`like-${p.productId}`"
+          :product="p"
+          :index="i"
+          :favorited="favoriteIds.has(p.productId)"
+          :busy="favoriteBusyId === p.productId || addBusyId === p.productId"
+          @click="openDetail"
+          @favorite="toggleFavorite"
+          @add="quickAdd"
+        />
+      </div>
+    </section>
+
+    <!-- 精选好物：推荐不可用时的静态兜底 -->
+    <CuratedShowcase v-else :items="curatedItems" @select="resolveToProduct" />
 
     <!-- 全部商品 -->
     <section id="jd-feed" class="jd-feed">
@@ -575,6 +657,7 @@ watch(isLoggedIn, loadFavorites)
       v-model:sort="sort"
       v-model:min-price="minPrice"
       v-model:max-price="maxPrice"
+      v-model:show-out-of-stock="showOutOfStock"
       :categories="categories"
       :sort-options="sortOptions"
       :filter-error="filterError"
