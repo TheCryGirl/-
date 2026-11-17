@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS after_sale_ticket (
     after_sale_type       VARCHAR(24)  NOT NULL COMMENT '售后类型：REFUND_ONLY/RETURN_REFUND/EXCHANGE',
     amount                BIGINT       NOT NULL DEFAULT 0 COMMENT '申请退款金额，换货为0',
     reason                VARCHAR(255) DEFAULT NULL COMMENT '售后原因',
-    status                VARCHAR(24)  NOT NULL COMMENT 'PENDING/APPROVED/BUYER_SHIPPED/SELLER_RECEIVED/REFUNDED/COMPLETED/REJECTED',
+    reason_code           VARCHAR(24)  DEFAULT NULL COMMENT '售后原因枚举（#143）：QUALITY/NOT_AS_DESCRIBED/DAMAGED/WRONG_ITEM/NO_LONGER_NEEDED/OTHER',
+    status                VARCHAR(24)  NOT NULL COMMENT 'PENDING/APPROVED/BUYER_SHIPPED/SELLER_RECEIVED/REFUNDED/COMPLETED/REJECTED/CANCELLED/ARBITRATING',
     refund_id             VARCHAR(32)  DEFAULT NULL COMMENT '退款单ID（退款类型执行后写入）',
     return_tracking_no    VARCHAR(64)  DEFAULT NULL COMMENT '买家退货物流单号',
     exchange_tracking_no  VARCHAR(64)  DEFAULT NULL COMMENT '卖家换货重发物流单号',
@@ -177,3 +178,30 @@ CREATE TABLE IF NOT EXISTS reconcile_difference (
     KEY idx_batch_type (batch_id, diff_type),
     KEY idx_status_created (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='渠道对账差异';
+
+-- 售后凭证附件（#143）。先上传后引用：文件落盘 uploads/after-sale/，
+-- 创建/补充售后单时绑定站内路径；单次提交最多 3 张（服务层校验）。
+CREATE TABLE IF NOT EXISTS after_sale_attachment (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '附件ID',
+    ticket_id       VARCHAR(32)  NOT NULL COMMENT '售后单ID',
+    url             VARCHAR(255) NOT NULL COMMENT '站内相对路径 /after-sale/{uuid}.{ext}',
+    uploaded_by     VARCHAR(32)  DEFAULT NULL COMMENT '上传人',
+    uploader_role   VARCHAR(16)  DEFAULT NULL COMMENT '上传人角色：BUYER/SELLER/ADMIN',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
+    PRIMARY KEY (id),
+    KEY idx_ticket_created (ticket_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后凭证附件';
+
+-- 售后进度时间线（#143）。每次状态变更写一条，买卖双方与管理员按时间正序查看；
+-- 仲裁期间双方补充材料记为 ARBITRATING -> ARBITRATING。
+CREATE TABLE IF NOT EXISTS after_sale_event (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '事件ID',
+    ticket_id       VARCHAR(32)  NOT NULL COMMENT '售后单ID',
+    from_status     VARCHAR(24)  DEFAULT NULL COMMENT '变更前状态；创建时为 NULL',
+    to_status       VARCHAR(24)  NOT NULL COMMENT '变更后状态',
+    operator_id     VARCHAR(32)  DEFAULT NULL COMMENT '操作人；系统回调为 SYSTEM',
+    remark          VARCHAR(255) DEFAULT NULL COMMENT '操作备注',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '事件时间',
+    PRIMARY KEY (id),
+    KEY idx_ticket_created (ticket_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后进度时间线';

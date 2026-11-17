@@ -1,5 +1,6 @@
 package com.mall.payment.entity;
 
+import com.mall.payment.common.AfterSaleReasonCode;
 import com.mall.payment.common.AfterSaleStatus;
 import com.mall.payment.common.AfterSaleType;
 import lombok.Data;
@@ -20,6 +21,7 @@ public class AfterSaleTicket {
     private AfterSaleType afterSaleType;
     private Long amount;
     private String reason;
+    private AfterSaleReasonCode reasonCode;
     private AfterSaleStatus status;
     private String refundId;
     private String returnTrackingNo;

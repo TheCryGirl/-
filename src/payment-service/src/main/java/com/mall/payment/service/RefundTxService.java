@@ -1,5 +1,9 @@
 package com.mall.payment.service;
 
+import com.mall.payment.common.AfterSaleStatus;
+import com.mall.payment.entity.AfterSaleEvent;
+import com.mall.payment.entity.AfterSaleTicket;
+import com.mall.payment.mapper.AfterSaleEventMapper;
 import com.mall.payment.mapper.AfterSaleMapper;
 import com.mall.payment.mapper.PaymentMapper;
 import com.mall.payment.mapper.RefundMapper;
@@ -29,6 +33,7 @@ public class RefundTxService {
     private final RefundMapper refundMapper;
     private final PaymentMapper paymentMapper;
     private final AfterSaleMapper afterSaleMapper;
+    private final AfterSaleEventMapper afterSaleEventMapper;
     private final RefundNotificationTxService refundNotificationTxService;
     private final RefundNotificationDispatcher refundNotificationDispatcher;
 
@@ -49,7 +54,18 @@ public class RefundTxService {
         Refund refund = refundMapper.selectById(refundId);
         boolean fullyRefunded = paymentMapper.markRefundedIfFullyRefunded(refund.getPaymentId()) > 0;
         // 售后单与退款单状态同步：渠道异步退款成功的售后单在这里置 REFUNDED
-        afterSaleMapper.markRefundedByRefundId(refundId, LocalDateTime.now());
+        // （#143 补记时间线：迁移前取售后单原状态作为事件起点，只有真实迁移才写事件）
+        AfterSaleTicket ticket = afterSaleMapper.selectByRefundId(refundId);
+        int synced = afterSaleMapper.markRefundedByRefundId(refundId, LocalDateTime.now());
+        if (synced > 0 && ticket != null) {
+            AfterSaleEvent event = new AfterSaleEvent();
+            event.setTicketId(ticket.getTicketId());
+            event.setFromStatus(ticket.getStatus());
+            event.setToStatus(AfterSaleStatus.REFUNDED);
+            event.setOperatorId("SYSTEM");
+            event.setRemark("渠道退款成功，售后单同步退款完成");
+            afterSaleEventMapper.insert(event);
+        }
         log.info("渠道退款成功, refundId={}, channelRefundNo={}, amount={}",
                 refundId, channelRefundNo, refund.getAmount());
         if (fullyRefunded && notifyOrder) {

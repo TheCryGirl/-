@@ -78,6 +78,7 @@ CREATE TABLE after_sale_ticket (
     after_sale_type       VARCHAR(24)  NOT NULL,
     amount                BIGINT       NOT NULL DEFAULT 0,
     reason                VARCHAR(255) DEFAULT NULL,
+    reason_code           VARCHAR(24)  DEFAULT NULL,
     status                VARCHAR(24)  NOT NULL,
     refund_id             VARCHAR(32)  DEFAULT NULL,
     return_tracking_no    VARCHAR(64)  DEFAULT NULL,
@@ -172,3 +173,31 @@ CREATE TABLE reconcile_difference (
 );
 
 CREATE INDEX idx_reconcile_diff_batch ON reconcile_difference (batch_id, diff_type);
+
+DROP TABLE IF EXISTS after_sale_attachment;
+DROP TABLE IF EXISTS after_sale_event;
+
+CREATE TABLE after_sale_attachment (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    ticket_id       VARCHAR(32)  NOT NULL,
+    url             VARCHAR(255) NOT NULL,
+    uploaded_by     VARCHAR(32)  DEFAULT NULL,
+    uploader_role   VARCHAR(16)  DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_after_sale_attachment_ticket ON after_sale_attachment (ticket_id, created_at);
+
+CREATE TABLE after_sale_event (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    ticket_id       VARCHAR(32)  NOT NULL,
+    from_status     VARCHAR(24)  DEFAULT NULL,
+    to_status       VARCHAR(24)  NOT NULL,
+    operator_id     VARCHAR(32)  DEFAULT NULL,
+    remark          VARCHAR(255) DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_after_sale_event_ticket ON after_sale_event (ticket_id, created_at);

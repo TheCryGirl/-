@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.AfterSaleEventMapper">
+
+    <insert id="insert" parameterType="com.mall.payment.entity.AfterSaleEvent"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO after_sale_event (ticket_id, from_status, to_status, operator_id, remark)
+        VALUES (#{ticketId}, #{fromStatus,jdbcType=VARCHAR}, #{toStatus,jdbcType=VARCHAR},
+                #{operatorId,jdbcType=VARCHAR}, #{remark,jdbcType=VARCHAR})
+    </insert>
+
+    <select id="selectByTicketId" resultType="com.mall.payment.entity.AfterSaleEvent">
+        SELECT id, ticket_id, from_status, to_status, operator_id, remark, created_at
+        FROM after_sale_event
+        WHERE ticket_id = #{ticketId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+</mapper>
