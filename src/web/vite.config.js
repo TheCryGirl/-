@@ -42,8 +42,9 @@ export default defineConfig({
         target: gatewayTarget,
         changeOrigin: true,
       },
-      // #143 售后凭证静态资源，与 /images、/avatars 同一套方案
-      '/after-sale': {
+      // #143 售后凭证静态资源，与 /images、/avatars 同一套方案；
+      // 带斜杠结尾，避免前缀吞掉 /after-sales 页面路由
+      '/after-sale/': {
         target: gatewayTarget,
         changeOrigin: true,
       },

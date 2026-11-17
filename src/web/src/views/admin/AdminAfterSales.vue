@@ -112,7 +112,8 @@ function operatorLabel(ticket, operatorId) {
   if (operatorId === 'SYSTEM') return '系统'
   if (operatorId === ticket.buyerId) return '买家'
   if (operatorId === ticket.sellerId) return '卖家'
-  return operatorId.startsWith('ADMIN') ? '平台' : operatorId
+  // 售后单只有买家/卖家/平台三方可操作，其余视为平台
+  return '平台'
 }
 
 onMounted(load)
