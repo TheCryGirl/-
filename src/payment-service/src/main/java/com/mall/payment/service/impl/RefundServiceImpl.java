@@ -1,9 +1,12 @@
 package com.mall.payment.service.impl;
 
+import com.mall.payment.channel.MockChannel;
+import com.mall.payment.channel.PaymentChannelRegistry;
 import com.mall.payment.client.OrderClient;
 import com.mall.payment.client.dto.MainOrderDTO;
 import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.common.BizException;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.IdGenerator;
 import com.mall.payment.common.PageResult;
@@ -16,6 +19,7 @@ import com.mall.payment.entity.Payment;
 import com.mall.payment.entity.Refund;
 import com.mall.payment.mapper.PaymentMapper;
 import com.mall.payment.mapper.RefundMapper;
+import com.mall.payment.service.RefundChannelExecutor;
 import com.mall.payment.service.RefundNotificationDispatcher;
 import com.mall.payment.service.RefundNotificationTxService;
 import com.mall.payment.service.RefundService;
@@ -48,6 +52,8 @@ public class RefundServiceImpl implements RefundService {
     private final RefundNotificationTxService refundNotificationTxService;
     private final RefundNotificationDispatcher refundNotificationDispatcher;
     private final OrderClient orderClient;
+    private final PaymentChannelRegistry channelRegistry;
+    private final RefundChannelExecutor refundChannelExecutor;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -130,14 +136,26 @@ public class RefundServiceImpl implements RefundService {
             throw new BizException(ErrorCode.PARAM_INVALID, "退款单已处理");
         }
 
-        RefundStatus targetStatus = approved ? RefundStatus.SUCCESS : RefundStatus.REJECTED;
+        // MOCK 渠道即时到账，审核同事务置 SUCCESS；真实渠道先置 PROCESSING，
+        // 事务提交后调渠道退款，终态由执行器/回调/人工重试收口（#137）
+        Payment payment = paymentMapper.selectById(refund.getPaymentId());
+        boolean channelAsync = approved && payment != null && payment.getChannel() != ChannelType.MOCK;
+        RefundStatus targetStatus = approved
+                ? (channelAsync ? RefundStatus.PROCESSING : RefundStatus.SUCCESS)
+                : RefundStatus.REJECTED;
         int updated = refundMapper.updateAudit(refundId, targetStatus, auditedBy, remark, LocalDateTime.now());
         if (updated == 0) {
             throw new BizException(ErrorCode.PARAM_INVALID, "退款单已被处理");
         }
 
         boolean fullyRefunded = false;
-        if (approved) {
+        if (approved && channelAsync) {
+            scheduleChannelExecution(refundId, notifyOrder);
+            log.info("退款审核通过，进入渠道处理, refundId={}, paymentId={}, amount={}, auditedBy={}",
+                    refundId, refund.getPaymentId(), refund.getAmount(), auditedBy);
+        } else if (approved) {
+            refundMapper.updateChannelResult(refundId,
+                    MockChannel.mockChannelRefundNo(refundId), LocalDateTime.now());
             fullyRefunded = paymentMapper.markRefundedIfFullyRefunded(refund.getPaymentId()) > 0;
             log.info("退款审核通过, refundId={}, paymentId={}, amount={}, auditedBy={}",
                     refundId, refund.getPaymentId(), refund.getAmount(), auditedBy);
@@ -251,6 +269,48 @@ public class RefundServiceImpl implements RefundService {
         log.warn("订单关闭自动退款完成, paymentId={}, refundId={}, amount={}",
                 latest.getPaymentId(), audited.getRefundId(), audited.getAmount());
         return audited;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public RefundResponse retryRefund(String refundId, String operatorId, String role) {
+        Refund refund = refundMapper.selectById(refundId);
+        if (refund == null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "退款单不存在");
+        }
+        if (!"ADMIN".equalsIgnoreCase(role)
+                && (!"SELLER".equalsIgnoreCase(role) || !operatorId.equals(refund.getSellerId()))) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权重试该退款单");
+        }
+        if (refund.getStatus() == RefundStatus.FAILED) {
+            int updated = refundMapper.markRetry(refundId);
+            if (updated == 0) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "退款单状态已变化，请刷新后重试");
+            }
+        } else if (refund.getStatus() != RefundStatus.PROCESSING) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "仅失败或处理中的退款单可重试");
+        }
+        // 同一 refundId 是渠道 out_request_no，重试不会重复退款；额度沿用创建时的预占
+        scheduleChannelExecution(refundId, true);
+        log.info("退款人工重试, refundId={}, operatorId={}", refundId, operatorId);
+        return RefundResponse.from(refundMapper.selectById(refundId));
+    }
+
+    /**
+     * 本地事务提交后再调渠道退款，避免远程调用占用数据库连接，
+     * 也避免渠道异常回滚已落库的 PROCESSING 状态。
+     */
+    private void scheduleChannelExecution(String refundId, boolean notifyOrder) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    refundChannelExecutor.execute(refundId, notifyOrder);
+                }
+            });
+        } else {
+            refundChannelExecutor.execute(refundId, notifyOrder);
+        }
     }
 
     /**

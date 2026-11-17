@@ -22,6 +22,9 @@ public class RefundResponse {
     private Long amount;
     private String reason;
     private RefundStatus status;
+    private String channelRefundNo;
+    private String channelError;
+    private LocalDateTime refundedAt;
     private String auditedBy;
     private LocalDateTime auditedAt;
     private LocalDateTime createdAt;
@@ -36,6 +39,9 @@ public class RefundResponse {
                 .amount(refund.getAmount())
                 .reason(refund.getReason())
                 .status(refund.getStatus())
+                .channelRefundNo(refund.getChannelRefundNo())
+                .channelError(refund.getChannelError())
+                .refundedAt(refund.getRefundedAt())
                 .auditedBy(refund.getAuditedBy())
                 .auditedAt(refund.getAuditedAt())
                 .createdAt(refund.getCreatedAt())

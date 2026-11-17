@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.RefundCallbackMapper">
+
+    <insert id="insert" parameterType="com.mall.payment.entity.RefundCallback"
+            useGeneratedKeys="true" keyProperty="callbackId">
+        INSERT INTO refund_callback (
+            channel, notify_id, refund_id, raw_payload, sign_verified, amount, process_status
+        ) VALUES (
+            #{channel}, #{notifyId}, #{refundId}, #{rawPayload,jdbcType=VARCHAR},
+            #{signVerified}, #{amount}, #{processStatus}
+        )
+    </insert>
+
+    <update id="updateProcessStatus">
+        UPDATE refund_callback
+        SET process_status = #{processStatus},
+            error_message = #{errorMessage,jdbcType=VARCHAR}
+        WHERE callback_id = #{callbackId}
+    </update>
+</mapper>

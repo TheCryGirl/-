@@ -6,7 +6,7 @@ import com.mall.payment.client.dto.OrderDTO;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.OrderStatus;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.CreatePaymentRequest;
@@ -62,7 +62,7 @@ class PaymentCreationIntegrationTest {
         when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
-        CreatePaymentResponse response = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
+        CreatePaymentResponse response = paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK));
 
         assertEquals(11800L, response.getAmount());
         assertEquals("mock://pay/" + response.getPaymentId(), response.getPayUrl());
@@ -82,8 +82,8 @@ class PaymentCreationIntegrationTest {
         when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
-        CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
-        CreatePaymentResponse second = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
+        CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK));
+        CreatePaymentResponse second = paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK));
 
         assertEquals(first.getPaymentId(), second.getPaymentId());
         assertEquals(1, count("payment"));
@@ -95,8 +95,8 @@ class PaymentCreationIntegrationTest {
         when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));
 
-        CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK));
-        CreatePaymentResponse second = paymentService.createPayment(BUYER_ID, "key-2", request(PaymentChannel.MOCK));
+        CreatePaymentResponse first = paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK));
+        CreatePaymentResponse second = paymentService.createPayment(BUYER_ID, "key-2", request(ChannelType.MOCK));
 
         assertEquals(first.getPaymentId(), second.getPaymentId());
         assertEquals(1, count("payment"));
@@ -109,7 +109,7 @@ class PaymentCreationIntegrationTest {
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, "U20002")));
 
         BizException exception = assertThrows(BizException.class,
-                () -> paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK)));
+                () -> paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK)));
 
         assertEquals(ErrorCode.FORBIDDEN, exception.getCode());
         assertEquals(0, count("payment"));
@@ -121,7 +121,7 @@ class PaymentCreationIntegrationTest {
                 .thenReturn(Result.success(order(11800L, OrderStatus.PAID, BUYER_ID)));
 
         BizException exception = assertThrows(BizException.class,
-                () -> paymentService.createPayment(BUYER_ID, "key-1", request(PaymentChannel.MOCK)));
+                () -> paymentService.createPayment(BUYER_ID, "key-1", request(ChannelType.MOCK)));
 
         assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
         assertEquals(0, count("payment"));
@@ -129,7 +129,7 @@ class PaymentCreationIntegrationTest {
 
     @Test
     void rejectsUnsupportedChannelWithoutCallingOrderService() {
-        CreatePaymentRequest request = request(PaymentChannel.ALIPAY);
+        CreatePaymentRequest request = request(ChannelType.ALIPAY);
 
         BizException exception = assertThrows(BizException.class,
                 () -> paymentService.createPayment(BUYER_ID, "key-1", request));
@@ -138,7 +138,7 @@ class PaymentCreationIntegrationTest {
         verifyNoInteractions(orderClient);
     }
 
-    private CreatePaymentRequest request(PaymentChannel channel) {
+    private CreatePaymentRequest request(ChannelType channel) {
         CreatePaymentRequest request = new CreatePaymentRequest();
         request.setOrderId(ORDER_ID);
         request.setChannel(channel);

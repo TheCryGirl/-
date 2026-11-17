@@ -1,6 +1,6 @@
 package com.mall.payment.dto.response;
 
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.entity.Payment;
 import lombok.Builder;
@@ -20,7 +20,7 @@ public class PaymentDetailResponse {
     private String orderId;
     private String buyerId;
     private String sellerId;
-    private PaymentChannel channel;
+    private ChannelType channel;
     private Long amount;
     private Long refundedAmount;
     private PaymentStatus status;

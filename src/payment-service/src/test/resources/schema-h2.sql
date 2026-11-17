@@ -49,6 +49,9 @@ CREATE TABLE refund (
     amount          BIGINT       NOT NULL,
     reason          VARCHAR(255) DEFAULT NULL,
     status          VARCHAR(16)  NOT NULL,
+    channel_refund_no VARCHAR(64) DEFAULT NULL,
+    channel_error   VARCHAR(255) DEFAULT NULL,
+    refunded_at     DATETIME     DEFAULT NULL,
     audited_by      VARCHAR(32)  DEFAULT NULL,
     audit_remark    VARCHAR(255) DEFAULT NULL,
     audited_at      DATETIME     DEFAULT NULL,
@@ -75,6 +78,7 @@ CREATE TABLE after_sale_ticket (
     after_sale_type       VARCHAR(24)  NOT NULL,
     amount                BIGINT       NOT NULL DEFAULT 0,
     reason                VARCHAR(255) DEFAULT NULL,
+    reason_code           VARCHAR(24)  DEFAULT NULL,
     status                VARCHAR(24)  NOT NULL,
     refund_id             VARCHAR(32)  DEFAULT NULL,
     return_tracking_no    VARCHAR(64)  DEFAULT NULL,
@@ -118,3 +122,82 @@ CREATE TABLE refund_notification_task (
 );
 
 CREATE INDEX idx_refund_notify_status_retry ON refund_notification_task (status, next_retry_at);
+
+DROP TABLE IF EXISTS refund_callback;
+
+CREATE TABLE refund_callback (
+    callback_id     BIGINT       NOT NULL AUTO_INCREMENT,
+    channel         VARCHAR(16)  NOT NULL,
+    notify_id       VARCHAR(128) NOT NULL,
+    refund_id       VARCHAR(32)  NOT NULL,
+    raw_payload     CLOB,
+    sign_verified   TINYINT      NOT NULL DEFAULT 0,
+    amount          BIGINT       NOT NULL,
+    process_status  VARCHAR(16)  NOT NULL DEFAULT 'PROCESSING',
+    error_message   VARCHAR(255) DEFAULT NULL,
+    received_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (callback_id),
+    CONSTRAINT uk_channel_notify UNIQUE (channel, notify_id)
+);
+
+DROP TABLE IF EXISTS reconcile_difference;
+DROP TABLE IF EXISTS reconcile_batch;
+
+CREATE TABLE reconcile_batch (
+    batch_id        VARCHAR(32)  NOT NULL,
+    channel         VARCHAR(16)  NOT NULL,
+    file_name       VARCHAR(255) DEFAULT NULL,
+    total_rows      INT          NOT NULL DEFAULT 0,
+    diff_count      INT          NOT NULL DEFAULT 0,
+    imported_by     VARCHAR(32)  NOT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (batch_id)
+);
+
+CREATE TABLE reconcile_difference (
+    difference_id   BIGINT       NOT NULL AUTO_INCREMENT,
+    batch_id        VARCHAR(32)  NOT NULL,
+    channel         VARCHAR(16)  NOT NULL,
+    bill_type       VARCHAR(16)  NOT NULL,
+    diff_type       VARCHAR(24)  NOT NULL,
+    bill_trade_no   VARCHAR(64)  DEFAULT NULL,
+    local_no        VARCHAR(64)  DEFAULT NULL,
+    local_amount    BIGINT       DEFAULT NULL,
+    channel_amount  BIGINT       DEFAULT NULL,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    remark          VARCHAR(255) DEFAULT NULL,
+    resolved_by     VARCHAR(32)  DEFAULT NULL,
+    resolved_at     DATETIME     DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (difference_id)
+);
+
+CREATE INDEX idx_reconcile_diff_batch ON reconcile_difference (batch_id, diff_type);
+
+DROP TABLE IF EXISTS after_sale_attachment;
+DROP TABLE IF EXISTS after_sale_event;
+
+CREATE TABLE after_sale_attachment (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    ticket_id       VARCHAR(32)  NOT NULL,
+    url             VARCHAR(255) NOT NULL,
+    uploaded_by     VARCHAR(32)  DEFAULT NULL,
+    uploader_role   VARCHAR(16)  DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_after_sale_attachment_ticket ON after_sale_attachment (ticket_id, created_at);
+
+CREATE TABLE after_sale_event (
+    id              BIGINT       NOT NULL AUTO_INCREMENT,
+    ticket_id       VARCHAR(32)  NOT NULL,
+    from_status     VARCHAR(24)  DEFAULT NULL,
+    to_status       VARCHAR(24)  NOT NULL,
+    operator_id     VARCHAR(32)  DEFAULT NULL,
+    remark          VARCHAR(255) DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_after_sale_event_ticket ON after_sale_event (ticket_id, created_at);

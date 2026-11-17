@@ -41,6 +41,22 @@ public interface RefundMapper {
                     @Param("auditRemark") String auditRemark,
                     @Param("auditedAt") LocalDateTime auditedAt);
 
+    /** PROCESSING → SUCCESS，落渠道退款单号；0 行表示已被并发处理 */
+    int completeSuccess(@Param("refundId") String refundId,
+                        @Param("channelRefundNo") String channelRefundNo,
+                        @Param("refundedAt") LocalDateTime refundedAt);
+
+    /** PROCESSING → FAILED，记录渠道失败原因；预占额度保留供重试 */
+    int markFailed(@Param("refundId") String refundId, @Param("channelError") String channelError);
+
+    /** FAILED → PROCESSING，人工重试入口 */
+    int markRetry(@Param("refundId") String refundId);
+
+    /** MOCK 即时退款在审核同事务内补写渠道单号与到账时间 */
+    int updateChannelResult(@Param("refundId") String refundId,
+                            @Param("channelRefundNo") String channelRefundNo,
+                            @Param("refundedAt") LocalDateTime refundedAt);
+
     /** 管理员资金汇总：成功退款与待审退款的金额口径（一条 SQL，不分页）。 */
     FinanceSummaryRows.Totals selectFinanceTotals();
 

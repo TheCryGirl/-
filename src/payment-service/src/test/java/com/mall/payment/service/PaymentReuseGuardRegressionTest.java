@@ -1,9 +1,11 @@
 package com.mall.payment.service;
 
 import com.mall.payment.client.OrderClient;
+import com.mall.payment.channel.MockChannel;
+import com.mall.payment.channel.PaymentChannelRegistry;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.dto.request.CreatePaymentRequest;
 import com.mall.payment.dto.response.CreatePaymentResponse;
@@ -68,7 +70,9 @@ class PaymentReuseGuardRegressionTest {
         paymentMapper = mock(PaymentMapper.class);
         orderClient = mock(OrderClient.class);
         paymentTxService = new PaymentTxService(paymentMapper);
-        paymentService = new PaymentServiceImpl(paymentMapper, paymentTxService, orderClient);
+        PaymentChannelRegistry registry = new PaymentChannelRegistry(
+                java.util.List.of(new MockChannel(new SignatureService("test-secret"))));
+        paymentService = new PaymentServiceImpl(paymentMapper, paymentTxService, orderClient, registry);
     }
 
     // ---------- PaymentService：幂等键命中（byKey）----------
@@ -82,10 +86,10 @@ class PaymentReuseGuardRegressionTest {
         void rejectsIdempotencyKeyOwnedByAnotherBuyer() {
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000001", OTHER_BUYER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(
-                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, PaymentChannel.MOCK)));
+                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.FORBIDDEN, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -96,10 +100,10 @@ class PaymentReuseGuardRegressionTest {
         void rejectsIdempotencyKeyReusedForDifferentOrder() {
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000002", CALLER, OTHER_ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentService.createPayment(CALLER, KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK)));
+                    request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -110,10 +114,10 @@ class PaymentReuseGuardRegressionTest {
         void rejectsIdempotencyKeyReusedForDifferentChannel() {
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000003", CALLER, ORDER_ID,
-                            PaymentChannel.WECHAT, PaymentStatus.PENDING));
+                            ChannelType.WECHAT, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentService.createPayment(CALLER, KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK)));
+                    request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -123,11 +127,11 @@ class PaymentReuseGuardRegressionTest {
         @DisplayName("同一调用方同一订单同一渠道同一幂等键：正常复用，不查订单、不落库")
         void reusesPaymentForSameBuyerOrderChannelAndKey() {
             Payment existing = payment("PAYREUSE00000000004", CALLER, ORDER_ID,
-                    PaymentChannel.MOCK, PaymentStatus.PENDING);
+                    ChannelType.MOCK, PaymentStatus.PENDING);
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(existing);
 
             CreatePaymentResponse response = paymentService.createPayment(CALLER, KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK));
+                    request(ORDER_ID, ChannelType.MOCK));
 
             assertEquals("PAYREUSE00000000004", response.getPaymentId());
             verifyNoInteractions(orderClient);
@@ -139,10 +143,10 @@ class PaymentReuseGuardRegressionTest {
         void rejectsExistingPaymentWithoutBuyer() {
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000005", null, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(
-                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, PaymentChannel.MOCK)));
+                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.FORBIDDEN, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -161,10 +165,10 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000011", OTHER_BUYER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(
-                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, PaymentChannel.MOCK)));
+                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.FORBIDDEN, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -176,10 +180,10 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000012", CALLER, ORDER_ID,
-                            PaymentChannel.WECHAT, PaymentStatus.PENDING));
+                            ChannelType.WECHAT, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentService.createPayment(CALLER, KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK)));
+                    request(ORDER_ID, ChannelType.MOCK)));
 
             assertEquals(ErrorCode.PARAM_INVALID, exception.getCode());
             verifyNoInteractions(orderClient);
@@ -191,10 +195,10 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(OTHER_KEY)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000013", CALLER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             CreatePaymentResponse response = paymentService.createPayment(CALLER, OTHER_KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK));
+                    request(ORDER_ID, ChannelType.MOCK));
 
             assertEquals("PAYREUSE00000000013", response.getPaymentId());
             verifyNoInteractions(orderClient);
@@ -207,10 +211,10 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(OTHER_KEY)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000014", CALLER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.SUCCESS));
+                            ChannelType.MOCK, PaymentStatus.SUCCESS));
 
             CreatePaymentResponse response = paymentService.createPayment(CALLER, OTHER_KEY,
-                    request(ORDER_ID, PaymentChannel.MOCK));
+                    request(ORDER_ID, ChannelType.MOCK));
 
             assertEquals("PAYREUSE00000000014", response.getPaymentId());
             verifyNoInteractions(orderClient);
@@ -223,7 +227,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectLatestByOrderId(ORDER_ID)).thenReturn(null);
 
             BizException exception = assertRejected(
-                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, PaymentChannel.MOCK)));
+                    () -> paymentService.createPayment(CALLER, KEY, request(ORDER_ID, ChannelType.MOCK)));
 
             // orderClient 未打桩返回 null，既有实现应报服务不可用，证明确实进入了新建路径
             assertEquals(ErrorCode.SERVICE_UNAVAILABLE, exception.getCode());
@@ -244,7 +248,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_idempotency_key"));
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000021", OTHER_BUYER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -259,7 +263,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_idempotency_key"));
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000022", CALLER, OTHER_ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -274,7 +278,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_idempotency_key"));
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000023", CALLER, ORDER_ID,
-                            PaymentChannel.WECHAT, PaymentStatus.PENDING));
+                            ChannelType.WECHAT, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -289,7 +293,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_idempotency_key"));
             when(paymentMapper.selectByIdempotencyKey(KEY))
                     .thenReturn(payment("PAYREUSE00000000031", null, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -305,7 +309,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectPendingByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000024", OTHER_BUYER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.PENDING));
+                            ChannelType.MOCK, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -321,7 +325,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectPendingByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000025", CALLER, ORDER_ID,
-                            PaymentChannel.WECHAT, PaymentStatus.PENDING));
+                            ChannelType.WECHAT, PaymentStatus.PENDING));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -338,7 +342,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectPendingByOrderId(ORDER_ID)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000026", OTHER_BUYER, ORDER_ID,
-                            PaymentChannel.MOCK, PaymentStatus.SUCCESS));
+                            ChannelType.MOCK, PaymentStatus.SUCCESS));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -354,7 +358,7 @@ class PaymentReuseGuardRegressionTest {
             when(paymentMapper.selectPendingByOrderId(ORDER_ID)).thenReturn(null);
             when(paymentMapper.selectLatestByOrderId(ORDER_ID))
                     .thenReturn(payment("PAYREUSE00000000027", CALLER, ORDER_ID,
-                            PaymentChannel.WECHAT, PaymentStatus.REFUNDED));
+                            ChannelType.WECHAT, PaymentStatus.REFUNDED));
 
             BizException exception = assertRejected(() -> paymentTxService.insertIfAbsent(attempt));
 
@@ -366,7 +370,7 @@ class PaymentReuseGuardRegressionTest {
         void reusesIdempotencyKeyBranchForSameRequest() {
             Payment attempt = attempt();
             Payment existing = payment("PAYREUSE00000000028", CALLER, ORDER_ID,
-                    PaymentChannel.MOCK, PaymentStatus.PENDING);
+                    ChannelType.MOCK, PaymentStatus.PENDING);
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_idempotency_key"));
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(existing);
 
@@ -379,7 +383,7 @@ class PaymentReuseGuardRegressionTest {
         void reusesPendingBranchForSameBuyer() {
             Payment attempt = attempt();
             Payment existing = payment("PAYREUSE00000000029", CALLER, ORDER_ID,
-                    PaymentChannel.MOCK, PaymentStatus.PENDING);
+                    ChannelType.MOCK, PaymentStatus.PENDING);
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_order_status"));
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectPendingByOrderId(ORDER_ID)).thenReturn(existing);
@@ -392,7 +396,7 @@ class PaymentReuseGuardRegressionTest {
         void reusesLatestSuccessBranchForSameBuyer() {
             Payment attempt = attempt();
             Payment existing = payment("PAYREUSE00000000030", CALLER, ORDER_ID,
-                    PaymentChannel.MOCK, PaymentStatus.SUCCESS);
+                    ChannelType.MOCK, PaymentStatus.SUCCESS);
             when(paymentMapper.insert(attempt)).thenThrow(new DuplicateKeyException("uk_order_status"));
             when(paymentMapper.selectByIdempotencyKey(KEY)).thenReturn(null);
             when(paymentMapper.selectPendingByOrderId(ORDER_ID)).thenReturn(null);
@@ -428,14 +432,14 @@ class PaymentReuseGuardRegressionTest {
         return exception;
     }
 
-    private CreatePaymentRequest request(String orderId, PaymentChannel channel) {
+    private CreatePaymentRequest request(String orderId, ChannelType channel) {
         CreatePaymentRequest request = new CreatePaymentRequest();
         request.setOrderId(orderId);
         request.setChannel(channel);
         return request;
     }
 
-    private Payment payment(String paymentId, String buyerId, String orderId, PaymentChannel channel,
+    private Payment payment(String paymentId, String buyerId, String orderId, ChannelType channel,
                            PaymentStatus status) {
         Payment payment = new Payment();
         payment.setPaymentId(paymentId);
@@ -453,7 +457,7 @@ class PaymentReuseGuardRegressionTest {
 
     private Payment attempt() {
         Payment payment = payment("PAYATTEMPT0000000001", CALLER, ORDER_ID,
-                PaymentChannel.MOCK, PaymentStatus.PENDING);
+                ChannelType.MOCK, PaymentStatus.PENDING);
         payment.setIdempotencyKey(KEY);
         return payment;
     }

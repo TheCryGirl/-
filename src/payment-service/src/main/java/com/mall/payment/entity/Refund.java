@@ -19,6 +19,9 @@ public class Refund {
     private Long amount;
     private String reason;
     private RefundStatus status;
+    private String channelRefundNo;
+    private String channelError;
+    private LocalDateTime refundedAt;
     private String auditedBy;
     private String auditRemark;
     private LocalDateTime auditedAt;

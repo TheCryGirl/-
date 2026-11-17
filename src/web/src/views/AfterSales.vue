@@ -1,18 +1,21 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { isOk, orderApi, paymentApi, unwrapResult } from '../api'
+import { http, isOk, orderApi, paymentApi, unwrapResult } from '../api'
 import {
   ORDER_STATUS_MAP,
   ORDER_STATUS_TAG,
   statusTag,
   statusText,
 } from '../constants/status'
+import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice, formatTime, formatTotal } from '../utils/format'
 import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 import {
+  afterSaleReasonLabel,
+  afterSaleReasonOptions,
   afterSaleStatusClass,
   afterSaleStatusLabel,
   afterSaleStatusOptions,
@@ -20,7 +23,12 @@ import {
   afterSaleSteps,
   afterSaleTypeLabel,
   afterSaleTypeOptions,
+  uploadAfterSaleEvidence,
 } from '../utils/afterSale'
+
+const EVIDENCE_LIMIT = 3
+const EVIDENCE_MAX_SIZE = 5 * 1024 * 1024
+const EVIDENCE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif']
 
 const route = useRoute()
 const orderId = ref(String(route.query.orderId || ''))
@@ -36,7 +44,22 @@ const orderLoadError = ref('')
 const ticketsError = ref('')
 const filterStatus = ref('')
 const returnTracking = reactive({})
-const form = reactive({ type: 'REFUND_ONLY', amount: '', reason: '' })
+const form = reactive({
+  type: 'REFUND_ONLY',
+  amount: '',
+  reason: '',
+  reasonCode: '',
+  evidenceFiles: [],
+})
+
+/* #143 仲裁中补充材料：ticketId -> { remark, files: [{file, url}] } */
+const supplements = reactive({})
+const supplementSubmitting = ref('')
+
+/* #143 时间线与凭证：点击展开后按需拉详情 */
+const expandedTicket = ref('')
+const detailLoading = ref('')
+const details = reactive({})
 
 const remaining = computed(() => {
   if (!payment.value) return 0
@@ -124,6 +147,11 @@ async function loadTickets() {
     const page = unwrapResult(data)
     tickets.value = page?.list || []
     ticketsTotal.value = page?.total ?? tickets.value.length
+    tickets.value.forEach((ticket) => {
+      if (!supplements[ticket.ticketId]) {
+        supplements[ticket.ticketId] = { remark: '', files: [] }
+      }
+    })
   } catch (err) {
     ticketsError.value = resolveErrorMessage(err, '售后记录加载失败')
     tickets.value = []
@@ -139,6 +167,75 @@ async function loadAll() {
   loading.value = false
 }
 
+function onEvidenceChange(event) {
+  const picked = Array.from(event.target.files || [])
+  event.target.value = ''
+  const invalidSize = picked.find((file) => file.size > EVIDENCE_MAX_SIZE)
+  if (invalidSize) {
+    showError(`${invalidSize.name} 超过 5MB，不能上传`)
+    return
+  }
+  const invalidExt = picked.find((file) => {
+    const name = file.name || ''
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
+    return !EVIDENCE_EXTENSIONS.includes(ext)
+  })
+  if (invalidExt) {
+    showError(`${invalidExt.name} 不是支持格式，只支持 jpg/jpeg/png/webp/gif`)
+    return
+  }
+  const merged = [...form.evidenceFiles, ...picked.map((file) => ({ file, url: URL.createObjectURL(file) }))]
+  if (merged.length > EVIDENCE_LIMIT) {
+    showWarning(`单次最多上传 ${EVIDENCE_LIMIT} 张凭证`)
+    merged.slice(form.evidenceFiles.length).forEach((item) => URL.revokeObjectURL(item.url))
+    return
+  }
+  form.evidenceFiles = merged
+}
+
+function removeEvidence(index) {
+  const [removed] = form.evidenceFiles.splice(index, 1)
+  if (removed?.url) URL.revokeObjectURL(removed.url)
+}
+
+function onSupplementChange(ticket, event) {
+  const picked = Array.from(event.target.files || [])
+  event.target.value = ''
+  const state = supplements[ticket.ticketId] || (supplements[ticket.ticketId] = { remark: '', files: [] })
+  const invalidSize = picked.find((file) => file.size > EVIDENCE_MAX_SIZE)
+  if (invalidSize) {
+    showError(`${invalidSize.name} 超过 5MB，不能上传`)
+    return
+  }
+  const merged = [...state.files, ...picked.map((file) => ({ file, url: URL.createObjectURL(file) }))]
+  if (merged.length > EVIDENCE_LIMIT) {
+    showWarning(`单次最多上传 ${EVIDENCE_LIMIT} 张凭证`)
+    merged.slice(state.files.length).forEach((item) => URL.revokeObjectURL(item.url))
+    return
+  }
+  state.files = merged
+}
+
+function removeSupplementEvidence(ticket, index) {
+  const state = supplements[ticket.ticketId]
+  if (!state) return
+  const [removed] = state.files.splice(index, 1)
+  if (removed?.url) URL.revokeObjectURL(removed.url)
+}
+
+async function uploadEvidence(files) {
+  if (!files.length) return []
+  const { data } = await uploadAfterSaleEvidence(files.map((item) => item.file))
+  if (!isOk(data)) {
+    throw new Error(data?.message || '凭证上传失败')
+  }
+  const urls = unwrapResult(data)
+  if (!Array.isArray(urls) || urls.length !== files.length) {
+    throw new Error('凭证上传失败，返回结果异常')
+  }
+  return urls
+}
+
 async function submit() {
   if (submitting.value) return
   if (!orderId.value) {
@@ -147,6 +244,14 @@ async function submit() {
   }
   if (!canApply.value) {
     showWarning('当前订单或支付状态不可申请售后')
+    return
+  }
+  if (!form.reasonCode) {
+    showWarning('请选择售后原因')
+    return
+  }
+  if (form.reasonCode === 'OTHER' && !form.reason.trim()) {
+    showWarning('选择其他原因时必须填写说明')
     return
   }
 
@@ -166,12 +271,18 @@ async function submit() {
 
   submitting.value = true
   try {
+    let attachmentUrls = []
+    if (form.evidenceFiles.length) {
+      attachmentUrls = await uploadEvidence(form.evidenceFiles)
+    }
     const { data } = await paymentApi.createAfterSale(
       {
         orderId: orderId.value,
         type: form.type,
         amount: form.type === 'EXCHANGE' ? null : amount,
         reason: form.reason,
+        reasonCode: form.reasonCode,
+        attachmentUrls,
       },
       makeKey(),
     )
@@ -182,6 +293,9 @@ async function submit() {
     const ticket = unwrapResult(data)
     showSuccess(`售后申请已提交${ticket?.ticketId ? `，售后单号 ${ticket.ticketId}` : ''}`)
     form.reason = ''
+    form.reasonCode = ''
+    form.evidenceFiles.forEach((item) => item.url && URL.revokeObjectURL(item.url))
+    form.evidenceFiles = []
     await loadOrder()
     await loadTickets()
   } catch (err) {
@@ -214,6 +328,142 @@ async function shipReturn(ticket) {
   } finally {
     processingId.value = ''
   }
+}
+
+/* #143 买家撤销：仅 PENDING */
+async function cancelTicket(ticket) {
+  if (processingId.value) return
+  const ok = await confirmAction({
+    message: `确定撤销售后单「${ticket.ticketId}」？撤销后卖家不能再处理该单。`,
+    title: '撤销售后',
+    danger: true,
+  })
+  if (!ok) return
+
+  processingId.value = ticket.ticketId
+  try {
+    const { data } = await http.post(`/payments/after-sales/${ticket.ticketId}/cancel`, {
+      remark: '买家主动撤销',
+    })
+    if (!isOk(data)) {
+      showError(data?.message || '撤销失败')
+      return
+    }
+    showSuccess('售后单已撤销')
+    await loadTickets()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '撤销失败'))
+  } finally {
+    processingId.value = ''
+  }
+}
+
+/* #143 卖家驳回后申请平台仲裁 */
+async function requestArbitration(ticket) {
+  if (processingId.value) return
+  const ok = await confirmAction({
+    message: `确定对售后单「${ticket.ticketId}」申请平台仲裁？仲裁期间卖家不能处理该单。`,
+    title: '申请平台仲裁',
+    danger: true,
+  })
+  if (!ok) return
+
+  processingId.value = ticket.ticketId
+  try {
+    const { data } = await http.post(`/payments/after-sales/${ticket.ticketId}/arbitration-request`, {
+      remark: '买家申请平台仲裁',
+    })
+    if (!isOk(data)) {
+      showError(data?.message || '申请仲裁失败')
+      return
+    }
+    showSuccess('已申请平台仲裁，请等待平台裁定')
+    await loadTickets()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '申请仲裁失败'))
+  } finally {
+    processingId.value = ''
+  }
+}
+
+/* #143 仲裁期间补充材料 */
+async function submitSupplement(ticket) {
+  if (supplementSubmitting.value) return
+  const state = supplements[ticket.ticketId] || { remark: '', files: [] }
+  const remark = (state.remark || '').trim()
+  if (!remark && !state.files.length) {
+    showWarning('请填写补充说明或上传凭证')
+    return
+  }
+
+  supplementSubmitting.value = ticket.ticketId
+  try {
+    let attachmentUrls = []
+    if (state.files.length) {
+      attachmentUrls = await uploadEvidence(state.files)
+    }
+    const { data } = await http.post(`/payments/after-sales/${ticket.ticketId}/supplement`, {
+      remark: remark || null,
+      attachmentUrls,
+    })
+    if (!isOk(data)) {
+      showError(data?.message || '补充材料失败')
+      return
+    }
+    showSuccess('补充材料已提交，双方均可查看')
+    state.remark = ''
+    state.files.forEach((item) => item.url && URL.revokeObjectURL(item.url))
+    state.files = []
+    details[ticket.ticketId] = null
+    await loadTickets()
+    if (expandedTicket.value === ticket.ticketId) {
+      await loadDetail(ticket.ticketId)
+    }
+  } catch (err) {
+    showError(resolveErrorMessage(err, '补充材料失败'))
+  } finally {
+    supplementSubmitting.value = ''
+  }
+}
+
+/* #143 进度时间线与凭证 */
+async function loadDetail(ticketId) {
+  detailLoading.value = ticketId
+  try {
+    const { data } = await paymentApi.afterSaleDetail(ticketId)
+    if (!isOk(data)) {
+      showError(data?.message || '进度详情加载失败')
+      return null
+    }
+    const detail = unwrapResult(data)
+    details[ticketId] = detail
+    return detail
+  } catch (err) {
+    showError(resolveErrorMessage(err, '进度详情加载失败'))
+    return null
+  } finally {
+    detailLoading.value = ''
+  }
+}
+
+async function toggleTimeline(ticket) {
+  if (expandedTicket.value === ticket.ticketId) {
+    expandedTicket.value = ''
+    return
+  }
+  expandedTicket.value = ticket.ticketId
+  if (!details[ticket.ticketId]) {
+    await loadDetail(ticket.ticketId)
+  }
+}
+
+function operatorLabel(ticket, operatorId) {
+  if (!operatorId) return '—'
+  if (operatorId === 'SYSTEM') return '系统'
+  if (operatorId === ticket.buyerId) return '买家'
+  if (operatorId === ticket.sellerId) return '卖家'
+  // 售后单只有买家/卖家/平台三方可操作，其余视为平台
+  return '平台'
 }
 
 function changeFilter() {
@@ -327,16 +577,72 @@ onMounted(loadAll)
                 />
               </el-form-item>
 
+              <el-form-item label="售后原因" :class="form.type === 'EXCHANGE' ? 'sm:col-span-2' : ''">
+                <el-select
+                  v-model="form.reasonCode"
+                  class="w-full"
+                  placeholder="请选择原因"
+                  data-testid="after-sales-reason-code"
+                >
+                  <el-option
+                    v-for="item in afterSaleReasonOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </el-form-item>
+
               <el-form-item
-                label="售后原因"
-                :class="form.type === 'EXCHANGE' ? 'sm:col-span-2' : ''"
+                v-if="form.reasonCode === 'OTHER'"
+                label="补充说明"
+                class="sm:col-span-2"
               >
                 <el-input
                   v-model="form.reason"
                   maxlength="255"
-                  placeholder="选填，例如商品有瑕疵"
+                  placeholder="选择其他原因时必须填写说明"
                   data-testid="after-sales-reason"
                 />
+              </el-form-item>
+
+              <el-form-item label="上传凭证（选填，最多 3 张，每张不超过 5MB）" class="sm:col-span-3">
+                <div class="w-full space-y-2">
+                  <div v-if="form.evidenceFiles.length" class="flex flex-wrap gap-2">
+                    <div
+                      v-for="(item, index) in form.evidenceFiles"
+                      :key="item.url"
+                      class="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-200"
+                    >
+                      <img :src="item.url" :alt="item.file.name" class="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        class="absolute top-0 right-0 w-5 h-5 text-xs leading-5 text-center text-white bg-black/60 hover:bg-black/80"
+                        :data-testid="`after-sales-evidence-remove-${index}`"
+                        @click="removeEvidence(index)"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <label
+                    v-if="form.evidenceFiles.length < 3"
+                    class="inline-flex items-center justify-center w-20 h-20 rounded-lg border border-dashed border-gray-300 text-gray-400 cursor-pointer hover:border-blue-400 hover:text-blue-400"
+                  >
+                    <span class="text-2xl">+</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      class="sr-only"
+                      data-testid="after-sales-evidence"
+                      @change="onEvidenceChange"
+                    />
+                  </label>
+                  <p class="text-xs text-gray-400">
+                    支持 jpg/jpeg/png/webp/gif，凭证将随申请一并提交给卖家与平台
+                  </p>
+                </div>
               </el-form-item>
             </div>
           </el-form>
@@ -439,7 +745,9 @@ onMounted(loadAll)
                 订单 {{ ticket.orderId }}
               </RouterLink>
               <span v-if="ticket.amount > 0">退款金额 ¥{{ formatPrice(ticket.amount) }}</span>
-              <span v-if="ticket.reason" class="break-words">原因：{{ ticket.reason }}</span>
+              <span v-if="ticket.reasonCode" class="break-words">原因：{{ afterSaleReasonLabel(ticket.reasonCode) }}</span>
+              <span v-else-if="ticket.reason" class="break-words">原因：{{ ticket.reason }}</span>
+              <span v-if="ticket.reasonCode && ticket.reason" class="break-words">说明：{{ ticket.reason }}</span>
             </div>
 
             <el-alert
@@ -450,7 +758,26 @@ onMounted(loadAll)
               :title="ticket.auditRemark ? `卖家已驳回：${ticket.auditRemark}` : '卖家已驳回'"
             />
 
-            <div v-else class="pt-1">
+            <el-alert
+              v-else-if="ticket.status === 'ARBITRATING'"
+              type="warning"
+              :closable="false"
+              show-icon
+              title="平台仲裁中，卖家不能处理该售后单，请补充材料后等待平台裁定"
+            />
+
+            <el-alert
+              v-else-if="ticket.status === 'CANCELLED'"
+              type="info"
+              :closable="false"
+              show-icon
+              :title="ticket.auditRemark ? `已撤销：${ticket.auditRemark}` : '已撤销'"
+            />
+
+            <div
+              v-else
+              class="pt-1"
+            >
               <el-steps
                 :active="afterSaleStepIndex(ticket.type, ticket.status)"
                 finish-status="success"
@@ -466,7 +793,7 @@ onMounted(loadAll)
               <p v-if="ticket.refundId" class="break-all">退款单号：{{ ticket.refundId }}</p>
               <p v-if="ticket.returnTrackingNo" class="break-all">退货物流：{{ ticket.returnTrackingNo }}</p>
               <p v-if="ticket.exchangeTrackingNo" class="break-all">换货物流：{{ ticket.exchangeTrackingNo }}</p>
-              <p v-if="ticket.auditRemark && ticket.status !== 'REJECTED'" class="break-words">
+              <p v-if="ticket.auditRemark && !['REJECTED', 'CANCELLED'].includes(ticket.status)" class="break-words">
                 处理备注：{{ ticket.auditRemark }}
               </p>
             </div>
@@ -491,6 +818,133 @@ onMounted(loadAll)
                 {{ processingId === ticket.ticketId ? '提交中…' : '提交退货物流' }}
               </el-button>
             </div>
+
+            <!-- 待处理：撤销 -->
+            <div v-if="ticket.status === 'PENDING'" class="flex justify-end pt-1">
+              <el-button
+                :loading="processingId === ticket.ticketId"
+                :data-testid="`after-sales-cancel-${ticket.ticketId}`"
+                @click="cancelTicket(ticket)"
+              >
+                撤销售后
+              </el-button>
+            </div>
+
+            <!-- 已驳回：申请平台仲裁 -->
+            <div v-if="ticket.status === 'REJECTED'" class="flex justify-end pt-1">
+              <el-button
+                type="warning"
+                :loading="processingId === ticket.ticketId"
+                :data-testid="`after-sales-arbitrate-${ticket.ticketId}`"
+                @click="requestArbitration(ticket)"
+              >
+                申请平台仲裁
+              </el-button>
+            </div>
+
+            <!-- 仲裁中：补充材料 -->
+            <div v-if="ticket.status === 'ARBITRATING'" class="space-y-2 pt-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <el-input
+                  v-model="supplements[ticket.ticketId].remark"
+                  maxlength="255"
+                  placeholder="补充说明（选填）"
+                  style="max-width: 420px"
+                  :data-testid="`after-sales-supplement-remark-${ticket.ticketId}`"
+                />
+                <label
+                  class="inline-flex items-center px-3 h-8 rounded border border-dashed border-gray-300 text-xs text-gray-500 cursor-pointer hover:border-blue-400 hover:text-blue-400"
+                >
+                  上传凭证
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    class="sr-only"
+                    :data-testid="`after-sales-supplement-file-${ticket.ticketId}`"
+                    @change="onSupplementChange(ticket, $event)"
+                  />
+                </label>
+                <el-button
+                  type="primary"
+                  :loading="supplementSubmitting === ticket.ticketId"
+                  :data-testid="`after-sales-supplement-submit-${ticket.ticketId}`"
+                  @click="submitSupplement(ticket)"
+                >
+                  {{ supplementSubmitting === ticket.ticketId ? '提交中…' : '提交补充材料' }}
+                </el-button>
+              </div>
+              <div v-if="supplements[ticket.ticketId]?.files?.length" class="flex flex-wrap gap-2">
+                <div
+                  v-for="(item, index) in supplements[ticket.ticketId].files"
+                  :key="item.url"
+                  class="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200"
+                >
+                  <img :src="item.url" :alt="item.file.name" class="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    class="absolute top-0 right-0 w-4 h-4 text-xs leading-4 text-center text-white bg-black/60 hover:bg-black/80"
+                    @click="removeSupplementEvidence(ticket, index)"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 进度时间线与凭证 -->
+            <div class="pt-1 border-t border-gray-100">
+              <el-button
+                text
+                type="primary"
+                size="small"
+                :loading="detailLoading === ticket.ticketId"
+                :data-testid="`after-sales-timeline-${ticket.ticketId}`"
+                @click="toggleTimeline(ticket)"
+              >
+                {{ expandedTicket === ticket.ticketId ? '收起进度与凭证' : '查看进度与凭证' }}
+              </el-button>
+
+              <div v-if="expandedTicket === ticket.ticketId && details[ticket.ticketId]" class="space-y-3 pt-2">
+                <div class="flex flex-wrap gap-2">
+                  <img
+                    v-for="att in details[ticket.ticketId].attachments || []"
+                    :key="att.id || att.url"
+                    :src="att.url"
+                    :alt="att.url"
+                    class="w-16 h-16 rounded-lg object-cover border border-gray-200"
+                  />
+                  <span
+                    v-if="!(details[ticket.ticketId].attachments || []).length"
+                    class="text-xs text-gray-400"
+                  >
+                    暂无凭证
+                  </span>
+                </div>
+                <el-timeline class="pt-1">
+                  <el-timeline-item
+                    v-for="eventItem in details[ticket.ticketId].events || []"
+                    :key="eventItem.id || `${eventItem.createdAt}-${eventItem.toStatus}`"
+                    :timestamp="formatTime(eventItem.createdAt)"
+                    placement="top"
+                  >
+                    <div class="text-xs text-gray-600 space-y-0.5">
+                      <p>
+                        状态：{{ afterSaleStatusLabel(eventItem.toStatus) }}
+                        <span v-if="eventItem.fromStatus" class="text-gray-400">
+                          （原 {{ afterSaleStatusLabel(eventItem.fromStatus) }}）
+                        </span>
+                      </p>
+                      <p>操作人：{{ operatorLabel(ticket, eventItem.operatorId) }}</p>
+                      <p v-if="eventItem.remark" class="break-words">备注：{{ eventItem.remark }}</p>
+                    </div>
+                  </el-timeline-item>
+                </el-timeline>
+                <p v-if="!(details[ticket.ticketId].events || []).length" class="text-xs text-gray-400">
+                  暂无进度记录
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </el-card>
@@ -505,4 +959,3 @@ onMounted(loadAll)
   outline-offset: 2px;
 }
 </style>
-

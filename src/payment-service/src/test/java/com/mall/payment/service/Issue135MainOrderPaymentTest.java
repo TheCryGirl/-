@@ -9,7 +9,7 @@ import com.mall.payment.client.dto.StockConfirmRequest;
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.OrderStatus;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.PaymentStatus;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.CreatePaymentRequest;
@@ -195,7 +195,7 @@ class Issue135MainOrderPaymentTest {
     private CreatePaymentRequest request() {
         CreatePaymentRequest request = new CreatePaymentRequest();
         request.setOrderId(MAIN_ORDER_ID);
-        request.setChannel(PaymentChannel.MOCK);
+        request.setChannel(ChannelType.MOCK);
         return request;
     }
 

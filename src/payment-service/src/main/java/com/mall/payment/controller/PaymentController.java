@@ -1,6 +1,10 @@
 package com.mall.payment.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mall.payment.channel.MockChannel;
+import com.mall.payment.channel.PaymentChannelRegistry;
 import com.mall.payment.common.BizException;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.PageResult;
 import com.mall.payment.common.Result;
@@ -14,12 +18,17 @@ import com.mall.payment.dto.response.PaymentDetailResponse;
 import com.mall.payment.dto.response.RefundResponse;
 import com.mall.payment.service.AuditLogPublisher;
 import com.mall.payment.service.CallbackResult;
+import com.mall.payment.service.ChannelCallbackOutcome;
+import com.mall.payment.service.ChannelCallbackService;
 import com.mall.payment.service.FinanceSummaryService;
 import com.mall.payment.service.PaymentCallbackService;
 import com.mall.payment.service.PaymentService;
 import com.mall.payment.service.RefundService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +38,12 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * 支付单接口。
@@ -49,6 +64,9 @@ public class PaymentController {
     private final RefundService refundService;
     private final AuditLogPublisher auditLogPublisher;
     private final FinanceSummaryService financeSummaryService;
+    private final ChannelCallbackService channelCallbackService;
+    private final PaymentChannelRegistry channelRegistry;
+    private final ObjectMapper objectMapper;
 
     /**
      * 管理员资金/风控汇总（退款口径）。
@@ -112,6 +130,61 @@ public class PaymentController {
                 : Result.fail(result.getCode(), result.getMessage());
     }
 
+    /**
+     * 已启用渠道列表（#137）。支付页按此渲染渠道选项；沙箱渠道带 sandbox 标记。
+     */
+    @GetMapping("/channels")
+    public Result<List<Map<String, Object>>> channels(@RequestHeader("X-User-Id") String userId) {
+        List<Map<String, Object>> list = channelRegistry.enabledChannels().stream()
+                .map(type -> Map.<String, Object>of(
+                        "channel", type.name(),
+                        "name", type == ChannelType.MOCK ? "模拟支付" : "支付宝（沙箱）",
+                        "sandbox", true))
+                .toList();
+        return Result.success(list);
+    }
+
+    /**
+     * 按渠道路由的支付回调（#137）。豁免网关鉴权，验签由渠道实现完成；
+     * 支付宝按渠道规定返回纯文本 success/failure，MOCK 返回统一 Result。
+     */
+    @PostMapping("/callback/{channel}")
+    public ResponseEntity<?> channelCallback(@PathVariable("channel") String channel,
+                                             HttpServletRequest httpRequest) throws IOException {
+        ChannelType type = parseChannel(channel);
+        Map<String, String> params = readCallbackParams(type, httpRequest);
+        ChannelCallbackOutcome outcome = channelCallbackService.processPayment(type, params);
+        return channelResponse(type, outcome);
+    }
+
+    /**
+     * 退款异步通知（#137）：验签 + 幂等，处理链与支付回调一致。
+     */
+    @PostMapping("/refund-callback/{channel}")
+    public ResponseEntity<?> refundCallback(@PathVariable("channel") String channel,
+                                            HttpServletRequest httpRequest) throws IOException {
+        ChannelType type = parseChannel(channel);
+        Map<String, String> params = readCallbackParams(type, httpRequest);
+        ChannelCallbackOutcome outcome = channelCallbackService.processRefund(type, params);
+        return channelResponse(type, outcome);
+    }
+
+    /**
+     * 渠道退款失败/滞留时的人工重试（#137）。同一 refundId 是渠道幂等键，不会重复退款。
+     */
+    @PostMapping("/refunds/{refundId}/retry")
+    public Result<RefundResponse> retryRefund(
+            @RequestHeader("X-User-Id") String operatorId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @PathVariable("refundId") String refundId) {
+        if (!ROLE_SELLER.equals(role) && !ROLE_ADMIN.equals(role)) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权限重试退款");
+        }
+        RefundResponse refund = refundService.retryRefund(refundId, operatorId, role);
+        auditLogPublisher.publish(operatorId, role, "REFUND_RETRY", "REFUND", refundId, "人工重试渠道退款");
+        return Result.success(refund);
+    }
+
     @PostMapping("/{paymentId}/refund")
     public Result<RefundResponse> refund(
             @RequestHeader("X-User-Id") String buyerId,
@@ -146,5 +219,41 @@ public class PaymentController {
 
     private static String suffix(String remark) {
         return remark == null || remark.isBlank() ? "" : "：" + remark;
+    }
+
+    private static ChannelType parseChannel(String channel) {
+        try {
+            return ChannelType.valueOf(channel.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "未知支付渠道: " + channel);
+        }
+    }
+
+    /** MOCK 渠道沿用 JSON 报文；支付宝异步通知是 form 参数 */
+    private Map<String, String> readCallbackParams(ChannelType type, HttpServletRequest request)
+            throws IOException {
+        if (type == ChannelType.MOCK) {
+            PaymentCallbackRequest body =
+                    objectMapper.readValue(request.getInputStream(), PaymentCallbackRequest.class);
+            return MockChannel.toParams(body);
+        }
+        Map<String, String> params = new HashMap<>();
+        request.getParameterMap().forEach((key, values) -> {
+            if (values != null && values.length > 0) {
+                params.put(key, values[0]);
+            }
+        });
+        return params;
+    }
+
+    private static ResponseEntity<?> channelResponse(ChannelType type, ChannelCallbackOutcome outcome) {
+        if (type == ChannelType.ALIPAY) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(outcome.success() ? "success" : "failure");
+        }
+        return ResponseEntity.ok(outcome.success()
+                ? Result.success(null)
+                : Result.fail(outcome.code(), outcome.message()));
     }
 }

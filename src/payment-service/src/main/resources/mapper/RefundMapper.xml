@@ -5,6 +5,7 @@
 
     <sql id="columns">
         refund_id, payment_id, order_id, buyer_id, seller_id, amount, reason, status,
+        channel_refund_no, channel_error, refunded_at,
         audited_by, audit_remark, audited_at, created_at, updated_at,
         created_by, updated_by, is_deleted
     </sql>
@@ -83,6 +84,47 @@
             updated_at = NOW()
         WHERE refund_id = #{refundId}
           AND status = 'PENDING'
+          AND is_deleted = 0
+    </update>
+
+    <update id="completeSuccess">
+        UPDATE refund
+        SET status = 'SUCCESS',
+            channel_refund_no = #{channelRefundNo,jdbcType=VARCHAR},
+            channel_error = NULL,
+            refunded_at = #{refundedAt},
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND status = 'PROCESSING'
+          AND is_deleted = 0
+    </update>
+
+    <update id="markFailed">
+        UPDATE refund
+        SET status = 'FAILED',
+            channel_error = #{channelError,jdbcType=VARCHAR},
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND status = 'PROCESSING'
+          AND is_deleted = 0
+    </update>
+
+    <update id="markRetry">
+        UPDATE refund
+        SET status = 'PROCESSING',
+            channel_error = NULL,
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
+          AND status = 'FAILED'
+          AND is_deleted = 0
+    </update>
+
+    <update id="updateChannelResult">
+        UPDATE refund
+        SET channel_refund_no = #{channelRefundNo,jdbcType=VARCHAR},
+            refunded_at = #{refundedAt},
+            updated_at = NOW()
+        WHERE refund_id = #{refundId}
           AND is_deleted = 0
     </update>
 

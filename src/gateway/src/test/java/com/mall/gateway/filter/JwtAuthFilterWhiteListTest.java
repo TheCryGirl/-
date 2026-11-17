@@ -42,6 +42,21 @@ class JwtAuthFilterWhiteListTest {
     }
 
     @Test
+    @DisplayName("#137 渠道支付/退款回调可匿名 POST，单段通配不扩大放行面")
+    void channelCallbackPostAllowed() throws Exception {
+        assertTrue(white(HttpMethod.POST, "/api/payments/callback/ALIPAY"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/callback/MOCK"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/refund-callback/ALIPAY"));
+        assertTrue(white(HttpMethod.POST, "/api/payments/refund-callback/MOCK"));
+        // 通配只匹配一段，不能借回调路径放行更深的业务接口
+        assertFalse(white(HttpMethod.POST, "/api/payments/callback/ALIPAY/extra"));
+        assertFalse(white(HttpMethod.POST, "/api/payments/refund-callback/ALIPAY/extra"));
+        // 回调只放行 POST；退款重试等写操作仍必须登录
+        assertFalse(white(HttpMethod.GET, "/api/payments/callback/ALIPAY"));
+        assertFalse(white(HttpMethod.POST, "/api/payments/refunds/REF1/retry"));
+    }
+
+    @Test
     @DisplayName("其他 POST 一律不匿名，尤其是商品写操作")
     void otherPostsRequireAuth() throws Exception {
         assertFalse(white(HttpMethod.POST, "/api/products"));
@@ -57,6 +72,8 @@ class JwtAuthFilterWhiteListTest {
         assertTrue(white(HttpMethod.GET, "/api/categories/C01"));
         assertTrue(white(HttpMethod.GET, "/images/a.png"));
         assertTrue(white(HttpMethod.GET, "/actuator/health"));
+        // #143 售后凭证静态资源可匿名 GET，用于 img 预览
+        assertTrue(white(HttpMethod.GET, "/after-sale/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6.png"));
     }
 
     @Test
@@ -82,6 +99,9 @@ class JwtAuthFilterWhiteListTest {
         assertFalse(white(HttpMethod.GET, "/api/cart"));
         assertFalse(white(HttpMethod.GET, "/api/payments/PAY1"));
         assertFalse(white(HttpMethod.GET, "/api/users/me"));
+        // #143 售后查询与凭证上传必须登录，只有静态资源可匿名
+        assertFalse(white(HttpMethod.GET, "/api/after-sales"));
+        assertFalse(white(HttpMethod.POST, "/api/after-sales/attachments/upload"));
     }
 
     @Test

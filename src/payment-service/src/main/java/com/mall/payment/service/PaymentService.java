@@ -16,7 +16,7 @@ public interface PaymentService {
      * 跨店合并结算（#135）：按主订单发起支付，金额用主订单 payAmount。
      */
     CreatePaymentResponse createMainPayment(String buyerId, String idempotencyKey,
-                                            String mainOrderId, com.mall.payment.common.PaymentChannel channel);
+                                            String mainOrderId, com.mall.payment.common.ChannelType channel);
 
     PaymentDetailResponse getPayment(String buyerId, String paymentId);
 

@@ -2,7 +2,7 @@ package com.mall.payment.service;
 
 import com.mall.payment.common.BizException;
 import com.mall.payment.common.ErrorCode;
-import com.mall.payment.common.PaymentChannel;
+import com.mall.payment.common.ChannelType;
 import com.mall.payment.entity.Payment;
 
 /**
@@ -31,7 +31,7 @@ public final class PaymentReuseGuard {
      * @throws BizException 支付单缺少买家、买家不是调用方，或订单/渠道与请求不一致
      */
     public static void requireReusable(Payment existing, String callerId, String orderId,
-                                       PaymentChannel channel) {
+                                       ChannelType channel) {
         if (existing == null) {
             return;
         }

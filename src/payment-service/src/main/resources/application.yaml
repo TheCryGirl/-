@@ -50,6 +50,13 @@ mybatis:
 payment:
   # MOCK 支付签名密钥，与前端、测试约定，不硬编码真实密钥
   mock-secret: ${MOCK_SECRET:mock-pay-secret}
+  # 售后凭证本地存储目录（#143），与 user/product 服务的 uploads 方案一致
+  upload-dir: ${PAYMENT_UPLOAD_DIR:uploads}
+  # 支付宝沙箱渠道（#137）。appId/私钥/公钥/回调地址只从环境变量读取
+  # （ALIPAY_APP_ID / ALIPAY_PRIVATE_KEY / ALIPAY_PUBLIC_KEY / ALIPAY_NOTIFY_BASE_URL），
+  # 不写入配置文件；开启后缺少任一必需环境变量则启动失败。
+  alipay:
+    enabled: ${ALIPAY_ENABLED:false}
   # 服务间内部调用令牌，与 order/product 服务保持一致；未配置时开发期不校验
   internal-token: ${INTERNAL_TOKEN:}
   # 退款后外部通知（订单退款完成 / 回补库存）的持久任务调度

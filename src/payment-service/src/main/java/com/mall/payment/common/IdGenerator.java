@@ -36,6 +36,10 @@ public final class IdGenerator {
         return "MOCK" + LocalDateTime.now().format(TIME_FORMATTER) + randomDigits(8);
     }
 
+    public static String reconcileBatchId() {
+        return "RB" + randomHex(20);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {
