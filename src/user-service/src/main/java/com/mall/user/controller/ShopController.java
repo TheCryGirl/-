@@ -5,13 +5,17 @@ import com.mall.user.common.ErrorCode;
 import com.mall.user.common.Result;
 import com.mall.user.dto.request.ShopRequest;
 import com.mall.user.dto.request.ShopStatusRequest;
+import com.mall.user.dto.response.FollowedShopResponse;
 import com.mall.user.dto.response.PageResponse;
 import com.mall.user.dto.response.ShopResponse;
+import com.mall.user.service.ShopFollowService;
 import com.mall.user.service.ShopService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -31,6 +35,7 @@ public class ShopController {
     private static final String ROLE_SELLER = "SELLER";
 
     private final ShopService shopService;
+    private final ShopFollowService shopFollowService;
 
     /** 卖家查看自己的店铺资料 */
     @GetMapping("/mine")
@@ -78,6 +83,36 @@ public class ShopController {
     @GetMapping("/seller/{sellerId}")
     public Result<ShopResponse> bySeller(@PathVariable("sellerId") String sellerId) {
         return Result.success(shopService.getBySellerId(sellerId));
+    }
+
+
+    /** 店铺主页：公开可读（#142） */
+    @GetMapping("/{shopId}")
+    public Result<ShopResponse> byId(@PathVariable("shopId") String shopId) {
+        return Result.success(shopService.getById(shopId));
+    }
+
+    /** 关注店铺（#142）：重复关注幂等，卖家不能关注自己的店 */
+    @PostMapping("/{shopId}/follow")
+    public Result<Long> follow(@RequestHeader("X-User-Id") String userId,
+                               @PathVariable("shopId") String shopId) {
+        return Result.success(shopFollowService.follow(userId, shopId));
+    }
+
+    /** 取消关注（#142） */
+    @DeleteMapping("/{shopId}/follow")
+    public Result<Long> unfollow(@RequestHeader("X-User-Id") String userId,
+                                 @PathVariable("shopId") String shopId) {
+        return Result.success(shopFollowService.unfollow(userId, shopId));
+    }
+
+    /** 我关注的店铺（#142） */
+    @GetMapping("/following")
+    public Result<PageResponse<FollowedShopResponse>> following(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return Result.success(shopFollowService.listFollowing(userId, page, size));
     }
 
     private void requireSeller(String role) {

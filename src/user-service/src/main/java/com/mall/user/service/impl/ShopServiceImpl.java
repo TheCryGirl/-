@@ -113,6 +113,18 @@ public class ShopServiceImpl implements ShopService {
     }
 
     @Override
+    public ShopResponse getById(String shopId) {
+        if (shopId == null || shopId.isBlank()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "店铺ID不能为空");
+        }
+        Shop shop = shopMapper.selectById(shopId.trim());
+        if (shop == null || Boolean.TRUE.equals(shop.getIsDeleted())) {
+            throw new BizException(ErrorCode.SHOP_NOT_FOUND, "店铺不存在");
+        }
+        return toResponse(shop);
+    }
+
+    @Override
     public ShopResponse getBySellerId(String sellerId) {
         if (sellerId == null || sellerId.isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "卖家ID不能为空");
