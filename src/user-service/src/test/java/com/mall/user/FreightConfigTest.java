@@ -106,6 +106,13 @@ class FreightConfigTest {
 
     /* ---------------- 造数 ---------------- */
 
+    /**
+     * 建一个可配置运费的卖家：先落用户，再落一条「存量店铺」。
+     *
+     * <p>#144 之后开店必须走入驻审核，`ShopService.getMine` 不再自动建店，
+     * 因此运费用例不能再依赖「第一次访问自动建店」，必须自己准备店铺记录。
+     * 存量店铺按已通过审核（`APPROVED`）落库，对应 #144 验收里的历史店铺口径。
+     */
     private String createSeller(String sellerId) {
         Timestamp now = Timestamp.valueOf(LocalDateTime.now());
         jdbcTemplate.update("""
@@ -113,7 +120,41 @@ class FreightConfigTest {
                                    created_at, updated_at, is_deleted)
                 VALUES (?, ?, 'hash', ?, '13800138000', 'SELLER', 'ACTIVE', ?, ?, 0)
                 """, sellerId, "acct-" + sellerId, "昵称" + sellerId, now, now);
+        insertLegacyShop(sellerId, now);
         return sellerId;
+    }
+
+    /**
+     * 存量店铺（已通过入驻审核）。
+     *
+     * <p>#144 给 shop 加了 `apply_status` / `deposit_amount`，而这两个列在 #144 合并前不存在。
+     * 本用例按实际列名决定是否写入，保证同一份测试在 #144 前后都能跑：
+     * #144 合并后可以在本方法里删掉 else 分支。
+     */
+    private void insertLegacyShop(String sellerId, Timestamp now) {
+        String shopId = "S-" + sellerId;
+        String name = "店铺" + sellerId;
+        if (hasColumn("SHOP", "APPLY_STATUS")) {
+            jdbcTemplate.update("""
+                    INSERT INTO shop(shop_id, seller_id, name, status, apply_status, deposit_amount,
+                                     created_at, updated_at, is_deleted)
+                    VALUES (?, ?, ?, 'ACTIVE', 'APPROVED', 0, ?, ?, 0)
+                    """, shopId, sellerId, name, now, now);
+            return;
+        }
+        jdbcTemplate.update("""
+                INSERT INTO shop(shop_id, seller_id, name, status, created_at, updated_at, is_deleted)
+                VALUES (?, ?, ?, 'ACTIVE', ?, ?, 0)
+                """, shopId, sellerId, name, now, now);
+    }
+
+    /** 表/列是否存在：H2 的 information_schema 用大写存放未加引号的标识符。 */
+    private boolean hasColumn(String table, String column) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE UPPER(TABLE_NAME) = ? AND UPPER(COLUMN_NAME) = ?
+                """, Integer.class, table, column);
+        return count != null && count > 0;
     }
 
     private static FreightConfigRequest request(String name, long freeThreshold, FreightRuleRequest... rules) {
