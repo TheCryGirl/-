@@ -1,19 +1,18 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cartApi, favoriteApi, isOk, productApi, unwrapResult } from '../api'
+import { cartApi, favoriteApi, http, isOk, productApi, unwrapResult } from '../api'
 import ProductCard from '../components/ProductCard.vue'
 import BackToTop from '../components/store/BackToTop.vue'
 import CategoryGrid from '../components/store/CategoryGrid.vue'
 import CuratedShowcase from '../components/store/CuratedShowcase.vue'
 import FilterDrawer from '../components/store/FilterDrawer.vue'
-import FlashSale from '../components/store/FlashSale.vue'
 import HeroCarousel from '../components/store/HeroCarousel.vue'
 import ServiceStrip from '../components/store/ServiceStrip.vue'
 import { resolveErrorMessage, showError, showInfo, showSuccess } from '../components/ui/message'
-import { curatedItems, flashSaleItems, heroSlides } from '../data/showcase'
+import { curatedItems, heroSlides } from '../data/showcase'
 import { currentUserId, isLoggedIn } from '../stores/auth'
-import { formatTotal } from '../utils/format'
+import { formatPrice, formatTotal } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -417,6 +416,64 @@ function flyToCart(startEl) {
   window.setTimeout(() => dot.remove(), 1200)
 }
 
+/* ---------------- 限时秒杀（#140）：读接口 + end_at 倒计时 + 已抢光 ---------------- */
+const flashSales = ref([])
+const flashSaleLoading = ref(false)
+const flashSaleFailed = ref(false)
+const flashReservingId = ref('')
+const now = ref(Date.now())
+let flashTimer = null
+
+async function loadFlashSales() {
+  flashSaleLoading.value = true
+  flashSaleFailed.value = false
+  try {
+    const { data } = await http.get('/products/flash-sales')
+    if (!isOk(data)) {
+      flashSaleFailed.value = true
+      flashSales.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    flashSales.value = Array.isArray(payload) ? payload : []
+  } catch {
+    flashSaleFailed.value = true
+    flashSales.value = []
+  } finally {
+    flashSaleLoading.value = false
+  }
+}
+
+/** 剩余时间：按活动 end_at 倒计时，到点后显示已结束 */
+function flashRemain(sale) {
+  const left = new Date(sale.endAt).getTime() - now.value
+  if (Number.isNaN(left) || left <= 0) return '已结束'
+  const total = Math.floor(left / 1000)
+  const h = String(Math.floor(total / 3600)).padStart(2, '0')
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
+  const s = String(total % 60).padStart(2, '0')
+  return `${h}:${m}:${s}`
+}
+
+async function reserveFlashSale(sale) {
+  if (!requireLogin()) return
+  if (flashReservingId.value) return
+  flashReservingId.value = sale.saleId
+  try {
+    const { data } = await http.post(`/products/flash-sales/${sale.saleId}/reserve`, { quantity: 1 })
+    if (!isOk(data)) {
+      showError(data?.message || '抢购失败')
+      return
+    }
+    showSuccess('抢购成功')
+    await loadFlashSales()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '抢购失败'))
+  } finally {
+    flashReservingId.value = ''
+  }
+}
+
 /* ---------------- 生命周期 ---------------- */
 onMounted(() => {
   readQuery()
@@ -424,6 +481,12 @@ onMounted(() => {
   load(false)
   loadFavorites()
   loadRecommend()
+  loadFlashSales()
+  if (!flashTimer) {
+    flashTimer = window.setInterval(() => {
+      now.value = Date.now()
+    }, 1000)
+  }
 })
 
 // 登录态变化后推荐依据会变（浏览/购买行为只在登录后才有），重新拉一次
@@ -479,8 +542,63 @@ watch(
     <!-- 分类快捷入口 -->
     <CategoryGrid :categories="categories" :active-id="categoryId" @select="selectCategory" />
 
-    <!-- 限时秒杀 -->
-    <FlashSale :items="flashSaleItems" @select="resolveToProduct" />
+    <!-- 限时秒杀（#140）：读后端接口，倒计时用 end_at，售罄显示已抢光 -->
+    <section v-if="flashSales.length" class="jd-flash-live" data-testid="home-flash-sale">
+      <header class="jd-feed__head">
+        <div class="jd-feed__title">
+          <span class="jd-feed__bar"></span>
+          <div>
+            <h2>限时秒杀</h2>
+            <p>活动库存有限，抢完即止，每人限购一次</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="jd-feed__filter"
+          :disabled="flashSaleLoading"
+          data-testid="home-flash-refresh"
+          @click="loadFlashSales"
+        >
+          <StoreIcon name="refresh" :size="15" />
+          {{ flashSaleLoading ? '更新中…' : '刷新' }}
+        </button>
+      </header>
+
+      <div class="jd-flash-live__rail jd-scroll-x">
+        <div
+          v-for="sale in flashSales"
+          :key="sale.saleId"
+          class="jd-flash-live__card"
+          :data-testid="`home-flash-${sale.saleId}`"
+          @click="openDetail({ productId: sale.productId })"
+        >
+          <span class="jd-flash-live__thumb">
+            <img v-if="sale.mainImage" :src="sale.mainImage" :alt="sale.title" loading="lazy" />
+            <span v-else class="jd-flash-live__thumb-empty">无图</span>
+            <span v-if="sale.soldOut" class="jd-flash-live__soldout">已抢光</span>
+          </span>
+          <span class="jd-flash-live__name jd-clamp-2">{{ sale.title || sale.productId }}</span>
+          <span class="jd-flash-live__price">
+            <strong>¥{{ formatPrice(sale.salePrice) }}</strong>
+            <em>剩 {{ sale.saleStock }} 件</em>
+          </span>
+          <span class="jd-flash-live__count" :data-testid="`home-flash-count-${sale.saleId}`">
+            {{ flashRemain(sale) }}
+          </span>
+          <el-button
+            size="small"
+            type="danger"
+            :disabled="sale.soldOut"
+            :loading="flashReservingId === sale.saleId"
+            class="jd-flash-live__buy"
+            :data-testid="`home-flash-buy-${sale.saleId}`"
+            @click.stop="reserveFlashSale(sale)"
+          >
+            {{ sale.soldOut ? '已抢光' : '立即抢购' }}
+          </el-button>
+        </div>
+      </div>
+    </section>
 
     <!-- 猜你喜欢（#141）：读个性化推荐；无数据或接口失败时回退静态精选，不留空白 -->
     <section v-if="!useFallbackShowcase" id="jd-likes" class="jd-likes">
@@ -931,6 +1049,126 @@ watch(
   }
   .jd-notice {
     display: none;
+  }
+}
+
+/* ---------- 限时秒杀（#140）：读接口的秒杀位 ---------- */
+.jd-flash-live {
+  border-radius: var(--jd-radius-lg);
+  background: linear-gradient(180deg, #fff3f2 0%, #ffffff 46%);
+  border: 1px solid #ffe2df;
+  padding: 18px 20px 20px;
+  box-shadow: var(--jd-shadow-card);
+}
+
+.jd-flash-live__rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(168px, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  padding-bottom: 4px;
+}
+
+.jd-flash-live__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--jd-radius);
+  background: #fff;
+  border: 1px solid var(--jd-line);
+  cursor: pointer;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s ease,
+    border-color 0.28s ease;
+}
+
+.jd-flash-live__card:hover {
+  transform: translateY(-4px);
+  border-color: #ffd5d0;
+  box-shadow: var(--jd-shadow-lift);
+}
+
+.jd-flash-live__thumb {
+  position: relative;
+  display: block;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f4f5f7;
+}
+
+.jd-flash-live__thumb img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.jd-flash-live__thumb-empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+
+.jd-flash-live__soldout {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 24, 39, 0.55);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  backdrop-filter: blur(2px);
+}
+
+.jd-flash-live__name {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--jd-ink-2);
+  min-height: 34px;
+}
+
+.jd-flash-live__price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.jd-flash-live__price strong {
+  color: var(--jd-red);
+  font-size: 17px;
+}
+
+.jd-flash-live__price em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--jd-ink-4);
+}
+
+.jd-flash-live__count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #b45309;
+}
+
+.jd-flash-live__buy {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .jd-flash-live {
+    padding: 14px;
+  }
+  .jd-flash-live__rail {
+    grid-auto-columns: 156px;
   }
 }
 </style>

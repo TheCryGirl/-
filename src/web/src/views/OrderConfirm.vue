@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { addressApi, isOk, orderApi, unwrapResult } from '../api'
+import { addressApi, http, isOk, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
 import { formatPrice } from '../utils/format'
@@ -35,6 +35,13 @@ const summary = computed(() => buildSummary(preview.value, total.value))
 const summaryLines = computed(() => summaryRows(summary.value))
 let previewReady = false
 
+/* ---------------- 优惠券（#140） ---------------- */
+/** 跨店合并后的可用券列表：usable=false 的置灰并显示差额 */
+const couponOptions = ref([])
+const couponLoading = ref(false)
+const couponError = ref('')
+const selectedCouponId = ref('')
+
 async function loadPreview() {
   if (!items.value.length) return
   if (!addresses.value.length) {
@@ -49,6 +56,7 @@ async function loadPreview() {
     const { data } = await orderApi.preview({
       cartItemIds: items.value.map((i) => i.cartItemId),
       addressId: selectedAddressId.value || undefined,
+      userCouponId: selectedCouponId.value || undefined,
     })
     if (!isOk(data)) {
       previewError.value = data?.message || '结算预览加载失败'
@@ -64,11 +72,61 @@ async function loadPreview() {
   }
 }
 
+/** 选中券变化后重新调预览接口刷新优惠与应付（金额一律以后端为准） */
+watch(selectedCouponId, (value, previous) => {
+  if (!previewReady || value === previous) return
+  loadPreview()
+})
+
 /** 切换收货地址后运费会变，重新调预览接口（前端不自己算） */
 watch(selectedAddressId, (value, previous) => {
   if (!previewReady || !value || value === previous) return
   loadPreview()
 })
+
+/** 逐店拉可用券（后端按券归属店铺过滤，含门槛是否满足与差额） */
+async function loadCoupons() {
+  const shops = previewShops.value
+  if (!shops.length) {
+    couponOptions.value = []
+    return
+  }
+  couponLoading.value = true
+  couponError.value = ''
+  try {
+    const merged = []
+    for (const shop of shops) {
+      const { data } = await http.get('/coupons/available', {
+        params: { shopId: shop.sellerId, amount: shop.totalAmount },
+      })
+      if (!isOk(data)) continue
+      const list = unwrapResult(data)
+      if (!Array.isArray(list)) continue
+      for (const coupon of list) {
+        merged.push({ ...coupon, shopName: shop.shopName || shop.sellerId })
+      }
+    }
+    couponOptions.value = merged
+    // 已选券不在新的可用列表里（被用掉/失效），清除并重新预览
+    if (selectedCouponId.value && !merged.some((c) => c.userCouponId === selectedCouponId.value)) {
+      selectedCouponId.value = ''
+      await loadPreview()
+    }
+  } catch (err) {
+    couponError.value = resolveErrorMessage(err, '加载可用优惠券失败')
+    couponOptions.value = []
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+/** 券面额描述：FIXED=面额，PERCENT=折扣（85 = 8.5 折） */
+function couponFaceValue(coupon) {
+  if (coupon.type === 'PERCENT') {
+    return `${(Number(coupon.value || 0) / 10).toFixed(1)} 折券`
+  }
+  return `¥${formatPrice(coupon.value)} 券`
+}
 
 /** 后端同时输出 isDefault 与 defaultAddress，两个名字都兼容 */
 function isDefaultAddress(addr) {
@@ -119,6 +177,9 @@ async function load() {
     }
     await loadPreview()
     previewReady = true
+    if (preview.value) {
+      await loadCoupons()
+    }
   } catch (err) {
     loadError.value = resolveErrorMessage(err, '加载结算信息失败')
   } finally {
@@ -143,7 +204,11 @@ async function submit() {
     // 与原实现一致：每次提交尝试生成一个幂等键，失败后可安全重试
     const idempotencyKey = createIdempotencyKey()
     const { data } = await orderApi.create(
-      { addressId: selectedAddressId.value, cartItemIds },
+      {
+        addressId: selectedAddressId.value,
+        cartItemIds,
+        userCouponId: selectedCouponId.value || undefined,
+      },
       idempotencyKey,
     )
     if (!isOk(data)) {
@@ -327,6 +392,71 @@ onMounted(load)
         </div>
       </el-card>
 
+      <!-- 优惠券（#140）：选券后重新调预览刷新优惠与应付；未达门槛的置灰并显示差额 -->
+      <el-card v-if="preview" shadow="never">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-base font-medium">优惠券</span>
+            <el-tag v-if="selectedCouponId" type="warning" size="small">已选 1 张</el-tag>
+            <span v-else class="text-xs text-gray-400">可用券自动按店铺匹配</span>
+          </div>
+        </template>
+
+        <div
+          v-if="couponLoading"
+          v-loading="true"
+          class="min-h-16 flex items-center justify-center text-sm text-gray-400"
+        >
+          正在加载可用优惠券…
+        </div>
+
+        <el-alert
+          v-else-if="couponError"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="couponError"
+          class="mb-2"
+        />
+
+        <el-empty
+          v-else-if="!couponOptions.length"
+          description="暂无可用优惠券，可到个人中心领取"
+          :image-size="56"
+        />
+
+        <el-radio-group
+          v-else
+          v-model="selectedCouponId"
+          class="w-full flex flex-col gap-2"
+          data-testid="order-confirm-coupon-group"
+        >
+          <el-radio value="" class="coupon-radio" data-testid="order-confirm-coupon-none">
+            不使用优惠券
+          </el-radio>
+          <el-radio
+            v-for="coupon in couponOptions"
+            :key="coupon.userCouponId"
+            :value="coupon.userCouponId"
+            :disabled="!coupon.usable"
+            class="coupon-radio"
+            :data-testid="`order-confirm-coupon-${coupon.userCouponId}`"
+          >
+            <div class="min-w-0">
+              <p class="text-sm font-medium text-gray-900">
+                {{ couponFaceValue(coupon) }}
+                <span class="text-gray-500 font-normal">{{ coupon.name }}</span>
+              </p>
+              <p class="text-xs text-gray-500 mt-1">
+                满 ¥{{ formatPrice(coupon.minAmount) }} 可用
+                <template v-if="!coupon.usable"> · 还差 ¥{{ formatPrice(coupon.shortfall) }}</template>
+                <template v-else> · 店铺：{{ coupon.shopName }}</template>
+              </p>
+            </div>
+          </el-radio>
+        </el-radio-group>
+      </el-card>
+
       <!-- 合计：#136 四行（商品金额 / 运费 / 优惠 / 应付合计），金额以后端预览为准 -->
       <el-card shadow="never">
         <div class="space-y-2">
@@ -393,6 +523,33 @@ onMounted(load)
 
 /* Element 的 radio label 默认不换行，窄屏会把地址截断 */
 .address-radio :deep(.el-radio__label) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 优惠券单选整块可点、两行展示 */
+.coupon-radio {
+  display: flex;
+  width: 100%;
+  height: auto;
+  margin-right: 0;
+  padding: 10px 12px;
+  align-items: flex-start;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+}
+
+.coupon-radio.is-checked {
+  border-color: var(--el-color-warning);
+  background-color: var(--el-color-warning-light-9);
+}
+
+.coupon-radio.is-disabled {
+  opacity: 0.55;
+}
+
+.coupon-radio :deep(.el-radio__label) {
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;

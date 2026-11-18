@@ -242,6 +242,13 @@ const routes = [
       component: () => import('../views/admin/AdminConfig.vue'),
       meta: { title: '系统配置', requiresAuth: true, role: 'ADMIN' },
     },
+    {
+      // #140：促销活动配置（优惠券模板与满减/满折活动）
+      path: '/admin/promotions',
+      name: 'admin-promotions',
+      component: () => import('../views/admin/AdminPromotions.vue'),
+      meta: { title: '促销活动', requiresAuth: true, role: 'ADMIN' },
+    },
   {
     // #138：管理端补录物流轨迹，按订单号精确定位
     path: '/admin/logistics',

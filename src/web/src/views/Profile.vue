@@ -1,10 +1,11 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
-import { addressApi, isOk, userApi, unwrapResult } from '../api'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { addressApi, http, isOk, userApi, unwrapResult } from '../api'
 import { auth, setUser } from '../stores/auth'
 import { confirmAction } from '../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../components/ui/message'
 import PageHero from '../components/store/PageHero.vue'
+import { formatPrice, formatTime } from '../utils/format'
 
 const profile = reactive({ nickname: '', phone: '', avatar: '' })
 const profileSaving = ref(false)
@@ -260,10 +261,99 @@ async function setDefault(addr) {
   }
 }
 
+/* ---------------- 我的优惠券（#140） ---------------- */
+const COUPON_TABS = [
+  { value: 'UNUSED', label: '未使用' },
+  { value: 'USED', label: '已使用' },
+  { value: 'EXPIRED', label: '已过期' },
+]
+const couponTab = ref('UNUSED')
+const myCoupons = ref([])
+const couponLoading = ref(false)
+const couponLoadError = ref('')
+const claimDialogVisible = ref(false)
+const claimableCoupons = ref([])
+const claimableLoading = ref(false)
+const claimableError = ref('')
+const claimingId = ref('')
+
+async function loadMyCoupons() {
+  couponLoading.value = true
+  couponLoadError.value = ''
+  try {
+    const { data } = await http.get('/coupons/mine', {
+      params: { status: couponTab.value, page: 1, size: 50 },
+    })
+    if (!isOk(data)) {
+      couponLoadError.value = data?.message || '加载优惠券失败'
+      myCoupons.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    myCoupons.value = Array.isArray(payload) ? payload : payload?.list || []
+  } catch (err) {
+    couponLoadError.value = resolveErrorMessage(err, '加载优惠券失败')
+    myCoupons.value = []
+  } finally {
+    couponLoading.value = false
+  }
+}
+
+watch(couponTab, loadMyCoupons)
+
+/** 券面额描述：FIXED=面额，PERCENT=折扣（85 = 8.5 折） */
+function couponFaceValue(coupon) {
+  if (coupon.type === 'PERCENT') {
+    return `${(Number(coupon.value || 0) / 10).toFixed(1)} 折券`
+  }
+  return `¥${formatPrice(coupon.value)} 券`
+}
+
+async function openClaimDialog() {
+  claimDialogVisible.value = true
+  claimableLoading.value = true
+  claimableError.value = ''
+  try {
+    const { data } = await http.get('/coupons/claimable')
+    if (!isOk(data)) {
+      claimableError.value = data?.message || '加载可领券失败'
+      claimableCoupons.value = []
+      return
+    }
+    const payload = unwrapResult(data)
+    claimableCoupons.value = Array.isArray(payload) ? payload : []
+  } catch (err) {
+    claimableError.value = resolveErrorMessage(err, '加载可领券失败')
+    claimableCoupons.value = []
+  } finally {
+    claimableLoading.value = false
+  }
+}
+
+async function claimCoupon(coupon) {
+  if (claimingId.value) return
+  claimingId.value = coupon.couponId
+  try {
+    const { data } = await http.post(`/coupons/${coupon.couponId}/claim`)
+    if (!isOk(data)) {
+      showError(data?.message || '领取失败')
+      return
+    }
+    showSuccess('领取成功')
+    await openClaimDialog()
+    await loadMyCoupons()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '领取失败'))
+  } finally {
+    claimingId.value = ''
+  }
+}
+
 onMounted(() => {
   fillProfile(auth.user)
   loadProfile()
   loadAddresses()
+  loadMyCoupons()
 })
 </script>
 
@@ -493,6 +583,137 @@ onMounted(() => {
         </div>
       </template>
     </el-card>
+
+    <!-- 我的优惠券（#140） -->
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-base font-medium">我的优惠券</span>
+          <el-button type="primary" plain data-testid="profile-coupon-claim-open" @click="openClaimDialog">
+            领券中心
+          </el-button>
+        </div>
+      </template>
+
+      <el-tabs v-model="couponTab" data-testid="profile-coupon-tabs">
+        <el-tab-pane
+          v-for="tab in COUPON_TABS"
+          :key="tab.value"
+          :label="tab.label"
+          :name="tab.value"
+        />
+      </el-tabs>
+
+      <el-alert
+        v-if="couponLoadError"
+        type="error"
+        :closable="false"
+        show-icon
+        class="mb-3"
+        :title="couponLoadError"
+      >
+        <el-button link type="primary" data-testid="profile-coupon-retry" @click="loadMyCoupons">
+          重新加载
+        </el-button>
+      </el-alert>
+
+      <template v-else>
+        <div
+          v-if="couponLoading"
+          v-loading="true"
+          class="min-h-24 flex items-center justify-center text-sm text-gray-400"
+        >
+          正在加载优惠券…
+        </div>
+
+        <el-empty
+          v-else-if="!myCoupons.length"
+          description="暂无优惠券"
+          :image-size="56"
+        />
+
+        <div v-else class="grid gap-3 sm:grid-cols-2">
+          <div
+            v-for="coupon in myCoupons"
+            :key="coupon.userCouponId"
+            class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3"
+            :data-testid="`profile-coupon-${coupon.userCouponId}`"
+          >
+            <div class="min-w-0 text-sm">
+              <p class="font-medium text-gray-900">
+                {{ couponFaceValue(coupon) }}
+                <span class="text-gray-500 font-normal">{{ coupon.name }}</span>
+              </p>
+              <p class="text-xs text-gray-500 mt-1">
+                满 ¥{{ formatPrice(coupon.minAmount) }} 可用
+                <template v-if="coupon.endAt"> · 有效期至 {{ formatTime(coupon.endAt) }}</template>
+              </p>
+            </div>
+            <el-tag v-if="coupon.status === 'UNUSED'" type="success" size="small">未使用</el-tag>
+            <el-tag v-else-if="coupon.status === 'USED'" type="info" size="small">已使用</el-tag>
+            <el-tag v-else type="warning" size="small">已过期</el-tag>
+          </div>
+        </div>
+      </template>
+    </el-card>
+
+    <!-- 领券中心弹窗 -->
+    <el-dialog v-model="claimDialogVisible" title="领券中心" width="620px" destroy-on-close>
+      <div
+        v-if="claimableLoading"
+        v-loading="true"
+        class="min-h-32 flex items-center justify-center text-sm text-gray-400"
+      >
+        正在加载可领优惠券…
+      </div>
+
+      <el-alert
+        v-else-if="claimableError"
+        type="error"
+        :closable="false"
+        show-icon
+        :title="claimableError"
+      />
+
+      <el-empty v-else-if="!claimableCoupons.length" description="暂时没有可领取的优惠券" :image-size="56" />
+
+      <div v-else class="space-y-3">
+        <div
+          v-for="coupon in claimableCoupons"
+          :key="coupon.couponId"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3"
+          :data-testid="`profile-claimable-${coupon.couponId}`"
+        >
+          <div class="min-w-0 text-sm">
+            <p class="font-medium text-gray-900">
+              {{ couponFaceValue(coupon) }}
+              <span class="text-gray-500 font-normal">{{ coupon.name }}</span>
+            </p>
+            <p class="text-xs text-gray-500 mt-1">
+              满 ¥{{ formatPrice(coupon.minAmount) }} 可用 · 剩余 {{ (coupon.totalQty || 0) - (coupon.issuedQty || 0) }} 张
+              <template v-if="coupon.endAt"> · 有效期至 {{ formatTime(coupon.endAt) }}</template>
+            </p>
+          </div>
+          <el-button
+            v-if="coupon.claimed"
+            disabled
+            size="small"
+          >
+            已领取
+          </el-button>
+          <el-button
+            v-else
+            type="primary"
+            size="small"
+            :loading="claimingId === coupon.couponId"
+            :data-testid="`profile-claim-${coupon.couponId}`"
+            @click="claimCoupon(coupon)"
+          >
+            立即领取
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
 
     <!-- 地址表单 -->
     <el-dialog

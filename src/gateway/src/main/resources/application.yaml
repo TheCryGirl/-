@@ -76,7 +76,8 @@ spring:
           uri: lb://payment-service
           predicates:
             # #143 增量：/api/after-sales 为售后仲裁接口的契约路径别名
-            - Path=/api/payments/**,/api/after-sales/**
+            # #140 增量：/api/coupons 与 /api/promotions 为促销接口（领券/我的券/活动配置）
+            - Path=/api/payments/**,/api/after-sales/**,/api/coupons/**,/api/promotions/**
           filters:
             - StripPrefix=1
         - id: payment-after-sale-images
