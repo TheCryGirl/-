@@ -1,9 +1,11 @@
 package com.mall.order.service;
 
 import com.mall.order.client.FreightClient;
+import com.mall.order.client.PromotionClient;
 import com.mall.order.client.dto.FreightConfigDTO;
 import com.mall.order.common.Result;
 import com.mall.order.service.pricing.DiscountStep;
+import com.mall.order.service.pricing.PricingContext;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -29,7 +31,7 @@ class OrderPricingServiceTest {
 
         DiscountStep coupon = step(3, "coupon", executed, 200L);
         DiscountStep promotion = step(2, "promotion", executed, 500L);
-        OrderPricingService service = new OrderPricingService(freightClient, List.of(coupon, promotion));
+        OrderPricingService service = service(freightClient, coupon, promotion);
 
         OrderPricingService.PricingResult result = service.price(
                 List.of(new OrderPricingService.ShopGoods("U-SELLER", 10000L)), "天津市");
@@ -48,8 +50,8 @@ class OrderPricingServiceTest {
         FreightClient freightClient = mock(FreightClient.class);
         when(freightClient.bySeller(anyString())).thenReturn(Result.success(config(300L)));
         List<String> executed = new ArrayList<>();
-        OrderPricingService service = new OrderPricingService(freightClient,
-                List.of(step(2, "promotion", executed, 800L), step(3, "coupon", executed, 500L)));
+        OrderPricingService service = service(freightClient,
+                step(2, "promotion", executed, 800L), step(3, "coupon", executed, 500L));
 
         OrderPricingService.PricingResult result = service.price(
                 List.of(new OrderPricingService.ShopGoods("U-SELLER", 1000L)), "天津市");
@@ -63,7 +65,7 @@ class OrderPricingServiceTest {
         FreightClient freightClient = mock(FreightClient.class);
         when(freightClient.bySeller("U-A")).thenReturn(Result.success(config(600L)));
         when(freightClient.bySeller("U-B")).thenReturn(Result.success(config(0L)));
-        OrderPricingService service = new OrderPricingService(freightClient, List.of());
+        OrderPricingService service = service(freightClient);
 
         OrderPricingService.PricingResult result = service.price(List.of(
                 new OrderPricingService.ShopGoods("U-A", 3000L),
@@ -79,7 +81,7 @@ class OrderPricingServiceTest {
     void freightServiceFailureDegradesToZeroInsteadOfBlockingCheckout() {
         FreightClient freightClient = mock(FreightClient.class);
         when(freightClient.bySeller(anyString())).thenThrow(new RuntimeException("user-service down"));
-        OrderPricingService service = new OrderPricingService(freightClient, List.of());
+        OrderPricingService service = service(freightClient);
 
         OrderPricingService.PricingResult result = service.price(
                 List.of(new OrderPricingService.ShopGoods("U-A", 5000L)), "天津市");
@@ -95,6 +97,12 @@ class OrderPricingServiceTest {
                 .isEqualTo(150L);
     }
 
+    private static OrderPricingService service(FreightClient freightClient, DiscountStep... steps) {
+        PromotionClient promotionClient = mock(PromotionClient.class);
+        when(promotionClient.active(anyString())).thenReturn(Result.success(List.of()));
+        return new OrderPricingService(freightClient, promotionClient, List.of(steps));
+    }
+
     private static DiscountStep step(int order, String name, List<String> executed, long discount) {
         return new DiscountStep() {
             @Override
@@ -108,7 +116,7 @@ class OrderPricingServiceTest {
             }
 
             @Override
-            public long discountFor(String sellerId, long goodsAmount) {
+            public long discountFor(PricingContext ctx) {
                 executed.add(name);
                 return discount;
             }

@@ -19,4 +19,7 @@ public class PreviewOrderRequest {
 
     /** 收货地址ID；为空时取默认地址 */
     private String addressId;
+
+    /** 选中的用户优惠券ID（#140）；不传或为空表示不用券 */
+    private String userCouponId;
 }
