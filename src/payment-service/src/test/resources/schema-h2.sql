@@ -201,3 +201,69 @@ CREATE TABLE after_sale_event (
 );
 
 CREATE INDEX idx_after_sale_event_ticket ON after_sale_event (ticket_id, created_at);
+
+DROP TABLE IF EXISTS user_coupon;
+DROP TABLE IF EXISTS coupon;
+DROP TABLE IF EXISTS promotion;
+
+CREATE TABLE coupon (
+    coupon_id       VARCHAR(32)  NOT NULL,
+    shop_id         VARCHAR(32)  NOT NULL,
+    name            VARCHAR(64)  NOT NULL,
+    type            VARCHAR(16)  NOT NULL,
+    `value`         BIGINT       NOT NULL,
+    min_amount      BIGINT       NOT NULL DEFAULT 0,
+    total_qty       INT          NOT NULL,
+    issued_qty      INT          NOT NULL DEFAULT 0,
+    start_at        DATETIME     NOT NULL,
+    end_at          DATETIME     NOT NULL,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by      VARCHAR(32)  DEFAULT NULL,
+    updated_by      VARCHAR(32)  DEFAULT NULL,
+    is_deleted      TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (coupon_id)
+);
+
+CREATE INDEX idx_coupon_shop_status ON coupon (shop_id, status);
+CREATE INDEX idx_coupon_status_time ON coupon (status, start_at, end_at);
+
+CREATE TABLE user_coupon (
+    user_coupon_id  VARCHAR(32)  NOT NULL,
+    coupon_id       VARCHAR(32)  NOT NULL,
+    user_id         VARCHAR(32)  NOT NULL,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'UNUSED',
+    order_id        VARCHAR(32)  DEFAULT NULL,
+    received_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at         DATETIME     DEFAULT NULL,
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted      TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_coupon_id),
+    CONSTRAINT uk_user_coupon UNIQUE (user_id, coupon_id)
+);
+
+CREATE INDEX idx_user_coupon_user_status ON user_coupon (user_id, status);
+CREATE INDEX idx_user_coupon_order ON user_coupon (order_id);
+
+CREATE TABLE promotion (
+    promotion_id    VARCHAR(32)  NOT NULL,
+    scope           VARCHAR(16)  NOT NULL,
+    shop_id         VARCHAR(32)  DEFAULT NULL,
+    type            VARCHAR(16)  NOT NULL,
+    threshold       BIGINT       NOT NULL,
+    `value`         BIGINT       NOT NULL,
+    stackable       TINYINT      NOT NULL DEFAULT 1,
+    start_at        DATETIME     NOT NULL,
+    end_at          DATETIME     NOT NULL,
+    status          VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by      VARCHAR(32)  DEFAULT NULL,
+    updated_by      VARCHAR(32)  DEFAULT NULL,
+    is_deleted      TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (promotion_id)
+);
+
+CREATE INDEX idx_promotion_status_time ON promotion (status, start_at, end_at);

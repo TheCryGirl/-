@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.PromotionMapper">
+
+    <sql id="columns">
+        promotion_id, scope, shop_id, type, threshold, `value`, stackable,
+        start_at, end_at, status, created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.Promotion">
+        INSERT INTO promotion (
+            promotion_id, scope, shop_id, type, threshold, `value`, stackable,
+            start_at, end_at, status, created_by, updated_by, is_deleted
+        ) VALUES (
+            #{promotionId}, #{scope}, #{shopId,jdbcType=VARCHAR}, #{type}, #{threshold}, #{value},
+            #{stackable}, #{startAt}, #{endAt}, 'ACTIVE', #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.Promotion">
+        SELECT <include refid="columns"/>
+        FROM promotion
+        WHERE promotion_id = #{promotionId} AND is_deleted = 0
+    </select>
+
+    <select id="selectActive" resultType="com.mall.payment.entity.Promotion">
+        SELECT <include refid="columns"/>
+        FROM promotion
+        WHERE status = 'ACTIVE'
+          AND start_at &lt;= #{now}
+          AND end_at &gt;= #{now}
+          AND is_deleted = 0
+        ORDER BY start_at DESC, promotion_id DESC
+    </select>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.Promotion">
+        SELECT <include refid="columns"/>
+        FROM promotion
+        WHERE is_deleted = 0
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, promotion_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM promotion
+        WHERE is_deleted = 0
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <update id="updateStatus">
+        UPDATE promotion
+        SET status = #{status},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE promotion_id = #{promotionId} AND is_deleted = 0
+    </update>
+</mapper>
