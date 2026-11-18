@@ -206,7 +206,7 @@ class SettlementIntegrationTest {
     }
 
     @Test
-    @DisplayName("标记打款：PENDING 可流转 PAID，重复打款 60008，不存在 60007，非 PAID 目标 10001")
+    @DisplayName("标记打款：PENDING 可流转 PAID，重复打款 60016，不存在 60015，非 PAID 目标 10001")
     void markPaidGuards() {
         insertOrder("O1", SELLER_A, 10000L, "COMPLETED", T1);
         settlementService.generate(PERIOD, ADMIN);

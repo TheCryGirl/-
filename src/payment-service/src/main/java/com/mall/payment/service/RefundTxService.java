@@ -36,6 +36,7 @@ public class RefundTxService {
     private final AfterSaleEventMapper afterSaleEventMapper;
     private final RefundNotificationTxService refundNotificationTxService;
     private final RefundNotificationDispatcher refundNotificationDispatcher;
+    private final CouponService couponService;
 
     /**
      * PROCESSING → SUCCESS。返回 true 表示本次调用完成了状态迁移。
@@ -68,6 +69,8 @@ public class RefundTxService {
         }
         log.info("渠道退款成功, refundId={}, channelRefundNo={}, amount={}",
                 refundId, channelRefundNo, refund.getAmount());
+        // #140 渠道异步退款成功同样返还订单占用的优惠券（已过期的不返还）
+        couponService.release(refund.getOrderId());
         if (fullyRefunded && notifyOrder) {
             refundNotificationTxService.createTasks(refund.getOrderId());
             scheduleImmediateDelivery(refund.getOrderId());

@@ -14,4 +14,7 @@ public class CreateOrderRequest {
 
     @NotEmpty(message = "请选择要结算的商品")
     private List<String> cartItemIds;
+
+    /** 选中的用户优惠券ID（#140）；不传或为空表示不用券 */
+    private String userCouponId;
 }

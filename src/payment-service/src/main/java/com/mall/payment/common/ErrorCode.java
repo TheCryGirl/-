@@ -17,8 +17,18 @@ public final class ErrorCode {
     public static final int REFUND_EXCEEDS_PAID = 60004;
     public static final int AFTER_SALE_NOT_FOUND = 60005;
     public static final int AFTER_SALE_STATE_INVALID = 60006;
-    public static final int SETTLEMENT_NOT_FOUND = 60007;
-    public static final int SETTLEMENT_STATE_INVALID = 60008;
+    public static final int SETTLEMENT_NOT_FOUND = 60015;
+    public static final int SETTLEMENT_STATE_INVALID = 60016;
+
+    // #140 促销工具（券/满减），从 60007 起，不与既有错误码撞号
+    public static final int COUPON_NOT_FOUND = 60007;
+    public static final int COUPON_OUT_OF_STOCK = 60008;
+    public static final int COUPON_ALREADY_CLAIMED = 60009;
+    public static final int COUPON_NOT_AVAILABLE = 60010;
+    public static final int COUPON_ALREADY_USED = 60011;
+    public static final int COUPON_MIN_NOT_MET = 60012;
+    public static final int PROMOTION_NOT_FOUND = 60013;
+    public static final int PROMOTION_CONFLICT = 60014;
 
     private ErrorCode() {
     }

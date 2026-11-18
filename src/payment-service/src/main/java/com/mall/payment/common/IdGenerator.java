@@ -44,6 +44,18 @@ public final class IdGenerator {
         return "ST" + randomHex(20);
     }
 
+    public static String couponId() {
+        return "CP" + randomHex(20);
+    }
+
+    public static String userCouponId() {
+        return "UC" + randomHex(20);
+    }
+
+    public static String promotionId() {
+        return "PM" + randomHex(20);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

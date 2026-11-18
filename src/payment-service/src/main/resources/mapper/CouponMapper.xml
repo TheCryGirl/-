@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.CouponMapper">
+
+    <sql id="columns">
+        coupon_id, shop_id, name, type, `value`, min_amount, total_qty, issued_qty,
+        start_at, end_at, status, created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.Coupon">
+        INSERT INTO coupon (
+            coupon_id, shop_id, name, type, `value`, min_amount, total_qty, issued_qty,
+            start_at, end_at, status, created_by, updated_by, is_deleted
+        ) VALUES (
+            #{couponId}, #{shopId}, #{name}, #{type}, #{value}, #{minAmount}, #{totalQty}, 0,
+            #{startAt}, #{endAt}, 'ACTIVE', #{createdBy}, #{updatedBy}, 0
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.Coupon">
+        SELECT <include refid="columns"/>
+        FROM coupon
+        WHERE coupon_id = #{couponId} AND is_deleted = 0
+    </select>
+
+    <select id="selectByIds" resultType="com.mall.payment.entity.Coupon">
+        SELECT <include refid="columns"/>
+        FROM coupon
+        WHERE is_deleted = 0
+        <if test="couponIds != null and couponIds.size() > 0">
+            AND coupon_id IN
+            <foreach collection="couponIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+    </select>
+
+    <!-- 领取：原子加发行量，活动期内且未领完才生效；影响行数为 0 由服务层区分原因 -->
+    <update id="incrementIssued">
+        UPDATE coupon
+        SET issued_qty = issued_qty + 1,
+            updated_at = NOW()
+        WHERE coupon_id = #{couponId}
+          AND status = 'ACTIVE'
+          AND issued_qty &lt; total_qty
+          AND start_at &lt;= #{now}
+          AND end_at &gt;= #{now}
+          AND is_deleted = 0
+    </update>
+
+    <select id="selectClaimable" resultType="com.mall.payment.entity.Coupon">
+        SELECT <include refid="columns"/>
+        FROM coupon
+        WHERE is_deleted = 0
+          AND status = 'ACTIVE'
+          AND issued_qty &lt; total_qty
+          AND start_at &lt;= #{now}
+          AND end_at &gt;= #{now}
+        ORDER BY end_at ASC, coupon_id ASC
+    </select>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.Coupon">
+        SELECT <include refid="columns"/>
+        FROM coupon
+        WHERE is_deleted = 0
+        ORDER BY created_at DESC, coupon_id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM coupon WHERE is_deleted = 0
+    </select>
+</mapper>

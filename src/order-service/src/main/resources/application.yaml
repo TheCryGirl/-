@@ -62,6 +62,7 @@ services:
   product-url: ${PRODUCT_SERVICE_URL:}
   cart-url: ${CART_SERVICE_URL:}
   user-url: ${USER_SERVICE_URL:}
+  payment-url: ${PAYMENT_SERVICE_URL:}
 
 order:
   internal-token: ${INTERNAL_TOKEN:}

@@ -77,7 +77,8 @@ spring:
           predicates:
             # #143 增量：/api/after-sales 为售后仲裁接口的契约路径别名
             # #144 增量：/api/settlements 为佣金结算接口
-            - Path=/api/payments/**,/api/after-sales/**,/api/settlements/**
+            # #140 增量：/api/coupons 与 /api/promotions 为促销接口（领券/我的券/活动配置）
+            - Path=/api/payments/**,/api/after-sales/**,/api/settlements/**,/api/coupons/**,/api/promotions/**
           filters:
             - StripPrefix=1
         - id: payment-after-sale-images

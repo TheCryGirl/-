@@ -36,6 +36,7 @@ services:
   product-url: http://127.0.0.1:1
   cart-url: http://127.0.0.1:1
   user-url: http://127.0.0.1:1
+  payment-url: http://127.0.0.1:1
 
 order:
   internal-token: test-internal-token

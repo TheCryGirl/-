@@ -1,16 +1,20 @@
 package com.mall.order.service;
 
 import com.mall.order.client.CartClient;
+import com.mall.order.client.CouponClient;
 import com.mall.order.client.ProductClient;
 import com.mall.order.client.UserClient;
 import com.mall.order.client.dto.AddressDTO;
 import com.mall.order.client.dto.CartDTO;
 import com.mall.order.client.dto.CartItemDTO;
+import com.mall.order.client.dto.OccupyCouponRequestDTO;
 import com.mall.order.client.dto.ProductDetailDTO;
+import com.mall.order.client.dto.ReleaseCouponRequestDTO;
 import com.mall.order.client.dto.ReserveItemDTO;
 import com.mall.order.client.dto.ReserveStockRequestDTO;
 import com.mall.order.client.dto.ShopBriefDTO;
 import com.mall.order.client.dto.SkuDTO;
+import com.mall.order.client.dto.UserCouponDTO;
 import com.mall.order.common.BizException;
 import com.mall.order.common.ErrorCode;
 import com.mall.order.common.ExpressCompany;
@@ -88,6 +92,7 @@ public class OrderService {
     private final CartClient cartClient;
     private final UserClient userClient;
     private final ProductClient productClient;
+    private final CouponClient couponClient;
     private final TransactionTemplate transactionTemplate;
     private final PlatformConfigService platformConfigService;
     private final OrderPricingService orderPricingService;
@@ -107,7 +112,8 @@ public class OrderService {
         String key = requireIdempotencyKey(idempotencyKey);
         List<String> cartItemIds = normalizeCartItemIds(request.getCartItemIds());
         String addressId = requireText(request.getAddressId(), "收货地址");
-        String requestHash = hashRequest(buyerId, addressId, cartItemIds);
+        String userCouponId = trimToNull(request.getUserCouponId());
+        String requestHash = hashRequest(buyerId, addressId, cartItemIds, userCouponId);
 
         OrderIdempotency existing = idempotencyMapper.selectByKey(key);
         if (existing != null) {
@@ -137,7 +143,7 @@ public class OrderService {
         }
 
         try {
-            return createFresh(orderId, key, buyerId, addressId, cartItemIds);
+            return createFresh(orderId, key, buyerId, addressId, cartItemIds, userCouponId);
         } catch (RuntimeException e) {
             // 首次尝试失败时退回执行权并释放幂等键，允许用户用同一个 key 重试。
             idempotencyMapper.markFailed(key, LocalDateTime.now());
@@ -146,7 +152,8 @@ public class OrderService {
     }
 
     private CreateOrderResponse createFresh(String orderId, String key, String buyerId,
-                                            String addressId, List<String> cartItemIds) {
+                                            String addressId, List<String> cartItemIds,
+                                            String userCouponId) {
         List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
         AddressDTO address = findAddress(buyerId, addressId);
         List<ValidatedItem> validated = validateItems(selectedItems);
@@ -156,6 +163,7 @@ public class OrderService {
         for (ValidatedItem item : validated) {
             bySeller.computeIfAbsent(item.product().getSellerId(), seller -> new ArrayList<>()).add(item);
         }
+        UserCouponDTO coupon = requireUsableCoupon(buyerId, userCouponId, bySeller.keySet());
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expireAt = now.plusMinutes(Math.max(1, platformConfigService.currentLong("order.timeout.minutes")));
@@ -166,12 +174,13 @@ public class OrderService {
 
         // 计价链（#136）：商品小计 → 满减/满折 → 优惠券 → 加运费；下单与预览共用同一入口，
         // 因此「预览显示的应付」和「落库的应付」不会出现两套算法。
+        // #140：选中券只对所属店铺生效，其余店铺不受影响。
         List<OrderPricingService.ShopGoods> shopGoods = bySeller.entrySet().stream()
                 .map(entry -> new OrderPricingService.ShopGoods(entry.getKey(),
                         entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
                 .toList();
         OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods,
-                address.getProvince());
+                address.getProvince(), buyerId, coupon);
         Map<String, OrderPricingService.ShopPricing> pricingBySeller = new HashMap<>();
         for (OrderPricingService.ShopPricing shop : pricing.shops()) {
             pricingBySeller.put(shop.sellerId(), shop);
@@ -272,6 +281,11 @@ public class OrderService {
             if (multiShop) {
                 finishReservation(key, subOrders);
             }
+            // #140 券占用与库存预占同阶段：失败走同一清理路径（释放预占 + 软删除订单）。
+            // 占用是 payment-service 的条件 UPDATE，并发下只成功一次，失败给买家明确提示。
+            if (coupon != null) {
+                occupyCoupon(coupon, subOrders, buyerId);
+            }
         } catch (BizException e) {
             // 先释放已预占成功的店（此时订单尚未软删除，释放标记可正常抢占），
             // 再软删除全部子订单与主订单，避免悬空预占。
@@ -341,13 +355,16 @@ public class OrderService {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
             }
         }
+        UserCouponDTO coupon = requireUsableCoupon(buyerId,
+                trimToNull(request.getUserCouponId()), bySeller.keySet());
 
         List<OrderPricingService.ShopGoods> shopGoods = bySeller.entrySet().stream()
                 .map(entry -> new OrderPricingService.ShopGoods(entry.getKey(),
                         entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
                 .toList();
         String region = address == null ? null : address.getProvince();
-        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods, region);
+        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods, region,
+                buyerId, coupon);
 
         Map<String, OrderPricingService.ShopPricing> pricingBySeller = new java.util.HashMap<>();
         for (OrderPricingService.ShopPricing shop : pricing.shops()) {
@@ -777,6 +794,7 @@ public class OrderService {
             }
         }
         releaseInventory(orderId);
+        releaseCoupon(orderId);
         return detail(orderId, buyerId, "BUYER");
     }
 
@@ -810,6 +828,7 @@ public class OrderService {
             int cancelled = orderMapper.markCancelled(subOrder.getOrderId(), LocalDateTime.now());
             if (cancelled > 0) {
                 releaseInventory(subOrder.getOrderId());
+                releaseCoupon(subOrder.getOrderId());
             }
         }
         return mainDetail(mainOrderId, buyerId, "BUYER");
@@ -888,6 +907,7 @@ public class OrderService {
             }
             if (orderMapper.markCancelled(subOrder.getOrderId(), LocalDateTime.now()) > 0) {
                 releaseInventory(subOrder.getOrderId());
+                releaseCoupon(subOrder.getOrderId());
             }
         }
         log.info("主订单超时取消, mainOrderId={}", mainOrderId);
@@ -981,6 +1001,7 @@ public class OrderService {
             return false;
         }
         releaseInventory(orderId);
+        releaseCoupon(orderId);
         log.info("订单超时取消, orderId={}", orderId);
         return true;
     }
@@ -1045,6 +1066,78 @@ public class OrderService {
             throw e;
         } catch (Exception e) {
             throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "cart-service 调用失败", e);
+        }
+    }
+
+    /**
+     * 校验并加载选中券（#140）：归属、状态、时间窗口与适用店铺，预览与下单共用。
+     * 占用留给 payment-service 的条件 UPDATE，这里只做只读校验。
+     */
+    private UserCouponDTO requireUsableCoupon(String buyerId, String userCouponId, Set<String> sellers) {
+        if (userCouponId == null) {
+            return null;
+        }
+        UserCouponDTO coupon;
+        try {
+            coupon = unwrap(couponClient.detail(internalToken, userCouponId), "payment-service");
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "优惠券服务调用失败", e);
+        }
+        if (!buyerId.equals(coupon.getUserId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权使用该优惠券");
+        }
+        if ("USED".equals(coupon.getStatus())) {
+            throw new BizException(ErrorCode.COUPON_ALREADY_USED, "优惠券已被使用，请刷新后重试");
+        }
+        if (!"UNUSED".equals(coupon.getStatus())) {
+            throw new BizException(ErrorCode.COUPON_NOT_AVAILABLE, "优惠券已过期");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (coupon.getStartAt() != null && coupon.getStartAt().isAfter(now)) {
+            throw new BizException(ErrorCode.COUPON_NOT_AVAILABLE, "优惠券未到使用时间");
+        }
+        if (coupon.getEndAt() != null && coupon.getEndAt().isBefore(now)) {
+            throw new BizException(ErrorCode.COUPON_NOT_AVAILABLE, "优惠券已过期");
+        }
+        if (coupon.getShopId() == null || !sellers.contains(coupon.getShopId())) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "优惠券不适用于结算商品");
+        }
+        return coupon;
+    }
+
+    /** 下单占用优惠券（#140）：挂到券所属店铺的子订单上，取消/退款按子订单释放。 */
+    private void occupyCoupon(UserCouponDTO coupon, List<Order> subOrders, String buyerId) {
+        Order target = subOrders.stream()
+                .filter(order -> order.getSellerId().equals(coupon.getShopId()))
+                .findFirst()
+                .orElse(subOrders.get(0));
+        OccupyCouponRequestDTO request = new OccupyCouponRequestDTO();
+        request.setUserCouponId(coupon.getUserCouponId());
+        request.setOrderId(target.getOrderId());
+        request.setBuyerId(buyerId);
+        try {
+            unwrap(couponClient.occupy(internalToken, request), "payment-service");
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "优惠券服务调用失败", e);
+        }
+    }
+
+    /** 取消订单返还优惠券（#140）：尽力而为，失败只记日志，不阻断取消流程。 */
+    private void releaseCoupon(String orderId) {
+        try {
+            ReleaseCouponRequestDTO request = new ReleaseCouponRequestDTO();
+            request.setOrderId(orderId);
+            Result<Void> result = couponClient.release(internalToken, request);
+            if (result == null || result.getCode() != ErrorCode.SUCCESS) {
+                log.warn("释放优惠券失败, orderId={}, code={}", orderId,
+                        result == null ? null : result.getCode());
+            }
+        } catch (Exception e) {
+            log.warn("释放优惠券异常, orderId={}", orderId, e);
         }
     }
 
@@ -1280,8 +1373,10 @@ public class OrderService {
         return new ArrayList<>(unique);
     }
 
-    private static String hashRequest(String buyerId, String addressId, List<String> cartItemIds) {
-        String canonical = buyerId + "|" + addressId + "|" + String.join(",", cartItemIds);
+    private static String hashRequest(String buyerId, String addressId, List<String> cartItemIds,
+                                      String userCouponId) {
+        String canonical = buyerId + "|" + addressId + "|" + String.join(",", cartItemIds)
+                + "|" + (userCouponId == null ? "" : userCouponId);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));

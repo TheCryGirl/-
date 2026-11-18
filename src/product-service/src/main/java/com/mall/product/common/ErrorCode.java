@@ -19,6 +19,11 @@ public final class ErrorCode {
     public static final int SPEC_CONFLICT = 30005;
     public static final int SHOP_SUSPENDED = 30006;
 
+    // #140 限时秒杀，从 30007 起，不与既有错误码撞号
+    public static final int FLASH_SALE_NOT_FOUND = 30007;
+    public static final int FLASH_SALE_SOLD_OUT = 30008;
+    public static final int FLASH_SALE_LIMIT_EXCEEDED = 30009;
+
     private ErrorCode() {
     }
 }

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.FlashSaleOrderMapper">
+
+    <sql id="columns">
+        sale_order_id, sale_id, user_id, quantity, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.product.entity.FlashSaleOrder">
+        INSERT INTO flash_sale_order (sale_order_id, sale_id, user_id, quantity)
+        VALUES (#{saleOrderId}, #{saleId}, #{userId}, #{quantity})
+    </insert>
+
+    <select id="selectBySaleAndUser" resultType="com.mall.product.entity.FlashSaleOrder">
+        SELECT <include refid="columns"/>
+        FROM flash_sale_order
+        WHERE sale_id = #{saleId} AND user_id = #{userId}
+    </select>
+</mapper>

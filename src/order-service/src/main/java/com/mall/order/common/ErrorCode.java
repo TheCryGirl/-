@@ -27,6 +27,13 @@ public final class ErrorCode {
     // 商品所属店铺被管理员停用（#49）
     public static final int SHOP_SUSPENDED = 30006;
 
+    // 订单服务转发 payment-service 促销业务码时使用（#140）
+    public static final int COUPON_NOT_FOUND = 60007;
+    public static final int COUPON_NOT_AVAILABLE = 60010;
+    public static final int COUPON_ALREADY_USED = 60011;
+    public static final int COUPON_MIN_NOT_MET = 60012;
+    public static final int PROMOTION_CONFLICT = 60014;
+
     private ErrorCode() {
     }
 }

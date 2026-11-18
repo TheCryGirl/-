@@ -127,7 +127,7 @@ class SettlementControllerPermissionTest {
     }
 
     @Test
-    @DisplayName("标记打款仅管理员：卖家 10003，管理员对不存在结算单 60007")
+    @DisplayName("标记打款仅管理员：卖家 10003，管理员对不存在结算单 60015")
     void updateStatusRequiresAdmin() throws Exception {
         mockMvc.perform(put("/api/settlements/ST-ANY/status")
                         .header("X-Internal-Token", INTERNAL_TOKEN)
@@ -145,7 +145,7 @@ class SettlementControllerPermissionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"PAID\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(60007));
+                .andExpect(jsonPath("$.code").value(60015));
     }
 
     private void seedOrders() {

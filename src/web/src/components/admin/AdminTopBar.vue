@@ -17,6 +17,7 @@ const navItems = [
   { name: 'admin-settlements', label: '结算管理' },
   { name: 'admin-risk', label: '基础风控' },
   { name: 'admin-config', label: '系统配置' },
+  { name: 'admin-promotions', label: '促销活动' },
   { name: 'admin-evaluations', label: '评价管理' },
   { name: 'admin-audit-logs', label: '审计日志' },
   { name: 'admin-tickets', label: '客服工单' },

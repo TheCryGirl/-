@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.UserCouponMapper">
+
+    <sql id="columns">
+        user_coupon_id, coupon_id, user_id, status, order_id, received_at, used_at,
+        created_at, updated_at, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.payment.entity.UserCoupon">
+        INSERT INTO user_coupon (user_coupon_id, coupon_id, user_id, status, order_id,
+                                 received_at, used_at, is_deleted)
+        VALUES (#{userCouponId}, #{couponId}, #{userId}, 'UNUSED', NULL,
+                NOW(), NULL, 0)
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.UserCoupon">
+        SELECT <include refid="columns"/>
+        FROM user_coupon
+        WHERE user_coupon_id = #{userCouponId} AND is_deleted = 0
+    </select>
+
+    <select id="selectByUserAndCoupon" resultType="com.mall.payment.entity.UserCoupon">
+        SELECT <include refid="columns"/>
+        FROM user_coupon
+        WHERE user_id = #{userId} AND coupon_id = #{couponId} AND is_deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectByUser" resultType="com.mall.payment.entity.UserCoupon">
+        SELECT <include refid="columns"/>
+        FROM user_coupon
+        WHERE user_id = #{userId} AND is_deleted = 0
+        ORDER BY received_at DESC, user_coupon_id DESC
+    </select>
+
+    <select id="selectByOrderId" resultType="com.mall.payment.entity.UserCoupon">
+        SELECT <include refid="columns"/>
+        FROM user_coupon
+        WHERE order_id = #{orderId} AND is_deleted = 0
+    </select>
+
+    <!-- 下单占用：并发下只有一次成功，影响行数为 0 说明已被他人使用 -->
+    <update id="occupy">
+        UPDATE user_coupon
+        SET status = 'USED',
+            order_id = #{orderId},
+            used_at = #{now},
+            updated_at = NOW()
+        WHERE user_coupon_id = #{userCouponId}
+          AND status = 'UNUSED'
+          AND user_id = #{buyerId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 释放：幂等，仅 USED 可回 UNUSED；过期不返还由服务层判断后决定是否调用 -->
+    <update id="release">
+        UPDATE user_coupon
+        SET status = 'UNUSED',
+            order_id = NULL,
+            used_at = NULL,
+            updated_at = NOW()
+        WHERE user_coupon_id = #{userCouponId}
+          AND status = 'USED'
+          AND is_deleted = 0
+    </update>
+</mapper>

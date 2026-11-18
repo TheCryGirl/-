@@ -19,6 +19,7 @@ import com.mall.payment.entity.Payment;
 import com.mall.payment.entity.Refund;
 import com.mall.payment.mapper.PaymentMapper;
 import com.mall.payment.mapper.RefundMapper;
+import com.mall.payment.service.CouponService;
 import com.mall.payment.service.RefundChannelExecutor;
 import com.mall.payment.service.RefundNotificationDispatcher;
 import com.mall.payment.service.RefundNotificationTxService;
@@ -54,6 +55,7 @@ public class RefundServiceImpl implements RefundService {
     private final OrderClient orderClient;
     private final PaymentChannelRegistry channelRegistry;
     private final RefundChannelExecutor refundChannelExecutor;
+    private final CouponService couponService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -157,6 +159,8 @@ public class RefundServiceImpl implements RefundService {
             refundMapper.updateChannelResult(refundId,
                     MockChannel.mockChannelRefundNo(refundId), LocalDateTime.now());
             fullyRefunded = paymentMapper.markRefundedIfFullyRefunded(refund.getPaymentId()) > 0;
+            // #140 退款成功返还订单占用的优惠券；已过期的不返还（券服务内部判断）
+            couponService.release(refund.getOrderId());
             log.info("退款审核通过, refundId={}, paymentId={}, amount={}, auditedBy={}",
                     refundId, refund.getPaymentId(), refund.getAmount(), auditedBy);
         } else {
