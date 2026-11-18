@@ -82,45 +82,36 @@ public class SettlementService {
             String sellerId = entry.getKey();
             List<OrderCompletion> orders = entry.getValue();
             int rate = shopRates.getOrDefault(sellerId, defaultRate);
-            long gross = 0L;
-            long commission = 0L;
-            for (OrderCompletion order : orders) {
-                gross += order.getPayAmount();
-                commission += commissionOf(order.getPayAmount(), rate);
-            }
-            long net = gross - commission;
-
-            Settlement settlement = settlementMapper.selectBySellerPeriod(sellerId, start);
-            if (settlement == null) {
-                Settlement fresh = new Settlement();
-                fresh.setSettlementId(IdGenerator.settlementId());
-                fresh.setSellerId(sellerId);
-                fresh.setPeriodStart(start);
-                fresh.setPeriodEnd(end);
-                fresh.setGrossAmount(gross);
-                fresh.setCommissionAmount(commission);
-                fresh.setNetAmount(net);
-                fresh.setStatus(Settlement.STATUS_PENDING);
-                fresh.setCreatedBy(operatorId);
-                fresh.setUpdatedBy(operatorId);
-                settlementMapper.insertIgnoreDuplicate(fresh);
-                // 并发下可能由另一次生成先落库，重查拿真实行，避免明细挂到不存在的结算单上
-                settlement = settlementMapper.selectBySellerPeriod(sellerId, start);
-                insertItems(settlement.getSettlementId(), orders, rate);
-                created++;
+            // Upsert first, then lock the current row; a snapshot read may miss a concurrent insert.
+            Settlement fresh = new Settlement();
+            fresh.setSettlementId(IdGenerator.settlementId());
+            fresh.setSellerId(sellerId);
+            fresh.setPeriodStart(start);
+            fresh.setPeriodEnd(end);
+            fresh.setGrossAmount(0L);
+            fresh.setCommissionAmount(0L);
+            fresh.setNetAmount(0L);
+            fresh.setCreatedBy(operatorId);
+            fresh.setUpdatedBy(operatorId);
+            settlementMapper.insertIgnoreDuplicate(fresh);
+            Settlement settlement = settlementMapper.lockBySellerPeriod(sellerId, start);
+            if (settlement == null || !Settlement.STATUS_PENDING.equals(settlement.getStatus())) {
+                skipped++;
                 continue;
             }
-            if (Settlement.STATUS_PENDING.equals(settlement.getStatus())) {
-                int affected = settlementMapper.addAmounts(
-                        settlement.getSettlementId(), gross, commission, net, operatorId);
-                if (affected == 1) {
-                    insertItems(settlement.getSettlementId(), orders, rate);
-                    updated++;
-                } else {
-                    skipped++;
-                }
-            } else {
-                skipped++;
+
+            String settlementId = settlement.getSettlementId();
+            insertItems(settlementId, orders, rate);
+            // Read current details under the same transaction; duplicate candidates never add money.
+            List<SettlementItem> items = settlementItemMapper.lockBySettlementId(settlementId);
+            long gross = items.stream().mapToLong(SettlementItem::getGrossAmount).sum();
+            long commission = items.stream().mapToLong(SettlementItem::getCommissionAmount).sum();
+            if (fresh.getSettlementId().equals(settlementId)) {
+                settlementMapper.setAmounts(settlementId, gross, commission, gross - commission, operatorId);
+                created++;
+            } else if (gross != settlement.getGrossAmount() || commission != settlement.getCommissionAmount()) {
+                settlementMapper.setAmounts(settlementId, gross, commission, gross - commission, operatorId);
+                updated++;
             }
         }
         log.info("生成结算单, operatorId={}, period={}, candidates={}, created={}, updated={}, skipped={}",

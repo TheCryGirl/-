@@ -29,6 +29,8 @@ public interface ShopMapper {
 
     Shop selectById(@Param("shopId") String shopId);
 
+    Shop lockById(@Param("shopId") String shopId);
+
     /** 运费模板挂到店铺上（#136） */
     int updateFreightTemplateId(@Param("shopId") String shopId,
                                 @Param("templateId") String templateId,

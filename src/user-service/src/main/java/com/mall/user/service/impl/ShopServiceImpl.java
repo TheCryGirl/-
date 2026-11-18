@@ -180,7 +180,8 @@ public class ShopServiceImpl implements ShopService {
             throw new BizException(ErrorCode.PARAM_INVALID, "驳回时必须填写理由");
         }
 
-        Shop shop = shopMapper.selectById(requireShopId(shopId));
+        // Serialize audit decisions until the visibility change and audit log commit.
+        Shop shop = shopMapper.lockById(requireShopId(shopId));
         if (shop == null) {
             throw new BizException(ErrorCode.SHOP_NOT_FOUND, "店铺不存在");
         }

@@ -19,11 +19,11 @@ public interface SettlementMapper {
 
     Settlement selectById(@Param("settlementId") String settlementId);
 
-    Settlement selectBySellerPeriod(@Param("sellerId") String sellerId,
-                                    @Param("periodStart") LocalDateTime periodStart);
+    Settlement lockBySellerPeriod(@Param("sellerId") String sellerId,
+                                  @Param("periodStart") LocalDateTime periodStart);
 
-    /** 只有 PENDING 状态允许追加；返回受影响行数，0 表示已被冻结或不存在 */
-    int addAmounts(@Param("settlementId") String settlementId,
+    /** 只有 PENDING 状态允许更新表头金额。 */
+    int setAmounts(@Param("settlementId") String settlementId,
                    @Param("gross") long gross,
                    @Param("commission") long commission,
                    @Param("net") long net,

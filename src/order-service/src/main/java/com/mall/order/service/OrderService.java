@@ -117,7 +117,7 @@ public class OrderService {
 
         OrderIdempotency existing = idempotencyMapper.selectByKey(key);
         if (existing != null) {
-            return resume(existing, requestHash, buyerId);
+            return resume(existing, requestHash, buyerId, userCouponId);
         }
 
         String orderId = IdGenerator.orderId();
@@ -137,7 +137,7 @@ public class OrderService {
         } catch (DataIntegrityViolationException e) {
             OrderIdempotency winner = idempotencyMapper.selectByKey(key);
             if (winner != null) {
-                return resume(winner, requestHash, buyerId);
+                return resume(winner, requestHash, buyerId, userCouponId);
             }
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "幂等令牌冲突");
         }
@@ -275,17 +275,13 @@ public class OrderService {
                         .filter(item -> item.getOrderId().equals(subOrder.getOrderId()))
                         .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
                         .toList();
-                reserveUnderOwnership(key, subOrder.getOrderId(), expireAt, reserveItems);
+                reserveUnderOwnership(subOrder.getOrderId(), expireAt, reserveItems);
                 reserved.add(subOrder);
             }
-            if (multiShop) {
-                finishReservation(key, subOrders);
-            }
-            // #140 券占用与库存预占同阶段：失败走同一清理路径（释放预占 + 软删除订单）。
-            // 占用是 payment-service 的条件 UPDATE，并发下只成功一次，失败给买家明确提示。
             if (coupon != null) {
                 occupyCoupon(coupon, subOrders, buyerId);
             }
+            finishReservation(key, subOrders);
         } catch (BizException e) {
             // 先释放已预占成功的店（此时订单尚未软删除，释放标记可正常抢占），
             // 再软删除全部子订单与主订单，避免悬空预占。
@@ -293,6 +289,9 @@ public class OrderService {
                 releaseInventory(done.getOrderId());
             }
             for (Order subOrder : subOrders) {
+                if (coupon != null) {
+                    releaseCoupon(subOrder.getOrderId());
+                }
                 orderMapper.softDelete(subOrder.getOrderId());
                 orderItemMapper.softDeleteByOrderId(subOrder.getOrderId());
             }
@@ -492,7 +491,7 @@ public class OrderService {
     }
 
     /**
-     * 在「已持有 RESERVING 执行权」的前提下预占库存并落终态。
+     * 在「已持有 RESERVING 执行权」的前提下预占库存。
      *
      * <p>这是全流程唯一调用 product-service 预占接口的位置，createFresh 与 resume 都必须
      * 先通过 {@link #claimReserving(String, OrderIdempotency)} 抢到执行权才能进入，
@@ -500,26 +499,13 @@ public class OrderService {
      *
      * @throws BizException 预占失败；执行权由调用方负责退回
      */
-    private void reserveUnderOwnership(String key, String orderId, LocalDateTime expireAt,
+    private void reserveUnderOwnership(String orderId, LocalDateTime expireAt,
                                        List<ReserveItemDTO> reserveItems) {
         callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems));
-        // 跨店结算（#135）：同一幂等键下按子订单逐店预占，执行权保持 RESERVING，
-        // 由 finishReservation 在全部子订单预占成功后统一落终态；单店结算行为不变。
-        Order order = orderMapper.selectById(orderId);
-        if (order != null && order.getMainOrderId() != null) {
-            return;
-        }
-        int updated = idempotencyMapper.markSuccessIfReserving(key, orderId, LocalDateTime.now());
-        if (updated == 0) {
-            // 执行权已被超时回收任务重置，说明本线程持锁时间超出阈值。
-            // 此时库存已预占成功，必须交给补偿任务兜底，避免预占悬空。
-            log.warn("幂等执行权已被回收，转补偿处理, idemKey={}, orderId={}", key, orderId);
-            compensationService.enqueue(orderId);
-        }
     }
 
     /**
-     * 跨店结算（#135）：全部子订单预占成功后把幂等键落终态。
+     * 全部子订单预占且优惠券占用成功后才把幂等键落终态。
      * 执行权被回收时，为每个子订单写补偿任务兜底，避免预占悬空。
      */
     private void finishReservation(String key, List<Order> subOrders) {
@@ -546,7 +532,7 @@ public class OrderService {
         return idempotencyMapper.claimReserving(key, LocalDateTime.now()) == 1;
     }
 
-    private CreateOrderResponse resume(OrderIdempotency existing, String requestHash, String buyerId) {
+    private CreateOrderResponse resume(OrderIdempotency existing, String requestHash, String buyerId, String userCouponId) {
         if (!existing.getRequestHash().equals(requestHash)) {
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT,
                     "同一 Idempotency-Key 不能用于不同的下单请求");
@@ -590,16 +576,39 @@ public class OrderService {
             }
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "下单处理中，请稍后重试");
         }
-        try {
-            reserveUnderOwnership(existing.getIdemKey(), order.getOrderId(), order.getExpireAt(), reserveItems);
-            // 跨店结算（#135）：持有者崩溃后由 resume 补做其余子订单的预占
-            if (order.getMainOrderId() != null) {
-                resumeSiblingReservations(existing.getIdemKey(), order);
+        List<Order> subOrders = new ArrayList<>();
+        subOrders.add(order);
+        if (order.getMainOrderId() != null) {
+            for (Order sibling : orderMapper.selectByMainOrderId(order.getMainOrderId())) {
+                if (!sibling.getOrderId().equals(order.getOrderId())) {
+                    subOrders.add(sibling);
+                }
             }
+        }
+        try {
+            reserveUnderOwnership(order.getOrderId(), order.getExpireAt(), reserveItems);
+            if (order.getMainOrderId() != null) {
+                resumeSiblingReservations(order, subOrders);
+            }
+            UserCouponDTO coupon = requireUsableCoupon(buyerId, userCouponId,
+                    subOrders.stream().map(Order::getSellerId).collect(java.util.stream.Collectors.toSet()),
+                    subOrders);
+            if (coupon != null && !"USED".equals(coupon.getStatus())) {
+                occupyCoupon(coupon, subOrders, buyerId);
+            }
+            finishReservation(existing.getIdemKey(), subOrders);
         } catch (BizException e) {
-            compensationService.enqueue(order.getOrderId());
-            orderMapper.softDelete(order.getOrderId());
-            orderItemMapper.softDeleteByOrderId(order.getOrderId());
+            for (Order subOrder : subOrders) {
+                compensationService.enqueue(subOrder.getOrderId());
+                if (userCouponId != null) {
+                    releaseCoupon(subOrder.getOrderId());
+                }
+                orderMapper.softDelete(subOrder.getOrderId());
+                orderItemMapper.softDeleteByOrderId(subOrder.getOrderId());
+            }
+            if (order.getMainOrderId() != null) {
+                mainOrderMapper.softDelete(order.getMainOrderId());
+            }
             idempotencyMapper.markFailed(existing.getIdemKey(), LocalDateTime.now());
             throw e;
         }
@@ -611,8 +620,7 @@ public class OrderService {
      * 预占以「订单存在且未删除」为完成标志——createFresh 先落库再预占，失败即软删除，
      * 因此存活子订单要么已预占成功，要么正由持有执行权的请求处理中。
      */
-    private void resumeSiblingReservations(String key, Order first) {
-        List<Order> siblings = orderMapper.selectByMainOrderId(first.getMainOrderId());
+    private void resumeSiblingReservations(Order first, List<Order> siblings) {
         for (Order sibling : siblings) {
             if (sibling.getOrderId().equals(first.getOrderId())) {
                 continue;
@@ -624,9 +632,8 @@ public class OrderService {
             List<ReserveItemDTO> reserveItems = items.stream()
                     .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
                     .toList();
-            reserveUnderOwnership(key, sibling.getOrderId(), sibling.getExpireAt(), reserveItems);
+            reserveUnderOwnership(sibling.getOrderId(), sibling.getExpireAt(), reserveItems);
         }
-        finishReservation(key, siblings);
     }
 
     /**
@@ -646,7 +653,7 @@ public class OrderService {
             if (latest == null) {
                 return null;
             }
-            if (latest.getOrderId() != null) {
+            if (latest.getStatus() == IdempotencyStatus.SUCCESS && latest.getOrderId() != null) {
                 Order order = orderMapper.selectById(latest.getOrderId());
                 if (order != null) {
                     return order;
@@ -1074,6 +1081,11 @@ public class OrderService {
      * 占用留给 payment-service 的条件 UPDATE，这里只做只读校验。
      */
     private UserCouponDTO requireUsableCoupon(String buyerId, String userCouponId, Set<String> sellers) {
+        return requireUsableCoupon(buyerId, userCouponId, sellers, List.of());
+    }
+
+    private UserCouponDTO requireUsableCoupon(String buyerId, String userCouponId, Set<String> sellers,
+                                               List<Order> existingOrders) {
         if (userCouponId == null) {
             return null;
         }
@@ -1089,6 +1101,11 @@ public class OrderService {
             throw new BizException(ErrorCode.FORBIDDEN, "无权使用该优惠券");
         }
         if ("USED".equals(coupon.getStatus())) {
+            // A previous attempt may have occupied this coupon before recording SUCCESS.
+            if (existingOrders.stream().anyMatch(order -> order.getOrderId().equals(coupon.getOrderId())
+                    && order.getSellerId().equals(coupon.getShopId()))) {
+                return coupon;
+            }
             throw new BizException(ErrorCode.COUPON_ALREADY_USED, "优惠券已被使用，请刷新后重试");
         }
         if (!"UNUSED".equals(coupon.getStatus())) {

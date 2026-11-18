@@ -1,6 +1,9 @@
 package com.mall.product;
 
+import com.mall.product.client.ShopClient;
+import com.mall.product.client.dto.ShopBriefDTO;
 import com.mall.product.common.BizException;
+import com.mall.product.common.Result;
 import com.mall.product.common.ErrorCode;
 import com.mall.product.common.ProductStatus;
 import com.mall.product.dto.request.AuditProductRequest;
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -23,6 +27,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -37,12 +43,39 @@ class ProductServiceTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @MockBean
+    private ShopClient shopClient;
+
     @BeforeEach
     void clean() {
+        ShopBriefDTO activeShop = new ShopBriefDTO();
+        activeShop.setStatus("ACTIVE");
+        when(shopClient.getBySeller(anyString())).thenReturn(Result.success(activeShop));
         jdbcTemplate.update("DELETE FROM stock_reservation_item");
         jdbcTemplate.update("DELETE FROM stock_reservation");
         jdbcTemplate.update("DELETE FROM sku");
         jdbcTemplate.update("DELETE FROM product");
+    }
+
+    @Test
+    void createRejectsUnapprovedShopWithoutWritingProduct() {
+        ShopBriefDTO shop = new ShopBriefDTO();
+        shop.setStatus("SUSPENDED"); // user-service maps unapproved shops to this status
+        when(shopClient.getBySeller("U-PENDING")).thenReturn(Result.success(shop));
+        CreateSkuRequest sku = new CreateSkuRequest();
+        sku.setSpecName("默认规格");
+        sku.setPrice(1000L);
+        sku.setStockAvailable(1);
+        CreateProductRequest request = new CreateProductRequest();
+        request.setTitle("待审核店铺商品");
+        request.setCategoryId("C04");
+        request.setSkus(List.of(sku));
+
+        assertThatThrownBy(() -> productService.create("U-PENDING", request))
+                .isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.SHOP_SUSPENDED);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM product", Long.class)).isZero();
     }
 
     @Test

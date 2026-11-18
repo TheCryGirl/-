@@ -241,6 +241,48 @@ class ShopApplyAuditIntegrationTest {
     }
 
     @Test
+    void concurrentRejectionCannotOverwriteApproval() throws Exception {
+        String sellerId = newSeller();
+        String shopId = shopService.apply(sellerId, applyRequest("并发审核店", "PERSONAL")).getShopId();
+        var approving = new java.util.concurrent.CountDownLatch(1);
+        var allowCommit = new java.util.concurrent.CountDownLatch(1);
+        var rejecting = new java.util.concurrent.CountDownLatch(1);
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        when(productClient.syncSellerVisibility(any(), eq(new SellerVisibilityRequest(sellerId, true))))
+                .thenAnswer(call -> {
+                    approving.countDown();
+                    assertTrue(allowCommit.await(10, java.util.concurrent.TimeUnit.SECONDS));
+                    return Result.success(null);
+                });
+        try {
+            var approval = workers.submit(() -> shopService.audit("ADMIN-A", shopId,
+                    auditRequest("APPROVED", null, 10000L)));
+            assertTrue(approving.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            var rejection = workers.submit(() -> {
+                rejecting.countDown();
+                return shopService.audit("ADMIN-B", shopId, auditRequest("REJECTED", "重复决定", null));
+            });
+            assertTrue(rejecting.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            try {
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> rejection.get(500, java.util.concurrent.TimeUnit.MILLISECONDS));
+            } finally {
+                allowCommit.countDown();
+            }
+            approval.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            var error = assertThrows(java.util.concurrent.ExecutionException.class,
+                    () -> rejection.get(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertTrue(error.getCause() instanceof BizException);
+            assertEquals(ErrorCode.PARAM_INVALID, ((BizException) error.getCause()).getCode());
+            assertEquals(ShopApplyStatus.APPROVED, shopMapper.selectById(shopId).getApplyStatus());
+            assertEquals(2, shopApplyLogMapper.selectByShopId(shopId).size());
+        } finally {
+            allowCommit.countDown();
+            workers.shutdownNow();
+        }
+    }
+
+    @Test
     @Transactional
     void approvedShopCannotBeRejectedRetroactively() {
         String sellerId = newSeller();

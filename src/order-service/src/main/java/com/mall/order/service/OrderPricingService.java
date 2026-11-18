@@ -87,6 +87,10 @@ public class OrderPricingService {
                     coupon == null ? null : coupon.getUserCouponId(), coupon, promotions);
             long discount = discounts(steps, ctx);
             long freight = freight(freightCache, shop.sellerId(), goods, region);
+            // Payment requires at least one cent; cap the discount, not the final total.
+            if (goods > 0 && freight == 0 && discount == goods) {
+                discount--;
+            }
             long pay = goods - discount + freight;
             priced.add(new ShopPricing(shop.sellerId(), goods, freight, discount, pay));
             goodsTotal += goods;

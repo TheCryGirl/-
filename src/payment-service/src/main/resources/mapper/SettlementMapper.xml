@@ -25,18 +25,18 @@
         WHERE settlement_id = #{settlementId} AND is_deleted = 0
     </select>
 
-    <select id="selectBySellerPeriod" resultType="com.mall.payment.entity.Settlement">
+    <select id="lockBySellerPeriod" resultType="com.mall.payment.entity.Settlement">
         SELECT <include refid="settlementColumns"/>
         FROM settlement
         WHERE seller_id = #{sellerId} AND period_start = #{periodStart} AND is_deleted = 0
+        FOR UPDATE
     </select>
 
-    <!-- 条件 UPDATE：只有 PENDING 允许追加金额，返回 0 表示已被冻结或不存在 -->
-    <update id="addAmounts">
+    <update id="setAmounts">
         UPDATE settlement
-        SET gross_amount = gross_amount + #{gross},
-            commission_amount = commission_amount + #{commission},
-            net_amount = net_amount + #{net},
+        SET gross_amount = #{gross},
+            commission_amount = #{commission},
+            net_amount = #{net},
             updated_at = NOW(),
             updated_by = #{operatorId}
         WHERE settlement_id = #{settlementId} AND status = 'PENDING'

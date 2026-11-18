@@ -9,6 +9,12 @@
         ON DUPLICATE KEY UPDATE id = id
     </insert>
 
+    <select id="lockBySettlementId" resultType="com.mall.payment.entity.SettlementItem">
+        SELECT id, settlement_id, order_id, gross_amount, commission_amount, created_at
+        FROM settlement_item WHERE settlement_id = #{settlementId}
+        FOR UPDATE
+    </select>
+
     <select id="selectBySettlementIds" resultType="com.mall.payment.entity.SettlementItem">
         SELECT id, settlement_id, order_id, gross_amount, commission_amount, created_at
         FROM settlement_item

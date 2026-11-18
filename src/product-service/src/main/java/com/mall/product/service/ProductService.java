@@ -77,6 +77,7 @@ public class ProductService {
         requireUser(sellerId);
         validateProductFields(request.getTitle(), request.getSubtitle(), request.getMainImage(), request.getCategoryId());
         validateSkus(request.getSkus());
+        requireActiveShopForCreation(sellerId);
 
         LocalDateTime now = LocalDateTime.now();
         Product product = Product.builder()
@@ -450,6 +451,22 @@ public class ProductService {
     private static boolean isRootCategory(Category category) {
         return category.getParentId() == null || category.getParentId().isBlank()
                 || "0".equals(category.getParentId());
+    }
+
+    /** 商品发布要求 user-service 明确返回可营业，不能沿用审核路径的容错默认值。 */
+    private void requireActiveShopForCreation(String sellerId) {
+        Result<ShopBriefDTO> result;
+        try {
+            result = shopClient.getBySeller(sellerId);
+        } catch (RuntimeException e) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认店铺状态，请稍后重试", e);
+        }
+        if (result == null || (result.getCode() != ErrorCode.SUCCESS && result.getCode() != 20007)) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认店铺状态，请稍后重试");
+        }
+        if (result.getData() == null || !"ACTIVE".equalsIgnoreCase(result.getData().getStatus())) {
+            throw new BizException(ErrorCode.SHOP_SUSPENDED, "请先完成店铺入驻并确认店铺正常营业，再发布商品");
+        }
     }
 
     /**

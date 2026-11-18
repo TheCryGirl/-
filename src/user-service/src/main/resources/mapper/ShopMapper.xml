@@ -78,6 +78,13 @@
           AND is_deleted = 0
     </select>
 
+    <select id="lockById" resultType="com.mall.user.entity.Shop">
+        SELECT <include refid="shopColumns"/>
+        FROM shop
+        WHERE shop_id = #{shopId} AND is_deleted = 0
+        FOR UPDATE
+    </select>
+
     <select id="selectBySellerId" resultType="com.mall.user.entity.Shop">
         SELECT <include refid="shopColumns"/>
         FROM shop

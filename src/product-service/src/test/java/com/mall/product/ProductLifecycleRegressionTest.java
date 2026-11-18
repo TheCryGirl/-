@@ -1,5 +1,7 @@
 package com.mall.product;
 
+import com.mall.product.client.ShopClient;
+import com.mall.product.client.dto.ShopBriefDTO;
 import com.mall.product.common.*;
 import com.mall.product.dto.request.*;
 import com.mall.product.dto.response.ProductDetailResponse;
@@ -23,7 +25,11 @@ class ProductLifecycleRegressionTest {
     @Autowired StockService stock;
     @Autowired JdbcTemplate db;
     @Autowired com.mall.product.mapper.ProductMapper productMapper;
+    @org.springframework.boot.test.mock.mockito.MockBean ShopClient shopClient;
     @BeforeEach void clear() {
+        ShopBriefDTO shop = new ShopBriefDTO();
+        shop.setStatus("ACTIVE");
+        org.mockito.Mockito.when(shopClient.getBySeller(SELLER)).thenReturn(Result.success(shop));
         db.update("DELETE FROM stock_reservation_item");db.update("DELETE FROM stock_reservation");
         db.update("DELETE FROM sku");db.update("DELETE FROM product");
     }

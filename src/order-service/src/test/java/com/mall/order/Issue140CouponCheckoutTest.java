@@ -180,6 +180,8 @@ class Issue140CouponCheckoutTest {
         // 与库存预占失败同路径：订单软删除、预占释放
         assertThat(count("SELECT COUNT(*) FROM `order` WHERE is_deleted = 0")).isZero();
         verify(productClient).release(anyString(), any(ProductClient.ReleaseRequest.class));
+        assertThat(jdbcTemplate.queryForObject("SELECT status FROM order_idempotency WHERE idem_key = ?",
+                String.class, "idem-140-create-02")).isEqualTo("FAILED");
     }
 
     @Test

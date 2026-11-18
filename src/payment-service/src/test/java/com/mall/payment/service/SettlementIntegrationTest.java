@@ -45,6 +45,8 @@ class SettlementIntegrationTest {
     private SettlementService settlementService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private com.mall.payment.mapper.OrderCompletionMapper orderCompletionMapper;
 
     @BeforeEach
     void cleanDatabase() {
@@ -148,6 +150,36 @@ class SettlementIntegrationTest {
         assertEquals(30000L, merged.getGrossAmount());
         assertEquals(900L, merged.getCommissionAmount());
         assertEquals(29100L, merged.getNetAmount());
+    }
+
+    @Test
+    void concurrentGenerationCountsEachNewOrderOnlyOnce() throws Exception {
+        insertRule("RC", "PLATFORM", "*", 300);
+        insertOrder("O1", SELLER_A, 10000L, "COMPLETED", T1);
+        settlementService.generate(PERIOD, ADMIN);
+        insertOrder("O2", SELLER_A, 20000L, "COMPLETED", T2);
+
+        var scanned = new java.util.concurrent.CyclicBarrier(2);
+        var start = T1.withDayOfMonth(1).toLocalDate().atStartOfDay();
+        var candidates = orderCompletionMapper.selectCompletedInPeriod(start, start.plusMonths(1));
+        assertEquals(List.of("O2"), candidates.stream().map(order -> order.getOrderId()).toList());
+        org.mockito.Mockito.doAnswer(call -> {
+            scanned.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            return candidates;
+        }).when(orderCompletionMapper).selectCompletedInPeriod(start, start.plusMonths(1));
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var a = workers.submit(() -> settlementService.generate(PERIOD, ADMIN));
+            var b = workers.submit(() -> settlementService.generate(PERIOD, ADMIN));
+            a.get(20, java.util.concurrent.TimeUnit.SECONDS);
+            b.get(20, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            workers.shutdownNow();
+        }
+        assertEquals(2, count("settlement_item"));
+        assertEquals(30000L, onlySettlement().getGrossAmount());
+        assertEquals(900L, onlySettlement().getCommissionAmount());
+        assertEquals(29100L, onlySettlement().getNetAmount());
     }
 
     @Test

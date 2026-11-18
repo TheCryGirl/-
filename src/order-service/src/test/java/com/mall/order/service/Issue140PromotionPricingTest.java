@@ -74,13 +74,14 @@ class Issue140PromotionPricingTest {
     }
 
     @Test
-    void fixedCouponIsCappedAtGoodsAmountAndShopMismatchGivesZero() {
+    void fixedCouponKeepsOneCentPayableAndShopMismatchGivesZero() {
         UserCouponDTO coupon = coupon(SELLER_A, "FIXED", 500L, 0L);
         OrderPricingService service = service();
 
         OrderPricingService.PricingResult ownShop = service.price(
                 List.of(new OrderPricingService.ShopGoods(SELLER_A, 400L)), null, BUYER, coupon);
-        assertThat(ownShop.discountAmount()).isEqualTo(400L);
+        assertThat(ownShop.discountAmount()).isEqualTo(399L);
+        assertThat(ownShop.payAmount()).isEqualTo(1L);
 
         // 券属于 A 店，对 B 店不生效
         OrderPricingService.PricingResult otherShop = service.price(
