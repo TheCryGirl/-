@@ -40,6 +40,16 @@ public final class IdGenerator {
         return LocalDateTime.now().format(TIME_FORMATTER) + randomDigits(6);
     }
 
+    /** 秒杀活动ID（#140）：FS + 时间戳 + 8 位十六进制随机后缀 */
+    public static String flashSaleId() {
+        return "FS" + LocalDateTime.now().format(TIME_FORMATTER) + randomHex(8);
+    }
+
+    /** 秒杀下单记录ID（#140）：FO + 时间戳 + 8 位十六进制随机后缀 */
+    public static String flashSaleOrderId() {
+        return "FO" + LocalDateTime.now().format(TIME_FORMATTER) + randomHex(8);
+    }
+
     private static String randomDigits(int count) {
         StringBuilder builder = new StringBuilder(count);
         for (int i = 0; i < count; i++) {

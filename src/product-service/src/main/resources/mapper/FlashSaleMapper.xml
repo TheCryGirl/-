@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.product.mapper.FlashSaleMapper">
+
+    <sql id="columns">
+        sale_id, product_id, sku_id, sale_price, sale_stock, limit_per_user,
+        start_at, end_at, created_at, updated_at, is_deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.mall.product.entity.FlashSale">
+        INSERT INTO flash_sale (
+            sale_id, product_id, sku_id, sale_price, sale_stock, limit_per_user,
+            start_at, end_at, is_deleted
+        ) VALUES (
+            #{saleId}, #{productId}, #{skuId}, #{salePrice}, #{saleStock}, #{limitPerUser},
+            #{startAt}, #{endAt}, 0
+        )
+    </insert>
+
+    <select id="selectById" resultType="com.mall.product.entity.FlashSale">
+        SELECT <include refid="columns"/>
+        FROM flash_sale
+        WHERE sale_id = #{saleId} AND is_deleted = 0
+    </select>
+
+    <select id="selectOngoing" resultType="com.mall.product.entity.FlashSale">
+        SELECT <include refid="columns"/>
+        FROM flash_sale
+        WHERE is_deleted = 0
+          AND start_at &lt;= #{now}
+          AND end_at &gt;= #{now}
+        ORDER BY end_at ASC, sale_id ASC
+    </select>
+
+    <!-- 秒杀扣库存（#140）：条件 UPDATE，绝不先查再减；影响行数为 0 即库存不足或活动已结束 -->
+    <update id="decrementStock">
+        UPDATE flash_sale
+        SET sale_stock = sale_stock - #{quantity},
+            updated_at = NOW()
+        WHERE sale_id = #{saleId}
+          AND sale_stock &gt;= #{quantity}
+          AND start_at &lt;= #{now}
+          AND end_at &gt;= #{now}
+          AND is_deleted = 0
+    </update>
+</mapper>

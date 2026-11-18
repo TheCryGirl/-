@@ -73,3 +73,36 @@ CREATE TABLE product_setting (
 );
 ALTER TABLE sku ADD low_stock_threshold INT;
 
+
+DROP TABLE IF EXISTS flash_sale_order;
+DROP TABLE IF EXISTS flash_sale;
+
+CREATE TABLE flash_sale (
+    sale_id        VARCHAR(32)  NOT NULL,
+    product_id     VARCHAR(32)  NOT NULL,
+    sku_id         VARCHAR(32)  NOT NULL,
+    sale_price     BIGINT       NOT NULL,
+    sale_stock     INT          NOT NULL,
+    limit_per_user INT          NOT NULL DEFAULT 1,
+    start_at       TIMESTAMP    NOT NULL,
+    end_at         TIMESTAMP    NOT NULL,
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted     TINYINT      NOT NULL DEFAULT 0,
+    PRIMARY KEY (sale_id)
+);
+
+CREATE INDEX idx_flash_sale_time ON flash_sale (start_at, end_at);
+CREATE INDEX idx_flash_sale_product ON flash_sale (product_id);
+
+CREATE TABLE flash_sale_order (
+    sale_order_id  VARCHAR(32)  NOT NULL,
+    sale_id        VARCHAR(32)  NOT NULL,
+    user_id        VARCHAR(32)  NOT NULL,
+    quantity       INT          NOT NULL DEFAULT 1,
+    created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (sale_order_id),
+    CONSTRAINT uk_sale_user UNIQUE (sale_id, user_id)
+);
+
+CREATE INDEX idx_flash_sale_order_sale ON flash_sale_order (sale_id);
