@@ -47,14 +47,14 @@ public class FreightService {
 
     /** 卖家读取自己店铺的运费配置；没配置过时返回空模板，前端据此展示「未设置」 */
     public FreightConfigResponse getMine(String sellerId) {
-        ShopResponse shop = shopService.getMine(sellerId);
+        ShopResponse shop = requireShop(sellerId);
         return load(shop.getShopId(), shop.getSellerId());
     }
 
     /** 卖家整体保存运费配置：先落模板，再整体覆盖规则表，最后把模板挂到店铺上 */
     @Transactional
     public FreightConfigResponse saveMine(String sellerId, FreightConfigRequest request) {
-        ShopResponse shop = shopService.getMine(sellerId);
+        ShopResponse shop = requireShop(sellerId);
         List<FreightRuleRequest> rules = normalizeRules(request.getRules());
 
         FreightTemplate template = freightMapper.selectTemplateByShopId(shop.getShopId());
@@ -96,6 +96,31 @@ public class FreightService {
         log.info("卖家保存运费配置, sellerId={}, shopId={}, templateId={}, rules={}",
                 sellerId, shop.getShopId(), template.getTemplateId(), rules.size());
         return load(shop.getShopId(), shop.getSellerId());
+    }
+
+    /**
+     * 卖家的店铺记录。
+     *
+     * <p>运费挂在店铺上，没有店铺就没有地方放模板：这里显式抛 `20007`（提示先走入驻申请），
+     * 而不是让 `shop_id` 以 null 落库触发数据库的非空约束错误。
+     * 与 {@link #getBySellerId(String)} 的兜底口径区分开：内部查询来自下单链路，
+     * 没有店铺只代表「未配置模板、运费 0」，不能把结算打断。
+     */
+    private ShopResponse requireShop(String sellerId) {
+        ShopResponse shop;
+        try {
+            shop = shopService.getMine(sellerId);
+        } catch (BizException e) {
+            // #144 起 ShopService 自身会对未入驻卖家抛 SHOP_NOT_FOUND，补一句可操作提示
+            if (e.getCode() == ErrorCode.SHOP_NOT_FOUND) {
+                throw new BizException(ErrorCode.SHOP_NOT_FOUND, "请先完成店铺入驻申请，再配置运费");
+            }
+            throw e;
+        }
+        if (shop == null || shop.getShopId() == null || shop.getShopId().isBlank()) {
+            throw new BizException(ErrorCode.SHOP_NOT_FOUND, "请先完成店铺入驻申请，再配置运费");
+        }
+        return shop;
     }
 
     /** 内部接口：按卖家取模板，供 order-service 计算运费 */
