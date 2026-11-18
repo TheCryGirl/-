@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.user.mapper.ShopApplyLogMapper">
+
+    <sql id="logColumns">
+        id, shop_id, from_status, to_status, operator_id, remark, created_at
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO shop_apply_log (shop_id, from_status, to_status, operator_id, remark, created_at)
+        VALUES (#{shopId}, #{fromStatus}, #{toStatus}, #{operatorId}, #{remark}, #{createdAt})
+    </insert>
+
+    <select id="selectByShopId" resultType="com.mall.user.entity.ShopApplyLog">
+        SELECT <include refid="logColumns"/>
+        FROM shop_apply_log
+        WHERE shop_id = #{shopId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectLatestReject" resultType="com.mall.user.entity.ShopApplyLog">
+        SELECT <include refid="logColumns"/>
+        FROM shop_apply_log
+        WHERE shop_id = #{shopId}
+          AND to_status = 'REJECTED'
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="countApplySubmissions" resultType="int">
+        SELECT COUNT(*)
+        FROM shop_apply_log
+        WHERE shop_id = #{shopId}
+          AND to_status = 'PENDING'
+    </select>
+</mapper>

@@ -4,14 +4,17 @@
 
     <sql id="shopColumns">
         shop_id, seller_id, name, logo, description, contact_phone, contact_wechat,
-        status, freight_template_id, created_at, updated_at, is_deleted
+        status, freight_template_id, apply_status, deposit_amount, qualification_json,
+        created_at, updated_at, is_deleted
     </sql>
 
     <insert id="insert">
         INSERT INTO shop (shop_id, seller_id, name, logo, description, contact_phone, contact_wechat,
-                          status, created_at, updated_at, is_deleted)
+                          status, apply_status, deposit_amount, qualification_json,
+                          created_at, updated_at, is_deleted)
         VALUES (#{shopId}, #{sellerId}, #{name}, #{logo}, #{description}, #{contactPhone},
-                #{contactWechat}, #{status}, #{createdAt}, #{updatedAt}, #{isDeleted})
+                #{contactWechat}, #{status}, #{applyStatus}, #{depositAmount}, #{qualificationJson},
+                #{createdAt}, #{updatedAt}, #{isDeleted})
     </insert>
 
     <!-- 卖家保存资料：全部字段整体覆盖，空值即清空（传 null 也能把旧值去掉） -->
@@ -23,6 +26,30 @@
             contact_phone = #{contactPhone},
             contact_wechat = #{contactWechat},
             updated_at = #{updatedAt}
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 提交入驻申请：店名与联系方式随申请一起更新，资质覆盖旧值 -->
+    <update id="updateApply">
+        UPDATE shop
+        SET name = #{name},
+            contact_phone = #{contactPhone},
+            contact_wechat = #{contactWechat},
+            qualification_json = #{qualificationJson},
+            apply_status = #{applyStatus},
+            status = #{status},
+            updated_at = #{updatedAt}
+        WHERE shop_id = #{shopId}
+          AND is_deleted = 0
+    </update>
+
+    <update id="updateAudit">
+        UPDATE shop
+        SET apply_status = #{applyStatus},
+            status = #{status},
+            deposit_amount = #{depositAmount},
+            updated_at = NOW()
         WHERE shop_id = #{shopId}
           AND is_deleted = 0
     </update>
@@ -65,6 +92,9 @@
         <if test="status != null and status != ''">
             AND status = #{status}
         </if>
+        <if test="applyStatus != null and applyStatus != ''">
+            AND apply_status = #{applyStatus}
+        </if>
         <if test="keyword != null and keyword != ''">
             AND (name LIKE CONCAT('%', #{keyword}, '%') OR seller_id LIKE CONCAT('%', #{keyword}, '%'))
         </if>
@@ -78,6 +108,9 @@
         WHERE is_deleted = 0
         <if test="status != null and status != ''">
             AND status = #{status}
+        </if>
+        <if test="applyStatus != null and applyStatus != ''">
+            AND apply_status = #{applyStatus}
         </if>
         <if test="keyword != null and keyword != ''">
             AND (name LIKE CONCAT('%', #{keyword}, '%') OR seller_id LIKE CONCAT('%', #{keyword}, '%'))

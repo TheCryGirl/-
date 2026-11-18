@@ -30,11 +30,25 @@ CREATE TABLE IF NOT EXISTS shop (
     contact_wechat VARCHAR(64)  DEFAULT NULL,
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
     freight_template_id VARCHAR(32) DEFAULT NULL,
+    apply_status   VARCHAR(16)  NOT NULL DEFAULT 'APPROVED',
+    deposit_amount BIGINT       NOT NULL DEFAULT 0,
+    qualification_json VARCHAR(2000) DEFAULT NULL,
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted     TINYINT      NOT NULL DEFAULT 0,
     PRIMARY KEY (shop_id),
     CONSTRAINT uk_shop_seller UNIQUE (seller_id)
+);
+
+CREATE TABLE IF NOT EXISTS shop_apply_log (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    shop_id     VARCHAR(32)  NOT NULL,
+    from_status VARCHAR(16)  DEFAULT NULL,
+    to_status   VARCHAR(16)  NOT NULL,
+    operator_id VARCHAR(32)  DEFAULT NULL,
+    remark      VARCHAR(255) DEFAULT NULL,
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id)
 );
 
 CREATE TABLE IF NOT EXISTS address (

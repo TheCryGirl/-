@@ -3,6 +3,8 @@ package com.mall.user.controller;
 import com.mall.user.common.BizException;
 import com.mall.user.common.ErrorCode;
 import com.mall.user.common.Result;
+import com.mall.user.dto.request.ShopApplyRequest;
+import com.mall.user.dto.request.ShopAuditRequest;
 import com.mall.user.dto.request.ShopRequest;
 import com.mall.user.dto.request.ShopStatusRequest;
 import com.mall.user.dto.response.FollowedShopResponse;
@@ -24,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 店铺资料与营业状态接口（#49）。服务内部路径不带 /api。
+ * 店铺资料、入驻审核与营业状态接口（#49、#144）。服务内部路径不带 /api。
  */
 @RestController
 @RequestMapping("/shops")
@@ -37,7 +39,7 @@ public class ShopController {
     private final ShopService shopService;
     private final ShopFollowService shopFollowService;
 
-    /** 卖家查看自己的店铺资料 */
+    /** 卖家查看自己的店铺资料与入驻状态 */
     @GetMapping("/mine")
     public Result<ShopResponse> mine(
             @RequestHeader("X-User-Id") String userId,
@@ -56,16 +58,38 @@ public class ShopController {
         return Result.success(shopService.updateMine(userId, request));
     }
 
-    /** 管理员分页查看店铺与营业状态 */
+    /** 卖家提交 / 重新提交入驻申请（#144），提交后进入待审核且不能发布商品 */
+    @PostMapping("/apply")
+    public Result<ShopResponse> apply(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @Valid @RequestBody ShopApplyRequest request) {
+        requireSeller(role);
+        return Result.success(shopService.apply(userId, request));
+    }
+
+    /** 管理员分页查看店铺、营业状态与入驻审核状态 */
     @GetMapping
     public Result<PageResponse<ShopResponse>> list(
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String applyStatus,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         requireAdmin(role);
-        return Result.success(shopService.list(keyword, status, page, size));
+        return Result.success(shopService.list(keyword, status, applyStatus, page, size));
+    }
+
+    /** 管理员审核入驻申请（#144），驳回必须带理由，通过时可登记保证金 */
+    @PutMapping("/{shopId}/audit")
+    public Result<ShopResponse> audit(
+            @RequestHeader("X-User-Id") String operatorId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @PathVariable("shopId") String shopId,
+            @Valid @RequestBody ShopAuditRequest request) {
+        requireAdmin(role);
+        return Result.success(shopService.audit(operatorId, shopId, request));
     }
 
     /** 管理员停用 / 恢复店铺 */

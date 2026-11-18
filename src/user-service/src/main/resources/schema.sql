@@ -33,12 +33,28 @@ CREATE TABLE IF NOT EXISTS shop (
     contact_wechat VARCHAR(64)  DEFAULT NULL COMMENT '在线联系方式（微信/旺旺）',
     status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE' COMMENT '营业状态：ACTIVE正常/SUSPENDED已停用',
     freight_template_id VARCHAR(32) DEFAULT NULL COMMENT '当前生效的运费模板ID（#136）',
+    apply_status   VARCHAR(16)  NOT NULL DEFAULT 'APPROVED' COMMENT '入驻审核状态：PENDING待审核/APPROVED已通过/REJECTED已驳回；历史店铺默认已通过',
+    deposit_amount BIGINT       NOT NULL DEFAULT 0 COMMENT '保证金金额（分），0 表示尚未缴纳；仅作记录不拦截发布',
+    qualification_json VARCHAR(2000) DEFAULT NULL COMMENT '入驻资质快照 JSON：主体类型、证照编号、资质材料地址',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     is_deleted     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
     PRIMARY KEY (shop_id),
-    UNIQUE KEY uk_shop_seller (seller_id)
+    UNIQUE KEY uk_shop_seller (seller_id),
+    KEY idx_shop_apply_status (apply_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='卖家店铺表';
+
+CREATE TABLE IF NOT EXISTS shop_apply_log (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '流水ID',
+    shop_id     VARCHAR(32)  NOT NULL COMMENT '店铺ID',
+    from_status VARCHAR(16)  DEFAULT NULL COMMENT '变更前审核状态，首次申请为 NULL',
+    to_status   VARCHAR(16)  NOT NULL COMMENT '变更后审核状态',
+    operator_id VARCHAR(32)  DEFAULT NULL COMMENT '操作人用户ID：卖家申请或管理员审核',
+    remark      VARCHAR(255) DEFAULT NULL COMMENT '驳回理由或审核备注',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    KEY idx_apply_log_shop (shop_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='店铺入驻审核流水（#144）';
 
 CREATE TABLE IF NOT EXISTS address (
     address_id  VARCHAR(32)  NOT NULL COMMENT '地址ID',

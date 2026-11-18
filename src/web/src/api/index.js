@@ -103,6 +103,9 @@ export const notificationApi = {
 export const shopApi = {
   mine: () => http.get('/shops/mine'),
   updateMine: (payload) => http.put('/shops/mine', payload),
+  // 入驻申请与审核（#144）：apply 由卖家提交，audit 仅管理员可用
+  apply: (payload) => http.post('/shops/apply', payload),
+  audit: (shopId, payload) => http.put(`/shops/${shopId}/audit`, payload),
   list: (params) => http.get('/shops', { params }),
   updateStatus: (shopId, status) => http.put(`/shops/${shopId}/status`, { status }),
   bySeller: (sellerId) => http.get(`/shops/seller/${sellerId}`),

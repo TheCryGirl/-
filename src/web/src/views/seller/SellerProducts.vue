@@ -14,8 +14,9 @@ import PageHero from '../../components/store/PageHero.vue'
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { isOk, productApi, unwrapResult } from '../../api'
+import { isOk, productApi, shopApi, unwrapResult } from '../../api'
 import { PRODUCT_STATUS_MAP, PRODUCT_STATUS_TAG, statusTag, statusText } from '../../constants/status'
+import { publishBlockReason } from '../../utils/shopApply'
 import { confirmAction } from '../../components/ui/confirm'
 import { resolveErrorMessage, showError, showSuccess } from '../../components/ui/message'
 import UiTable from '../../components/ui/UiTable.vue'
@@ -31,8 +32,12 @@ const loadError = ref('')
 const total = ref(0)
 /** 正在上下架的商品 ID；非空时忽略新的操作，避免重复提交 */
 const operatingId = ref('')
+/** GET /shops/mine 的入驻口径；null 表示还没取到或取失败，此时不在前端拦发布 */
+const shopGate = ref(null)
 
 /* ---------- 2. 计算属性 ---------- */
+const publishHint = computed(() => (shopGate.value ? publishBlockReason(shopGate.value) : ''))
+
 const columns = computed(() => [
   { key: 'title', label: '商品', minWidth: 260, slot: 'product' },
   { key: 'price', label: '价格', width: 120, align: 'right', slot: 'price' },
@@ -65,7 +70,25 @@ async function fetchList() {
   }
 }
 
+/**
+ * 入驻口径只用于禁用发布入口（#144）：接口失败时保持入口可用，
+ * 真正的拦截在后端（未过审的店铺对外按停用处理，上架会返回 30006）。
+ */
+async function fetchShopGate() {
+  try {
+    const { data } = await shopApi.mine()
+    if (!isOk(data)) return
+    shopGate.value = unwrapResult(data) || null
+  } catch {
+    shopGate.value = null
+  }
+}
+
 function handleCreate() {
+  if (publishHint.value) {
+    showError(publishHint.value)
+    return
+  }
   router.push({ name: 'seller-product-new' })
 }
 
@@ -116,7 +139,10 @@ function formatDateTime(value) {
 }
 
 /* ---------- 4. 生命周期 ---------- */
-onMounted(fetchList)
+onMounted(() => {
+  fetchList()
+  fetchShopGate()
+})
 </script>
 
 <template>
@@ -144,11 +170,32 @@ onMounted(fetchList)
       :title="`共 ${total} 件，当前仅显示前 ${list.length} 件`"
     />
 
+    <!-- 入驻未过审时拦住发布入口（#144），后端同样会拒绝上架 -->
+    <el-alert
+      v-if="publishHint"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="publishHint"
+      data-testid="seller-products-publish-blocked"
+    >
+      <template #default>
+        <router-link :to="{ name: 'seller-shop' }" class="text-xs underline">
+          去店铺资料页处理
+        </router-link>
+      </template>
+    </el-alert>
+
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">
           <span class="text-base font-medium">商品列表</span>
-          <el-button type="primary" data-testid="seller-products-create" @click="handleCreate">
+          <el-button
+            type="primary"
+            :disabled="!!publishHint"
+            data-testid="seller-products-create"
+            @click="handleCreate"
+          >
             发布商品
           </el-button>
         </div>
