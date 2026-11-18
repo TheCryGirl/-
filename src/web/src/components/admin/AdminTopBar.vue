@@ -14,6 +14,7 @@ const navItems = [
   { name: 'admin-refunds', label: '退款复核' },
   { name: 'admin-after-sales', label: '售后仲裁' },
   { name: 'admin-finance', label: '资金对账' },
+  { name: 'admin-settlements', label: '结算管理' },
   { name: 'admin-risk', label: '基础风控' },
   { name: 'admin-config', label: '系统配置' },
   { name: 'admin-evaluations', label: '评价管理' },

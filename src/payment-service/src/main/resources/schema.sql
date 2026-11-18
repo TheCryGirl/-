@@ -205,3 +205,53 @@ CREATE TABLE IF NOT EXISTS after_sale_event (
     PRIMARY KEY (id),
     KEY idx_ticket_created (ticket_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='售后进度时间线';
+
+-- 佣金费率规则（#144 第二块）。费率用万分比整数（300 = 3.00%），避免浮点误差；
+-- 费率回退顺序：店铺（SHOP，按卖家ID匹配，shop 与 seller 一一对应）> 类目（CATEGORY，预留）> 平台（PLATFORM，target_id 固定 *）。
+CREATE TABLE IF NOT EXISTS commission_rule (
+    rule_id     VARCHAR(32)  NOT NULL COMMENT '规则ID',
+    scope       VARCHAR(16)  NOT NULL COMMENT '作用范围：PLATFORM/CATEGORY/SHOP',
+    target_id   VARCHAR(32)  NOT NULL COMMENT '目标：PLATFORM 为 *，CATEGORY 为类目ID，SHOP 为卖家ID',
+    rate        INT          NOT NULL COMMENT '费率，万分比整数（300=3.00%）',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_by  VARCHAR(32)  DEFAULT NULL COMMENT '创建人',
+    updated_by  VARCHAR(32)  DEFAULT NULL COMMENT '更新人',
+    PRIMARY KEY (rule_id),
+    UNIQUE KEY uk_scope_target (scope, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='佣金费率规则';
+
+-- 结算单（#144 第二块）。每个卖家每个周期最多一张，靠 (seller_id, period_start)
+-- 唯一键防重复生成；金额单位分；只有 PENDING 状态允许追加，标记 PAID 后冻结。
+CREATE TABLE IF NOT EXISTS settlement (
+    settlement_id     VARCHAR(32)  NOT NULL COMMENT '结算单ID',
+    seller_id         VARCHAR(32)  NOT NULL COMMENT '卖家ID',
+    period_start      DATETIME     NOT NULL COMMENT '结算周期开始（含），自然月首日 00:00:00',
+    period_end        DATETIME     NOT NULL COMMENT '结算周期结束（不含），次月首日 00:00:00',
+    gross_amount      BIGINT       NOT NULL DEFAULT 0 COMMENT '订单实付合计，单位分',
+    commission_amount BIGINT       NOT NULL DEFAULT 0 COMMENT '佣金合计，单位分',
+    net_amount        BIGINT       NOT NULL DEFAULT 0 COMMENT '应结金额 = 实付 - 佣金，单位分',
+    status            VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/CONFIRMED/PAID',
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    created_by        VARCHAR(32)  DEFAULT NULL COMMENT '创建人',
+    updated_by        VARCHAR(32)  DEFAULT NULL COMMENT '更新人',
+    is_deleted        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删 1已删',
+    PRIMARY KEY (settlement_id),
+    UNIQUE KEY uk_seller_period (seller_id, period_start),
+    KEY idx_status_created (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='结算单';
+
+-- 结算明细（#144 第二块）。order_id 全局唯一：一笔子订单最多计入一次结算，
+-- 防止跨周期重复生成时重复计佣。
+CREATE TABLE IF NOT EXISTS settlement_item (
+    id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '明细ID',
+    settlement_id     VARCHAR(32)  NOT NULL COMMENT '结算单ID',
+    order_id          VARCHAR(32)  NOT NULL COMMENT '子订单ID',
+    gross_amount      BIGINT       NOT NULL COMMENT '该订单实付，单位分',
+    commission_amount BIGINT       NOT NULL COMMENT '该订单佣金，单位分',
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_item_order (order_id),
+    KEY idx_settlement_id (settlement_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='结算明细';

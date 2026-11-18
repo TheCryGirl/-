@@ -232,6 +232,16 @@ export const paymentApi = {
     http.put(`/payments/after-sales/${ticketId}/reship`, payload),
 }
 
+/* ---------------- 佣金结算（#144） ---------------- */
+export const settlementApi = {
+  // 卖家看自己，管理员看全部；period 形如 2026-11
+  list: (params) => http.get('/settlements', { params }),
+  // 生成结算单（仅 ADMIN）
+  generate: (payload) => http.post('/settlements/generate', payload),
+  // 标记已打款（仅 ADMIN）
+  updateStatus: (settlementId, payload) => http.put(`/settlements/${settlementId}/status`, payload),
+}
+
 /* ---------------- 商品评价（#57） ---------------- */
 export const evaluationApi = {
   create: (orderId, payload) => http.post(`/orders/${orderId}/evaluations`, payload),

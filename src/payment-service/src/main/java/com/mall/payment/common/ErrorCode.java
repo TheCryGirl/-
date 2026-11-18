@@ -17,6 +17,8 @@ public final class ErrorCode {
     public static final int REFUND_EXCEEDS_PAID = 60004;
     public static final int AFTER_SALE_NOT_FOUND = 60005;
     public static final int AFTER_SALE_STATE_INVALID = 60006;
+    public static final int SETTLEMENT_NOT_FOUND = 60007;
+    public static final int SETTLEMENT_STATE_INVALID = 60008;
 
     private ErrorCode() {
     }

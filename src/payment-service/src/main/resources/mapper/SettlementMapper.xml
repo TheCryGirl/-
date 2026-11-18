@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.SettlementMapper">
+
+    <sql id="settlementColumns">
+        settlement_id, seller_id, period_start, period_end, gross_amount, commission_amount,
+        net_amount, status, created_at, updated_at, created_by, updated_by, is_deleted
+    </sql>
+
+    <!-- 幂等插入：同一卖家同一周期已存在结算单时静默跳过，随后走 PENDING 追加路径 -->
+    <insert id="insertIgnoreDuplicate" parameterType="com.mall.payment.entity.Settlement">
+        INSERT INTO settlement (
+            settlement_id, seller_id, period_start, period_end,
+            gross_amount, commission_amount, net_amount, status, created_by, updated_by
+        ) VALUES (
+            #{settlementId}, #{sellerId}, #{periodStart}, #{periodEnd},
+            #{grossAmount}, #{commissionAmount}, #{netAmount}, 'PENDING', #{createdBy}, #{updatedBy}
+        )
+        ON DUPLICATE KEY UPDATE settlement_id = settlement_id
+    </insert>
+
+    <select id="selectById" resultType="com.mall.payment.entity.Settlement">
+        SELECT <include refid="settlementColumns"/>
+        FROM settlement
+        WHERE settlement_id = #{settlementId} AND is_deleted = 0
+    </select>
+
+    <select id="selectBySellerPeriod" resultType="com.mall.payment.entity.Settlement">
+        SELECT <include refid="settlementColumns"/>
+        FROM settlement
+        WHERE seller_id = #{sellerId} AND period_start = #{periodStart} AND is_deleted = 0
+    </select>
+
+    <!-- 条件 UPDATE：只有 PENDING 允许追加金额，返回 0 表示已被冻结或不存在 -->
+    <update id="addAmounts">
+        UPDATE settlement
+        SET gross_amount = gross_amount + #{gross},
+            commission_amount = commission_amount + #{commission},
+            net_amount = net_amount + #{net},
+            updated_at = NOW(),
+            updated_by = #{operatorId}
+        WHERE settlement_id = #{settlementId} AND status = 'PENDING'
+    </update>
+
+    <!-- 标记已打款：仅 PENDING/CONFIRMED 可流转，PAID 为终态 -->
+    <update id="markPaid">
+        UPDATE settlement
+        SET status = 'PAID', updated_at = NOW(), updated_by = #{operatorId}
+        WHERE settlement_id = #{settlementId} AND status IN ('PENDING', 'CONFIRMED')
+    </update>
+
+    <select id="selectPage" resultType="com.mall.payment.entity.Settlement">
+        SELECT <include refid="settlementColumns"/>
+        FROM settlement
+        WHERE is_deleted = 0
+        <if test="sellerId != null and sellerId != ''">
+            AND seller_id = #{sellerId}
+        </if>
+        <if test="periodStart != null">
+            AND period_start = #{periodStart}
+        </if>
+        ORDER BY period_start DESC, seller_id ASC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM settlement
+        WHERE is_deleted = 0
+        <if test="sellerId != null and sellerId != ''">
+            AND seller_id = #{sellerId}
+        </if>
+        <if test="periodStart != null">
+            AND period_start = #{periodStart}
+        </if>
+    </select>
+
+</mapper>
