@@ -34,6 +34,7 @@ const sellerItems = [
   { name: 'seller-shipments', label: '待发货' },
   { name: 'seller-refunds', label: '退款审核' },
   { name: 'seller-after-sales', label: '售后处理' },
+  { name: 'seller-settlements', label: '结算单' },
   { name: 'seller-messages', label: '买家消息' },
 ]
 

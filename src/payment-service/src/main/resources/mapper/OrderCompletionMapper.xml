@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.OrderCompletionMapper">
+
+    <!-- 跨库只读 order-service 的订单表（组长口径：直接读 order 表）。
+         已退款订单按「直接剔除」处理：存在成功退款的子订单（含整单退款后
+         status 变为 REFUNDED 的）不进入结算。 -->
+    <select id="selectCompletedInPeriod" resultType="com.mall.payment.dto.internal.OrderCompletion">
+        SELECT o.order_id, o.seller_id, o.pay_amount
+        FROM mall_order.`order` o
+        WHERE o.status = 'COMPLETED'
+          AND o.is_deleted = 0
+          AND o.updated_at &gt;= #{start}
+          AND o.updated_at &lt; #{end}
+          AND NOT EXISTS (
+              SELECT 1 FROM settlement_item si WHERE si.order_id = o.order_id
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM refund r
+              WHERE r.order_id = o.order_id AND r.status = 'SUCCESS' AND r.is_deleted = 0
+          )
+        ORDER BY o.seller_id, o.order_id
+    </select>
+
+</mapper>

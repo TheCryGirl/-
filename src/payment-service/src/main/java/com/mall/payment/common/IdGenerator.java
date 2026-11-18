@@ -40,6 +40,10 @@ public final class IdGenerator {
         return "RB" + randomHex(20);
     }
 
+    public static String settlementId() {
+        return "ST" + randomHex(20);
+    }
+
     private static String randomHex(int length) {
         char[] result = new char[length];
         for (int i = 0; i < length; i++) {

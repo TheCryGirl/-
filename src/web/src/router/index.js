@@ -193,6 +193,12 @@ const routes = [
     component: () => import('../views/seller/SellerAfterSales.vue'),
     meta: { title: '售后处理', requiresAuth: true, role: 'SELLER' },
   },
+  {
+    path: '/seller/settlements',
+    name: 'seller-settlements',
+    component: () => import('../views/seller/SellerSettlements.vue'),
+    meta: { title: '结算单', requiresAuth: true, role: 'SELLER' },
+  },
   // 管理中心（管理员）
   {
     path: '/admin/users',
@@ -229,6 +235,12 @@ const routes = [
       name: 'admin-finance',
       component: () => import('../views/admin/AdminFinance.vue'),
       meta: { title: '资金对账', requiresAuth: true, role: 'ADMIN' },
+    },
+    {
+      path: '/admin/settlements',
+      name: 'admin-settlements',
+      component: () => import('../views/admin/AdminSettlements.vue'),
+      meta: { title: '结算管理', requiresAuth: true, role: 'ADMIN' },
     },
     {
       path: '/admin/risk',

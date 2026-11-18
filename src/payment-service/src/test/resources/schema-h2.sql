@@ -1,3 +1,64 @@
+-- 结算候选订单的跨库只读视图（#144 第二块）：生产上结算直接读 order-service 的
+-- mall_order.order（组长口径），H2 里建同名 schema 与最小列集保证 SQL 两端一致。
+CREATE SCHEMA IF NOT EXISTS mall_order;
+DROP TABLE IF EXISTS mall_order.`order`;
+
+CREATE TABLE mall_order.`order` (
+    order_id     VARCHAR(32) NOT NULL,
+    seller_id    VARCHAR(32) NOT NULL,
+    pay_amount   BIGINT      NOT NULL,
+    status       VARCHAR(24) NOT NULL,
+    updated_at   DATETIME    DEFAULT NULL,
+    is_deleted   TINYINT     NOT NULL DEFAULT 0,
+    PRIMARY KEY (order_id)
+);
+
+DROP TABLE IF EXISTS settlement_item;
+DROP TABLE IF EXISTS settlement;
+DROP TABLE IF EXISTS commission_rule;
+
+CREATE TABLE commission_rule (
+    rule_id     VARCHAR(32) NOT NULL,
+    scope       VARCHAR(16) NOT NULL,
+    target_id   VARCHAR(32) NOT NULL,
+    rate        INT         NOT NULL,
+    created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by  VARCHAR(32) DEFAULT NULL,
+    updated_by  VARCHAR(32) DEFAULT NULL,
+    PRIMARY KEY (rule_id),
+    CONSTRAINT uk_scope_target UNIQUE (scope, target_id)
+);
+
+CREATE TABLE settlement (
+    settlement_id     VARCHAR(32) NOT NULL,
+    seller_id         VARCHAR(32) NOT NULL,
+    period_start      DATETIME    NOT NULL,
+    period_end        DATETIME    NOT NULL,
+    gross_amount      BIGINT      NOT NULL DEFAULT 0,
+    commission_amount BIGINT      NOT NULL DEFAULT 0,
+    net_amount        BIGINT      NOT NULL DEFAULT 0,
+    status            VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by        VARCHAR(32) DEFAULT NULL,
+    updated_by        VARCHAR(32) DEFAULT NULL,
+    is_deleted        TINYINT     NOT NULL DEFAULT 0,
+    PRIMARY KEY (settlement_id),
+    CONSTRAINT uk_seller_period UNIQUE (seller_id, period_start)
+);
+
+CREATE TABLE settlement_item (
+    id                BIGINT      NOT NULL AUTO_INCREMENT,
+    settlement_id     VARCHAR(32) NOT NULL,
+    order_id          VARCHAR(32) NOT NULL,
+    gross_amount      BIGINT      NOT NULL,
+    commission_amount BIGINT      NOT NULL,
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_item_order UNIQUE (order_id)
+);
+
 DROP TABLE IF EXISTS refund;
 DROP TABLE IF EXISTS payment_callback;
 DROP TABLE IF EXISTS payment;
