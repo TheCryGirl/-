@@ -4,19 +4,25 @@
 
     <!-- 幂等插入：order_id 唯一键冲突（重复生成）时静默跳过 -->
     <insert id="insertIgnoreDuplicate" parameterType="com.mall.payment.entity.SettlementItem">
-        INSERT INTO settlement_item (settlement_id, order_id, gross_amount, commission_amount)
-        VALUES (#{settlementId}, #{orderId}, #{grossAmount}, #{commissionAmount})
+        INSERT INTO settlement_item (settlement_id, order_id, gross_amount, commission_amount, commission_snapshot, refunded_amount)
+        VALUES (#{settlementId}, #{orderId}, #{grossAmount}, #{commissionAmount}, #{commissionSnapshot}, #{refundedAmount})
         ON DUPLICATE KEY UPDATE id = id
     </insert>
 
+    <update id="updateRefundedAmounts">
+        UPDATE settlement_item SET gross_amount = #{grossAmount}, commission_amount = #{commissionAmount},
+            refunded_amount = #{refundedAmount}, commission_snapshot = #{commissionSnapshot}
+        WHERE id = #{id}
+    </update>
+
     <select id="lockBySettlementId" resultType="com.mall.payment.entity.SettlementItem">
-        SELECT id, settlement_id, order_id, gross_amount, commission_amount, created_at
+        SELECT id, settlement_id, order_id, gross_amount, commission_amount, commission_snapshot, refunded_amount, created_at
         FROM settlement_item WHERE settlement_id = #{settlementId}
         FOR UPDATE
     </select>
 
     <select id="selectBySettlementIds" resultType="com.mall.payment.entity.SettlementItem">
-        SELECT id, settlement_id, order_id, gross_amount, commission_amount, created_at
+        SELECT id, settlement_id, order_id, gross_amount, commission_amount, commission_snapshot, refunded_amount, created_at
         FROM settlement_item
         WHERE settlement_id IN
         <foreach collection="settlementIds" item="settlementId" open="(" separator="," close=")">

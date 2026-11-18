@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 # Behavioral tests. No application services or database are changed.
 $ErrorActionPreference = 'Stop'
 $module = Join-Path (Split-Path -Parent $PSScriptRoot) 'DemoLauncher.psm1'
@@ -117,13 +117,12 @@ try {
         if (-not (Test-Path $exe)) { $exe = Join-Path $PSHOME 'pwsh.exe' }
         $env:DEMO_TEST_SECRET = 'parent-value'
         $secret = [guid]::NewGuid().ToString('N')
-        $p = Start-DemoChild -FilePath $exe -Arguments @('-NoProfile','-Command','if ($env:DEMO_TEST_SECRET -eq "parent-value") { exit 8 }; if (-not $env:DEMO_TEST_SECRET) { exit 9 }; Write-Output "child environment present"') -WorkingDirectory $temp -LogPrefix (Join-Path $temp 'env') -Environment @{ DEMO_TEST_SECRET = $secret } -RestoreParentTemporaryVariables
+        $p = Start-DemoChild -FilePath $exe -Arguments @('-NoProfile','-Command','if ($env:DEMO_TEST_SECRET -eq "parent-value") { exit 8 }; if (-not $env:DEMO_TEST_SECRET) { exit 9 }; $cmd = (Get-CimInstance Win32_Process -Filter ("ProcessId=" + $PID)).CommandLine; if (-not $cmd -or $cmd.Contains($env:DEMO_TEST_SECRET)) { exit 10 }; Write-Output "child environment present"') -WorkingDirectory $temp -LogPrefix (Join-Path $temp 'env') -Environment @{ DEMO_TEST_SECRET = $secret } -RestoreParentTemporaryVariables
         $p.WaitForExit()
         Assert-Equal $p.ExitCode 0 'Child inherited temporary env'
         Assert-Equal $env:DEMO_TEST_SECRET 'parent-value' 'Parent env restored'
         $log = Get-Content -LiteralPath (Join-Path $temp 'env.out.log') -Raw
         Assert-Equal ($log.Contains($secret)) $false 'No secret in log'
-        Assert-Equal ($p.StartInfo.Arguments.Contains($secret)) $false 'No secret in arguments'
         Remove-Item Env:\DEMO_TEST_SECRET
     }
     Test-Case 'Binary JSON health response is decoded instead of becoming a byte-number array' {
@@ -149,6 +148,8 @@ try {
         $self = Get-Process -Id $PID
         $record = [pscustomobject]@{ ProcessId=$PID; StartedUtc=$self.StartTime.ToUniversalTime().ToString('o'); Artifact='C:\fixture\boot.jar' }
         Assert-Equal (Get-DemoRecordedProcessId -Record $record -Artifact 'C:\fixture\boot.jar') $PID 'Live record'
+        $record.StartedUtc = $self.StartTime.ToUniversalTime()
+        Assert-Equal (Get-DemoRecordedProcessId -Record $record -Artifact 'C:\fixture\boot.jar') $PID 'DateTime from PowerShell 7 JSON'
         Assert-Equal (Get-DemoRecordedProcessId -Record $record -Artifact 'C:\other\boot.jar') 0 'Wrong artifact rejected'
         $record.StartedUtc = $self.StartTime.AddMinutes(-1).ToUniversalTime().ToString('o')
         Assert-Equal (Get-DemoRecordedProcessId -Record $record -Artifact 'C:\fixture\boot.jar') 0 'Reused PID rejected'

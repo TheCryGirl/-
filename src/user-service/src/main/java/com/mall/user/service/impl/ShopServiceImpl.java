@@ -192,23 +192,22 @@ public class ShopServiceImpl implements ShopService {
         Long deposit = target == ShopApplyStatus.APPROVED
                 ? resolveDeposit(shop.getDepositAmount(), request.getDepositAmount())
                 : shop.getDepositAmount();
-        // 保证金只登记金额与缴纳状态，不拦截发布：审核通过即恢复营业
-        ShopStatus targetStatus = target == ShopApplyStatus.APPROVED
-                ? ShopStatus.ACTIVE
-                : ShopStatus.SUSPENDED;
         ShopApplyStatus fromStatus = shop.getApplyStatus();
-
-        if (targetStatus != shop.getStatus()) {
-            shopMapper.updateAudit(shop.getShopId(), target.name(), targetStatus.name(), deposit);
+        // 确认保证金不改变既有营业状态；首次过审才将待审店铺设为营业。
+        ShopStatus targetStatus = target != ShopApplyStatus.APPROVED ? ShopStatus.SUSPENDED
+                : (fromStatus == ShopApplyStatus.APPROVED ? shop.getStatus() : ShopStatus.ACTIVE);
+        boolean restore = target == ShopApplyStatus.APPROVED && targetStatus == ShopStatus.ACTIVE
+                && depositPaid(deposit) && !publishable(shop);
+        boolean suspend = targetStatus == ShopStatus.SUSPENDED && shop.getStatus() != ShopStatus.SUSPENDED;
+        shopMapper.updateAudit(shop.getShopId(), target.name(), targetStatus.name(), deposit);
+        if (restore || suspend) {
             try {
-                syncVisibility(shop.getSellerId(), targetStatus == ShopStatus.ACTIVE);
+                syncVisibility(shop.getSellerId(), restore);
             } catch (RuntimeException e) {
                 log.error("同步商品可见性失败，审核结果已回滚, shopId={}, sellerId={}",
                         shop.getShopId(), shop.getSellerId(), e);
                 throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "商品服务暂不可用，审核结果未生效，请稍后重试");
             }
-        } else {
-            shopMapper.updateAudit(shop.getShopId(), target.name(), targetStatus.name(), deposit);
         }
 
         writeLog(shop.getShopId(), fromStatus == null ? null : fromStatus.name(), target,
@@ -241,14 +240,16 @@ public class ShopServiceImpl implements ShopService {
         if (shop == null) {
             throw new BizException(ErrorCode.SHOP_NOT_FOUND, "店铺不存在");
         }
-        if (target == ShopStatus.ACTIVE && !publishable(shop)) {
+        if (target == ShopStatus.ACTIVE && shop.getApplyStatus() != ShopApplyStatus.APPROVED) {
             throw new BizException(ErrorCode.PARAM_INVALID, "入驻审核未通过，不能恢复营业");
         }
         if (shop.getStatus() == target) {
             // 状态没变化也补同步一次：之前同步失败或人工改过库时能自愈，同步本身是幂等的，
             // 这一步失败只记日志，不改变本次返回结果
             try {
-                syncVisibility(shop.getSellerId(), target == ShopStatus.ACTIVE);
+                if (target == ShopStatus.SUSPENDED || depositPaid(shop.getDepositAmount())) {
+                    syncVisibility(shop.getSellerId(), target == ShopStatus.ACTIVE);
+                }
             } catch (RuntimeException e) {
                 log.warn("店铺状态未变化，补同步商品可见性失败, shopId={}, sellerId={}",
                         shopId, shop.getSellerId(), e);
@@ -258,7 +259,9 @@ public class ShopServiceImpl implements ShopService {
 
         shopMapper.updateStatus(shopId, target.name());
         try {
-            syncVisibility(shop.getSellerId(), target == ShopStatus.ACTIVE);
+            if (target == ShopStatus.SUSPENDED || depositPaid(shop.getDepositAmount())) {
+                syncVisibility(shop.getSellerId(), target == ShopStatus.ACTIVE);
+            }
         } catch (RuntimeException e) {
             // 商品可见性没同步成功就退回原状态，保证"店铺状态"与"商品是否可见"不打架
             shopMapper.updateStatus(shopId, shop.getStatus().name());
@@ -291,12 +294,27 @@ public class ShopServiceImpl implements ShopService {
         if (shop == null) {
             throw new BizException(ErrorCode.SHOP_NOT_FOUND, "店铺不存在");
         }
-        ShopResponse response = toResponse(shop, false);
-        if (!publishable(shop)) {
+        ShopResponse response = toResponse(shop);
+        if (shop.getApplyStatus() != ShopApplyStatus.APPROVED) {
             // 未过审对外一律按「不营业」，product-service 与 order-service 沿用 #49 的拦截
             response.setStatus(ShopStatus.SUSPENDED);
         }
         return response;
+    }
+
+    @Override
+    public PublicationEligibility publicationEligibility(String sellerId) {
+        Shop shop = shopMapper.selectBySellerId(requireSellerId(sellerId));
+        if (shop == null || shop.getApplyStatus() != ShopApplyStatus.APPROVED) {
+            return new PublicationEligibility(false, "请先完成店铺入驻审核");
+        }
+        if (shop.getStatus() != ShopStatus.ACTIVE) {
+            return new PublicationEligibility(false, "店铺已停用，暂不能发布或上架商品");
+        }
+        if (!depositPaid(shop.getDepositAmount())) {
+            return new PublicationEligibility(false, "保证金尚未登记，请联系管理员");
+        }
+        return new PublicationEligibility(true, null);
     }
 
     private void syncVisibility(String sellerId, boolean visible) {
@@ -320,13 +338,15 @@ public class ShopServiceImpl implements ShopService {
         shopApplyLogMapper.insert(entry);
     }
 
-    /** 保证金已缴纳 = 登记金额大于 0；金额只作记录，不参与发布拦截 */
+    /** 保证金已缴纳 = 管理员登记金额大于 0；不发起任何在线扣款。 */
     private static boolean depositPaid(Long depositAmount) {
         return depositAmount != null && depositAmount > 0;
     }
 
     private static boolean publishable(Shop shop) {
-        return shop.getApplyStatus() == ShopApplyStatus.APPROVED;
+        return shop.getApplyStatus() == ShopApplyStatus.APPROVED
+                && shop.getStatus() == ShopStatus.ACTIVE
+                && depositPaid(shop.getDepositAmount());
     }
 
     private static Long resolveDeposit(Long current, Long submitted) {

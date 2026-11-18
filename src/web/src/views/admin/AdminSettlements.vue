@@ -3,9 +3,8 @@ import PageHero from '../../components/store/PageHero.vue'
 /**
  * 管理端结算管理（#144 第二块）
  *
- * 管理员按周期（默认当前自然月，格式 yyyy-MM）生成结算单：只结算已确认收货
- * （COMPLETED）且未退款的子订单，佣金按店铺>平台的费率回退计算；同一周期
- * 重复生成只追加新订单，已打款的结算单冻结。标记打款为终态操作。
+ * 管理员按自然月核算已确认收货的子订单，按退款后净实付计佣。
+ * 已打款单冻结；后续退款的差额计入下一期。本页仅登记人工打款凭证。
  */
 import { onMounted, ref } from 'vue'
 import UiTable from '../../components/ui/UiTable.vue'
@@ -30,8 +29,18 @@ const periodInput = ref(currentMonthPeriod())
 const sellerIdInput = ref('')
 const generating = ref(false)
 const payingId = ref('')
+const payoutTarget = ref(null)
+const payoutVisible = ref(false)
+const payoutReference = ref('')
+const payoutRemark = ref('')
 const detail = ref(null)
 const detailVisible = ref(false)
+const rulesVisible = ref(false)
+const rulesLoading = ref(false)
+const ruleSaving = ref(false)
+const ruleError = ref('')
+const rules = ref([])
+const ruleForm = ref({ scope: 'PLATFORM', targetId: '', rate: null })
 
 const { page, size, total, loading, onPageChange, onSizeChange } = usePagination({
   defaultSize: 10,
@@ -111,7 +120,7 @@ async function generate() {
   }
   if (
     !(await confirmAction({
-      message: `按 ${period} 生成结算单？只结算该周期内已确认收货且未退款的订单，同一周期重复生成只追加新订单。`,
+      message: `按 ${period} 核算已确认收货的订单？系统会扣除成功退款，重算未打款账单，并分配可冲减余额。`,
       title: '生成结算单',
       confirmButtonText: '生成',
     }))
@@ -139,8 +148,22 @@ async function generate() {
   }
 }
 
-async function markPaid(row) {
-  if (payingId.value) return
+function openPayout(row) {
+  if (!row.payable) return
+  payoutTarget.value = row
+  payoutReference.value = ''
+  payoutRemark.value = ''
+  payoutVisible.value = true
+}
+
+async function markPaid() {
+  const row = payoutTarget.value
+  const reference = payoutReference.value.trim()
+  if (!row || !row.payable || payingId.value) return
+  if (!reference) {
+    showError('请填写打款凭证编号')
+    return
+  }
   if (
     !(await confirmAction({
       message: `确认已向卖家 ${row.sellerId} 打款？结算周期 ${formatSettlementPeriod(row.periodStart)}，` +
@@ -154,12 +177,22 @@ async function markPaid(row) {
   }
   payingId.value = row.settlementId
   try {
-    const { data } = await settlementApi.updateStatus(row.settlementId, { status: 'PAID' })
+    const { data } = await settlementApi.updateStatus(row.settlementId, {
+      status: 'PAID',
+      expectedNetAmount: row.netAmount,
+      payoutReference: reference,
+      payoutRemark: payoutRemark.value.trim(),
+    })
     if (!isOk(data)) {
-      showError(data?.message || '标记打款失败')
+      showError(data?.message || '登记打款失败')
+      if (Number(data?.code) === 60017) {
+        payoutVisible.value = false
+        await load()
+      }
       return
     }
-    showSuccess('已标记为已打款')
+    payoutVisible.value = false
+    showSuccess('已登记打款凭证')
     await load()
   } catch (err) {
     showError(resolveErrorMessage(err, '标记打款失败'))
@@ -173,6 +206,43 @@ function openDetail(row) {
   detailVisible.value = true
 }
 
+async function loadRules() {
+  rulesVisible.value = true
+  rulesLoading.value = true
+  ruleError.value = ''
+  try {
+    const { data } = await settlementApi.commissionRules()
+    if (!isOk(data)) throw new Error(data?.message || '加载佣金规则失败')
+    rules.value = unwrapResult(data) || []
+  } catch (err) {
+    rules.value = []
+    ruleError.value = resolveErrorMessage(err, '加载佣金规则失败')
+  } finally {
+    rulesLoading.value = false
+  }
+}
+
+async function saveRule() {
+  if (ruleSaving.value) return
+  const { scope, targetId, rate } = ruleForm.value
+  const target = scope === 'PLATFORM' ? '*' : targetId.trim()
+  if (!target || !Number.isInteger(rate) || rate < 0 || rate > 10000) {
+    showError('请填写规则目标和 0–10000 的整数万分比费率')
+    return
+  }
+  ruleSaving.value = true
+  try {
+    const { data } = await settlementApi.saveCommissionRule({ scope, targetId: target, rate })
+    if (!isOk(data)) throw new Error(data?.message || '保存佣金规则失败')
+    showSuccess('佣金规则已保存，仅对未入账订单生效')
+    await loadRules()
+  } catch (err) {
+    showError(resolveErrorMessage(err, '保存佣金规则失败'))
+  } finally {
+    ruleSaving.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -180,7 +250,7 @@ onMounted(load)
   <div class="max-w-6xl mx-auto space-y-4">
     <PageHero
       title="结算管理"
-      subtitle="按自然月为各店铺生成结算单：佣金按 店铺 > 平台 费率回退，已退款订单剔除，打款后冻结"
+      subtitle="按自然月生成：计入退款净额、类目佣金和前期冲减；月结后可登记打款凭证"
       icon="money"
       tone="amber"
     />
@@ -219,6 +289,7 @@ onMounted(load)
             data-testid="admin-settlements-seller"
           />
           <el-button data-testid="admin-settlements-query" @click="applyFilters">查询</el-button>
+          <el-button @click="loadRules">佣金规则</el-button>
           <el-button
             type="primary"
             :loading="generating"
@@ -249,10 +320,11 @@ onMounted(load)
             v-if="!isSettlementPaid(row.status)"
             size="small"
             type="warning"
+            :disabled="!row.payable"
             :loading="payingId === row.settlementId"
-            @click="markPaid(row)"
+            @click="openPayout(row)"
           >
-            标记打款
+            {{ row.payable ? '登记打款' : '周期未结束' }}
           </el-button>
         </template>
 
@@ -270,6 +342,50 @@ onMounted(load)
       </UiTable>
     </el-card>
 
+    <el-dialog v-model="payoutVisible" title="登记已完成的打款" width="500px">
+      <p v-if="payoutTarget" class="mb-4 text-sm">
+        确认金额 ¥{{ formatPrice(payoutTarget.netAmount) }}。这里只登记凭证，不发起转账。
+      </p>
+      <el-form label-position="top">
+        <el-form-item label="打款凭证编号">
+          <el-input v-model="payoutReference" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="备注（可选）">
+          <el-input v-model="payoutRemark" maxlength="255" type="textarea" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="payoutVisible = false">取消</el-button>
+        <el-button type="primary" :loading="!!payingId" @click="markPaid">登记凭证</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="rulesVisible" title="佣金规则" width="680px">
+      <el-alert v-if="ruleError" :title="ruleError" type="error" :closable="false" />
+      <el-table v-else v-loading="rulesLoading" :data="rules" empty-text="暂无佣金规则" size="small">
+        <el-table-column prop="scope" label="范围" />
+        <el-table-column prop="targetId" label="目标 ID" />
+        <el-table-column prop="rate" label="费率（万分比）" />
+      </el-table>
+      <el-form class="mt-4" label-position="top">
+        <el-form-item label="规则范围">
+          <el-select v-model="ruleForm.scope">
+            <el-option label="平台" value="PLATFORM" />
+            <el-option label="类目" value="CATEGORY" />
+            <el-option label="店铺（卖家 ID）" value="SHOP" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="ruleForm.scope !== 'PLATFORM'" label="类目 ID 或卖家 ID">
+          <el-input v-model="ruleForm.targetId" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="费率（万分比，例如 300 表示 3%）">
+          <el-input-number v-model="ruleForm.rate" :min="0" :max="10000" :precision="0" />
+        </el-form-item>
+        <el-button type="primary" :loading="ruleSaving" @click="saveRule">保存或更新规则</el-button>
+        <el-button v-if="ruleError" @click="loadRules">重试加载</el-button>
+      </el-form>
+    </el-dialog>
+
     <el-dialog v-model="detailVisible" title="结算单明细" width="680px">
       <template v-if="detail">
         <div class="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-4">
@@ -286,6 +402,12 @@ onMounted(load)
             <template #default="{ row }">{{ formatPrice(row.commissionAmount) }}</template>
           </el-table-column>
         </el-table>
+        <div v-if="detail.adjustments?.length" class="mt-3 text-sm">
+          <p v-for="adjustment in detail.adjustments" :key="`${adjustment.sourceSettlementId}-${adjustment.orderId}-${adjustment.amount}`">
+            前期退款冲减：{{ adjustment.orderId }}（原单 {{ adjustment.sourceSettlementId }}）−¥{{ formatPrice(adjustment.amount) }}
+          </p>
+        </div>
+        <p v-if="detail.payout" class="mt-3 text-sm">打款凭证：{{ detail.payout.reference }} · {{ formatTime(detail.payout.paidAt) }}</p>
         <div class="text-right mt-3 text-sm">
           应结金额：
           <span class="font-semibold text-amber-600">¥{{ formatPrice(detail.netAmount) }}</span>

@@ -25,6 +25,17 @@
         WHERE settlement_id = #{settlementId} AND is_deleted = 0
     </select>
 
+    <select id="selectPendingSellers" resultType="string">
+        SELECT seller_id FROM settlement
+        WHERE period_start = #{periodStart} AND is_deleted = 0 AND status IN ('PENDING','CONFIRMED')
+    </select>
+
+    <select id="lockEditableBySeller" resultType="com.mall.payment.entity.Settlement">
+        SELECT <include refid="settlementColumns"/> FROM settlement
+        WHERE seller_id=#{sellerId} AND is_deleted=0 AND status IN ('PENDING','CONFIRMED')
+        ORDER BY period_start FOR UPDATE
+    </select>
+
     <select id="lockBySellerPeriod" resultType="com.mall.payment.entity.Settlement">
         SELECT <include refid="settlementColumns"/>
         FROM settlement
@@ -39,7 +50,7 @@
             net_amount = #{net},
             updated_at = NOW(),
             updated_by = #{operatorId}
-        WHERE settlement_id = #{settlementId} AND status = 'PENDING'
+        WHERE settlement_id = #{settlementId} AND status IN ('PENDING', 'CONFIRMED')
     </update>
 
     <!-- 标记已打款：仅 PENDING/CONFIRMED 可流转，PAID 为终态 -->

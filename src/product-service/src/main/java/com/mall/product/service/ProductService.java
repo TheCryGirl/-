@@ -77,7 +77,7 @@ public class ProductService {
         requireUser(sellerId);
         validateProductFields(request.getTitle(), request.getSubtitle(), request.getMainImage(), request.getCategoryId());
         validateSkus(request.getSkus());
-        requireActiveShopForCreation(sellerId);
+        requirePublicationEligibility(sellerId);
 
         LocalDateTime now = LocalDateTime.now();
         Product product = Product.builder()
@@ -160,10 +160,7 @@ public class ProductService {
             throw new BizException(ErrorCode.FORBIDDEN, "商品未经审核或店铺已停用，不能自行上下架");
         }
         if (target == ProductStatus.ON_SALE) {
-            // 店铺被停用时卖家不能自行把商品放回在售（#49）
-            if (!shopActive(sellerId)) {
-                throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已被停用，暂不能上架商品");
-            }
+            requirePublicationEligibility(sellerId);
         }
         if (productMapper.updateSellerStatus(productId, source, target, sellerId) == 0) {
             throw new BizException(ErrorCode.FORBIDDEN, "商品状态已变化，请刷新后重试");
@@ -179,8 +176,8 @@ public class ProductService {
         }
         ProductStatus target;
         if (Boolean.TRUE.equals(request.getApproved())) {
-            // 店铺停用期间审核通过不能直接上架，先挂起，恢复营业时由同步接口改回在售
-            target = shopActive(product.getSellerId()) ? ProductStatus.ON_SALE : ProductStatus.SUSPENDED;
+            requirePublicationEligibility(product.getSellerId());
+            target = ProductStatus.ON_SALE;
         } else {
             target = ProductStatus.REJECTED;
         }
@@ -453,39 +450,20 @@ public class ProductService {
                 || "0".equals(category.getParentId());
     }
 
-    /** 商品发布要求 user-service 明确返回可营业，不能沿用审核路径的容错默认值。 */
-    private void requireActiveShopForCreation(String sellerId) {
-        Result<ShopBriefDTO> result;
+    /** 发布前必须能确认资格；营业状态仅用于既有订单，不替代发布资格。 */
+    private void requirePublicationEligibility(String sellerId) {
+        Result<ShopClient.PublicationEligibility> result;
         try {
-            result = shopClient.getBySeller(sellerId);
+            result = shopClient.publication(sellerId);
         } catch (RuntimeException e) {
-            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认店铺状态，请稍后重试", e);
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认发布资格，请稍后重试", e);
         }
-        if (result == null || (result.getCode() != ErrorCode.SUCCESS && result.getCode() != 20007)) {
-            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认店铺状态，请稍后重试");
+        if (result == null || result.getCode() != ErrorCode.SUCCESS || result.getData() == null) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "暂无法确认发布资格，请稍后重试");
         }
-        if (result.getData() == null || !"ACTIVE".equalsIgnoreCase(result.getData().getStatus())) {
-            throw new BizException(ErrorCode.SHOP_SUSPENDED, "请先完成店铺入驻并确认店铺正常营业，再发布商品");
-        }
-    }
-
-    /**
-     * 店铺是否在营业。
-     *
-     * <p>用户服务不可用或查不到店铺时按“正常营业”处理，避免商品服务单机调试时审核链路整体不可用；
-     * 真正的停用由 {@link #updateSellerVisibility} 同步兜底。
-     */
-    private boolean shopActive(String sellerId) {
-        try {
-            Result<ShopBriefDTO> result = shopClient.getBySeller(sellerId);
-            if (result == null || result.getCode() != ErrorCode.SUCCESS || result.getData() == null) {
-                return true;
-            }
-            return !"SUSPENDED".equalsIgnoreCase(result.getData().getStatus());
-        } catch (Exception e) {
-            // 店铺服务不可用时按正常营业放行，避免单服务调试或集成测试整体不可用
-            log.warn("查询店铺营业状态失败，按正常营业处理, sellerId={}", sellerId, e);
-            return true;
+        if (!result.getData().publishable()) {
+            String reason = result.getData().reason();
+            throw new BizException(ErrorCode.SHOP_SUSPENDED, reason == null ? "店铺暂不能发布商品" : reason);
         }
     }
 

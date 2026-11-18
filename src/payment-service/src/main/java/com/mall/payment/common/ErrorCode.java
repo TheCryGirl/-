@@ -19,6 +19,7 @@ public final class ErrorCode {
     public static final int AFTER_SALE_STATE_INVALID = 60006;
     public static final int SETTLEMENT_NOT_FOUND = 60015;
     public static final int SETTLEMENT_STATE_INVALID = 60016;
+    public static final int SETTLEMENT_AMOUNT_CHANGED = 60017;
 
     // #140 促销工具（券/满减），从 60007 起，不与既有错误码撞号
     public static final int COUPON_NOT_FOUND = 60007;

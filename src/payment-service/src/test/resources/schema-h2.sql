@@ -1,7 +1,15 @@
 -- 结算候选订单的跨库只读视图（#144 第二块）：生产上结算直接读 order-service 的
 -- mall_order.order（组长口径），H2 里建同名 schema 与最小列集保证 SQL 两端一致。
 CREATE SCHEMA IF NOT EXISTS mall_order;
+DROP TABLE IF EXISTS mall_order.order_item;
 DROP TABLE IF EXISTS mall_order.`order`;
+CREATE TABLE mall_order.order_item (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id VARCHAR(32) NOT NULL,
+    category_id_snapshot VARCHAR(32),
+    subtotal BIGINT NOT NULL,
+    is_deleted TINYINT NOT NULL DEFAULT 0
+);
 
 CREATE TABLE mall_order.`order` (
     order_id     VARCHAR(32) NOT NULL,
@@ -9,10 +17,15 @@ CREATE TABLE mall_order.`order` (
     pay_amount   BIGINT      NOT NULL,
     status       VARCHAR(24) NOT NULL,
     updated_at   DATETIME    DEFAULT NULL,
+    completed_at DATETIME    DEFAULT NULL,
     is_deleted   TINYINT     NOT NULL DEFAULT 0,
     PRIMARY KEY (order_id)
 );
 
+DROP TABLE IF EXISTS settlement_adjustment_use;
+DROP TABLE IF EXISTS settlement_adjustment;
+DROP TABLE IF EXISTS settlement_payout;
+DROP TABLE IF EXISTS settlement_seller_lock;
 DROP TABLE IF EXISTS settlement_item;
 DROP TABLE IF EXISTS settlement;
 DROP TABLE IF EXISTS commission_rule;
@@ -54,9 +67,38 @@ CREATE TABLE settlement_item (
     order_id          VARCHAR(32) NOT NULL,
     gross_amount      BIGINT      NOT NULL,
     commission_amount BIGINT      NOT NULL,
+    commission_snapshot TEXT,
+    refunded_amount BIGINT NOT NULL DEFAULT 0,
     created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     CONSTRAINT uk_item_order UNIQUE (order_id)
+);
+
+CREATE TABLE settlement_seller_lock (seller_id VARCHAR(32) PRIMARY KEY);
+CREATE TABLE settlement_adjustment (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    seller_id VARCHAR(32) NOT NULL,
+    order_id VARCHAR(32) NOT NULL,
+    source_settlement_id VARCHAR(32) NOT NULL,
+    eligible_from DATETIME NOT NULL,
+    refunded_amount BIGINT NOT NULL,
+    amount BIGINT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(order_id, refunded_amount)
+);
+CREATE TABLE settlement_adjustment_use (
+    adjustment_id BIGINT NOT NULL,
+    settlement_id VARCHAR(32) NOT NULL,
+    amount BIGINT NOT NULL,
+    PRIMARY KEY(adjustment_id, settlement_id)
+);
+CREATE TABLE settlement_payout (
+    settlement_id VARCHAR(32) PRIMARY KEY,
+    reference VARCHAR(100) NOT NULL UNIQUE,
+    operator_id VARCHAR(32) NOT NULL,
+    amount BIGINT NOT NULL,
+    paid_at DATETIME NOT NULL,
+    remark VARCHAR(255)
 );
 
 DROP TABLE IF EXISTS refund;

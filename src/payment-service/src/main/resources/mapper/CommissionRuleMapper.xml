@@ -8,4 +8,10 @@
         ORDER BY rule_id ASC
     </select>
 
+    <insert id="upsert">
+        INSERT INTO commission_rule (rule_id, scope, target_id, rate, created_by, updated_by)
+        VALUES (#{ruleId}, #{scope}, #{targetId}, #{rate}, #{createdBy}, #{updatedBy})
+        ON DUPLICATE KEY UPDATE rate = #{rate}, updated_by = #{updatedBy}, updated_at = CURRENT_TIMESTAMP
+    </insert>
+
 </mapper>

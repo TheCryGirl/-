@@ -2,24 +2,30 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.mall.payment.mapper.OrderCompletionMapper">
 
-    <!-- 跨库只读 order-service 的订单表（组长口径：直接读 order 表）。
-         已退款订单按「直接剔除」处理：存在成功退款的子订单（含整单退款后
-         status 变为 REFUNDED 的）不进入结算。 -->
+    <!-- 候选订单扣除成功退款后的实际余额；全额退款不生成正额明细。 -->
     <select id="selectCompletedInPeriod" resultType="com.mall.payment.dto.internal.OrderCompletion">
-        SELECT o.order_id, o.seller_id, o.pay_amount
+        SELECT o.order_id, o.seller_id, o.pay_amount, COALESCE(r.total, 0) AS successful_refund_amount
         FROM mall_order.`order` o
+        LEFT JOIN (
+            SELECT order_id, SUM(amount) AS total FROM refund
+            WHERE status = 'SUCCESS' AND is_deleted = 0 GROUP BY order_id
+        ) r ON r.order_id = o.order_id
         WHERE o.status = 'COMPLETED'
           AND o.is_deleted = 0
-          AND o.updated_at &gt;= #{start}
-          AND o.updated_at &lt; #{end}
+          AND COALESCE(o.completed_at, o.updated_at) &gt;= #{start}
+          AND COALESCE(o.completed_at, o.updated_at) &lt; #{end}
           AND NOT EXISTS (
               SELECT 1 FROM settlement_item si WHERE si.order_id = o.order_id
           )
-          AND NOT EXISTS (
-              SELECT 1 FROM refund r
-              WHERE r.order_id = o.order_id AND r.status = 'SUCCESS' AND r.is_deleted = 0
-          )
+          AND o.pay_amount &gt; COALESCE(r.total, 0)
         ORDER BY o.seller_id, o.order_id
+    </select>
+
+    <select id="selectLines" resultType="com.mall.payment.mapper.OrderCompletionMapper$OrderLine">
+        SELECT category_id_snapshot AS categoryId, subtotal
+        FROM mall_order.order_item
+        WHERE order_id = #{orderId} AND is_deleted = 0 AND subtotal &gt; 0
+        ORDER BY id
     </select>
 
 </mapper>

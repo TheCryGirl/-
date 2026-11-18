@@ -158,19 +158,23 @@ class ShopApplyAuditIntegrationTest {
 
     @Test
     @Transactional
-    void approvedAuditWithoutDepositStillActivatesShop() {
+    void approvedShopCanTradeButCannotPublishUntilDepositIsRecorded() {
         String sellerId = newSeller();
         String adminId = newSeller();
         String shopId = shopService.apply(sellerId, applyRequest("保证金未缴店", "PERSONAL")).getShopId();
 
-        // 保证金只登记金额与缴纳状态（组长口径）：通过即恢复营业，不拦截发布
         ShopResponse audited = shopService.audit(adminId, shopId, auditRequest("APPROVED", null, 0L));
 
         assertEquals(ShopApplyStatus.APPROVED, audited.getApplyStatus());
         assertFalse(audited.getDepositPaid());
-        assertTrue(audited.getPublishable());
+        assertFalse(audited.getPublishable());
         assertEquals(0L, audited.getDepositAmount().longValue());
-        assertEquals(ShopStatus.ACTIVE, shopMapper.selectById(shopId).getStatus());
+        assertEquals(ShopStatus.ACTIVE, shopService.getBySellerId(sellerId).getStatus());
+        org.mockito.Mockito.verifyNoInteractions(productClient);
+
+        ShopResponse registered = shopService.audit(adminId, shopId, auditRequest("APPROVED", null, 10000L));
+        assertTrue(registered.getDepositPaid());
+        assertTrue(registered.getPublishable());
         verify(productClient).syncSellerVisibility(any(), eq(new SellerVisibilityRequest(sellerId, true)));
     }
 
@@ -297,7 +301,7 @@ class ShopApplyAuditIntegrationTest {
     }
 
     @Test
-    void legacyShopWithoutApplyRecordStaysPublishable() {
+    void legacyShopWithoutDepositKeepsTradingAndEditingButCannotPublish() {
         String sellerId = newSeller();
         Shop legacy = new Shop();
         legacy.setShopId(IdGenerator.shopId());
@@ -311,11 +315,10 @@ class ShopApplyAuditIntegrationTest {
         legacy.setIsDeleted(Boolean.FALSE);
         shopMapper.insert(legacy);
 
-        // 存量店铺默认 APPROVED：不受影响；保证金 0 只表示「未缴纳」，仅作记录
         ShopResponse mine = shopService.getMine(sellerId);
         assertEquals(0L, mine.getDepositAmount());
         assertFalse(mine.getDepositPaid());
-        assertTrue(mine.getPublishable());
+        assertFalse(mine.getPublishable());
         assertEquals(ShopStatus.ACTIVE, shopService.getBySellerId(sellerId).getStatus());
 
         ShopRequest request = new ShopRequest();

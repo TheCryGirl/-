@@ -23,6 +23,12 @@ public class SettlementResponse {
     private Long netAmount;
     private String status;
     private LocalDateTime createdAt;
+    private boolean payable;
+    private Payout payout;
+    private List<Adjustment> adjustments = new ArrayList<>();
+
+    public record Payout(String reference, String operatorId, long amount, LocalDateTime paidAt, String remark) {}
+    public record Adjustment(String sourceSettlementId, String orderId, long amount) {}
     private List<Item> items = new ArrayList<>();
 
     @Data

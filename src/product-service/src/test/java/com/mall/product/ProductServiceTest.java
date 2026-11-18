@@ -1,7 +1,6 @@
 package com.mall.product;
 
 import com.mall.product.client.ShopClient;
-import com.mall.product.client.dto.ShopBriefDTO;
 import com.mall.product.common.BizException;
 import com.mall.product.common.Result;
 import com.mall.product.common.ErrorCode;
@@ -48,9 +47,8 @@ class ProductServiceTest {
 
     @BeforeEach
     void clean() {
-        ShopBriefDTO activeShop = new ShopBriefDTO();
-        activeShop.setStatus("ACTIVE");
-        when(shopClient.getBySeller(anyString())).thenReturn(Result.success(activeShop));
+        when(shopClient.publication(anyString()))
+                .thenReturn(Result.success(new ShopClient.PublicationEligibility(true, null)));
         jdbcTemplate.update("DELETE FROM stock_reservation_item");
         jdbcTemplate.update("DELETE FROM stock_reservation");
         jdbcTemplate.update("DELETE FROM sku");
@@ -59,9 +57,8 @@ class ProductServiceTest {
 
     @Test
     void createRejectsUnapprovedShopWithoutWritingProduct() {
-        ShopBriefDTO shop = new ShopBriefDTO();
-        shop.setStatus("SUSPENDED"); // user-service maps unapproved shops to this status
-        when(shopClient.getBySeller("U-PENDING")).thenReturn(Result.success(shop));
+        when(shopClient.publication("U-PENDING"))
+                .thenReturn(Result.success(new ShopClient.PublicationEligibility(false, "请先完成店铺入驻审核")));
         CreateSkuRequest sku = new CreateSkuRequest();
         sku.setSpecName("默认规格");
         sku.setPrice(1000L);
@@ -76,6 +73,38 @@ class ProductServiceTest {
                 .extracting(e -> ((BizException) e).getCode())
                 .isEqualTo(ErrorCode.SHOP_SUSPENDED);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM product", Long.class)).isZero();
+    }
+
+    @Test
+    void withoutDepositCannotCreateApproveOrRelistButCanTakeDownExistingProduct() {
+        String seller = "U-LEGACY";
+        CreateSkuRequest sku = new CreateSkuRequest();
+        sku.setSpecName("默认规格");
+        sku.setPrice(1000L);
+        sku.setStockAvailable(1);
+        CreateProductRequest request = new CreateProductRequest();
+        request.setTitle("原有商品");
+        request.setCategoryId("C04");
+        request.setSkus(List.of(sku));
+        var existing = productService.create(seller, request);
+        var draft = productService.create(seller, request);
+        AuditProductRequest approve = new AuditProductRequest();
+        approve.setApproved(true);
+        productService.audit(existing.getProductId(), "U-ADMIN", approve);
+
+        // An active store may continue existing trade without permission to publish new items.
+        when(shopClient.publication(seller))
+                .thenReturn(Result.success(new ShopClient.PublicationEligibility(false, "保证金未登记")));
+        assertThatThrownBy(() -> productService.create(seller, request)).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> productService.audit(draft.getProductId(), "U-ADMIN", approve))
+                .isInstanceOf(BizException.class);
+        var status = new com.mall.product.dto.request.UpdateStatusRequest();
+        status.setStatus("OFF_SHELF");
+        assertThat(productService.updateStatus(existing.getProductId(), seller, status).getStatus())
+                .isEqualTo(ProductStatus.OFF_SHELF);
+        status.setStatus("ON_SALE");
+        assertThatThrownBy(() -> productService.updateStatus(existing.getProductId(), seller, status))
+                .isInstanceOf(BizException.class);
     }
 
     @Test

@@ -97,7 +97,7 @@ onMounted(load)
   <div class="max-w-5xl mx-auto space-y-4">
     <PageHero
       title="结算单"
-      subtitle="平台按自然月生成结算单：应结金额 = 订单实付 − 平台佣金，打款后状态变为「已打款」"
+      subtitle="应结金额 = 退款后净实付 − 佣金 − 前期退款冲减；已打款原单不会被改写"
       icon="wallet"
       tone="amber"
     />
@@ -171,6 +171,12 @@ onMounted(load)
             <template #default="{ row }">{{ formatPrice(row.commissionAmount) }}</template>
           </el-table-column>
         </el-table>
+        <div v-if="detail.adjustments?.length" class="mt-3 text-sm">
+          <p v-for="adjustment in detail.adjustments" :key="`${adjustment.sourceSettlementId}-${adjustment.orderId}-${adjustment.amount}`">
+            前期退款冲减：{{ adjustment.orderId }}（原单 {{ adjustment.sourceSettlementId }}）−¥{{ formatPrice(adjustment.amount) }}
+          </p>
+        </div>
+        <p v-if="detail.payout" class="mt-3 text-sm">打款凭证：{{ detail.payout.reference }} · {{ formatTime(detail.payout.paidAt) }}</p>
         <div class="text-right mt-3 text-sm">
           应结金额：
           <span class="font-semibold text-amber-600">¥{{ formatPrice(detail.netAmount) }}</span>

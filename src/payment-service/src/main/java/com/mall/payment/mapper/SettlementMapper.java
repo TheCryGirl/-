@@ -19,6 +19,10 @@ public interface SettlementMapper {
 
     Settlement selectById(@Param("settlementId") String settlementId);
 
+    List<String> selectPendingSellers(@Param("periodStart") LocalDateTime periodStart);
+
+    List<Settlement> lockEditableBySeller(@Param("sellerId") String sellerId);
+
     Settlement lockBySellerPeriod(@Param("sellerId") String sellerId,
                                   @Param("periodStart") LocalDateTime periodStart);
 

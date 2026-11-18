@@ -17,6 +17,7 @@ public class OrderItem {
     private String skuId;
     private String productId;
     private String productTitle;
+    private String categoryIdSnapshot;
     private String specName;
     private Long priceSnapshot;
     private Integer quantity;

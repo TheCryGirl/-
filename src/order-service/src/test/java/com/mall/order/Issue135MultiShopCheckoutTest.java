@@ -187,6 +187,9 @@ class Issue135MultiShopCheckoutTest {
             assertThat(order.getMainOrderId()).isEqualTo(response.getMainOrderId());
             assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
         }
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT category_id_snapshot FROM order_item WHERE is_deleted = 0", String.class))
+                .containsExactlyInAnyOrder("CAT-P135A", "CAT-P135B");
         // 库存预占按子订单逐店进行
         verify(productClient, times(2)).reserve(anyString(), any(ReserveStockRequestDTO.class));
     }
@@ -444,6 +447,7 @@ class Issue135MultiShopCheckoutTest {
         product.setProductId(productId);
         product.setSellerId(sellerId);
         product.setTitle("商品-" + productId);
+        product.setCategoryId("CAT-" + productId);
         product.setStatus("ON_SALE");
         product.setPrice(price);
         SkuDTO sku = new SkuDTO();

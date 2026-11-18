@@ -187,7 +187,7 @@ bash demo-init.sh --dry-run
 
 ```bash
 cd src
-mvn -B test          # 聚合构建，233 个用例
+mvn -B test          # 聚合回归：六个后端模块
 mvn -B -pl order-service test   # 单个模块
 ```
 

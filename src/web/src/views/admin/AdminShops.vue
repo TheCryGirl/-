@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import PageHero from '../../components/store/PageHero.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { isOk, shopApi, unwrapResult } from '../../api'
@@ -122,7 +122,7 @@ async function submitAudit() {
   const action = auditForm.decision === 'APPROVED' ? '通过' : '驳回'
   const ok = await confirmAction({
     message: auditForm.decision === 'APPROVED'
-      ? `确认通过「${shop.name}」的入驻申请？登记保证金 ¥${auditForm.depositYuan || '0.00'}。审核通过后店铺即可正常营业。`
+      ? `确认${shop.applyStatus === 'APPROVED' ? '更新' : '审核并登记'}「${shop.name}」的保证金为 ¥${auditForm.depositYuan || '0.00'}？店铺须正常营业且已登记保证金才能发布商品。`
       : `确认驳回「${shop.name}」的入驻申请？理由将展示给卖家：${auditForm.reason.trim()}`,
     title: `入驻审核${action}`,
     danger: auditForm.decision === 'REJECTED',
@@ -296,14 +296,14 @@ onMounted(load)
         <template #actions="{ row }">
           <div class="flex items-center justify-end gap-1">
             <el-button
-              v-if="row.applyStatus === 'PENDING'"
+              v-if="row.applyStatus === 'PENDING' || row.applyStatus === 'APPROVED'"
               link
               size="small"
               type="primary"
               data-testid="admin-shop-audit"
               @click="openAudit(row)"
             >
-              审核
+              {{ row.applyStatus === 'APPROVED' ? '登记保证金' : '审核' }}
             </el-button>
             <el-button
               link
@@ -366,7 +366,7 @@ onMounted(load)
         <el-form-item label="审核结论">
           <el-radio-group v-model="auditForm.decision" data-testid="admin-shop-audit-decision">
             <el-radio value="APPROVED">通过</el-radio>
-            <el-radio value="REJECTED">驳回</el-radio>
+            <el-radio v-if="auditTarget?.applyStatus !== 'APPROVED'" value="REJECTED">驳回</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -377,7 +377,7 @@ onMounted(load)
             data-testid="admin-shop-audit-deposit"
           />
           <p class="text-xs text-gray-400">
-            提交为 {{ depositCents }} 分；保证金仅作记录，审核通过即恢复营业，不拦截商品发布。
+            提交为 {{ depositCents }} 分；金额大于 0 才视为已登记，不触发在线扣款。
           </p>
         </el-form-item>
 
@@ -409,7 +409,7 @@ onMounted(load)
 
     <p class="text-xs text-gray-400">
       停用店铺会同步把该卖家的在售商品置为「店铺停用」，买家不可见、不可下单；恢复营业后自动重新上架。
-      入驻审核通过后才会开放卖家的资料维护与商品发布；保证金仅作登记，不参与发布拦截。
+      审核通过后可维护店铺资料；发布商品还要求店铺正常营业且保证金已登记。
     </p>
   </div>
 </template>

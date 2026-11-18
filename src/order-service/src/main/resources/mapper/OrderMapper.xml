@@ -163,13 +163,13 @@
     <!-- 自动确认收货：条件更新抢占。影响行数 0 说明这一单已被别人处理，跳过即可 -->
     <update id="markAutoCompleted">
         UPDATE `order`
-        SET status = 'COMPLETED', updated_at = #{updatedAt}
+        SET status = 'COMPLETED', completed_at = #{updatedAt}, updated_at = #{updatedAt}
         WHERE order_id = #{orderId} AND status = 'SHIPPED' AND is_deleted = 0
     </update>
 
     <update id="markCompleted">
         UPDATE `order`
-        SET status = 'COMPLETED', updated_at = #{updatedAt}
+        SET status = 'COMPLETED', completed_at = #{updatedAt}, updated_at = #{updatedAt}
         WHERE order_id = #{orderId} AND status = 'SHIPPED' AND is_deleted = 0
     </update>
 

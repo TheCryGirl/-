@@ -239,6 +239,8 @@ export const paymentApi = {
 export const settlementApi = {
   // 卖家看自己，管理员看全部；period 形如 2026-11
   list: (params) => http.get('/settlements', { params }),
+  commissionRules: () => http.get('/settlements/commission-rules'),
+  saveCommissionRule: (payload) => http.put('/settlements/commission-rules', payload),
   // 生成结算单（仅 ADMIN）
   generate: (payload) => http.post('/settlements/generate', payload),
   // 标记已打款（仅 ADMIN）

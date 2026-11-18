@@ -35,11 +35,11 @@ class SettlementIntegrationTest {
     private static final String ADMIN = "ADMIN01";
     private static final String SELLER_A = "S1";
     private static final String SELLER_B = "S2";
-    private static final String PERIOD = "2026-11";
-    private static final LocalDateTime T1 = LocalDateTime.of(2026, 11, 5, 10, 0, 0);
-    private static final LocalDateTime T2 = LocalDateTime.of(2026, 11, 20, 15, 30, 0);
-    private static final LocalDateTime MONTH_END = LocalDateTime.of(2026, 11, 30, 23, 59, 59);
-    private static final LocalDateTime NEXT_MONTH_START = LocalDateTime.of(2026, 12, 1, 0, 0, 0);
+    private static final String PERIOD = "2024-11";
+    private static final LocalDateTime T1 = LocalDateTime.of(2024, 11, 5, 10, 0, 0);
+    private static final LocalDateTime T2 = LocalDateTime.of(2024, 11, 20, 15, 30, 0);
+    private static final LocalDateTime MONTH_END = LocalDateTime.of(2024, 11, 30, 23, 59, 59);
+    private static final LocalDateTime NEXT_MONTH_START = LocalDateTime.of(2024, 12, 1, 0, 0, 0);
 
     @Autowired
     private SettlementService settlementService;
@@ -50,10 +50,14 @@ class SettlementIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        for (String table : List.of("settlement_adjustment_use", "settlement_adjustment", "settlement_payout", "settlement_seller_lock")) {
+            jdbcTemplate.update("DELETE FROM " + table);
+        }
         jdbcTemplate.update("DELETE FROM settlement_item");
         jdbcTemplate.update("DELETE FROM settlement");
         jdbcTemplate.update("DELETE FROM commission_rule");
         jdbcTemplate.update("DELETE FROM refund");
+        jdbcTemplate.update("DELETE FROM mall_order.order_item");
         jdbcTemplate.update("DELETE FROM mall_order.`order`");
     }
 
@@ -95,7 +99,7 @@ class SettlementIntegrationTest {
     }
 
     @Test
-    @DisplayName("退款订单直接剔除：存在成功退款的与已退款状态的不进结算")
+    @DisplayName("部分退款按净额计佣，已退款状态不进结算，驳回不扣减")
     void refundedOrdersAreExcluded() {
         insertRule("R1", "PLATFORM", "*", 300);
         insertOrder("O1", SELLER_A, 5000L, "COMPLETED", T1);
@@ -107,8 +111,25 @@ class SettlementIntegrationTest {
         settlementService.generate(PERIOD, ADMIN);
 
         Settlement settlement = onlySettlement();
-        assertEquals(7000L, settlement.getGrossAmount());
-        assertEquals(210L, settlement.getCommissionAmount());
+        assertEquals(11900L, settlement.getGrossAmount());
+        assertEquals(357L, settlement.getCommissionAmount());
+        assertEquals(2, count("settlement_item"));
+    }
+
+    @Test
+    void pendingStatementRepricesToNetRefundUsingFrozenRateOnEveryRun() {
+        insertRule("R1", "PLATFORM", "*", 300);
+        insertOrder("O1", SELLER_A, 10000L, "COMPLETED", T1);
+        settlementService.generate(PERIOD, ADMIN);
+        jdbcTemplate.update("UPDATE commission_rule SET rate=2000 WHERE rule_id='R1'");
+        insertRefund("RF1", "O1", "SUCCESS");
+        insertRefund("RF2", "O1", "PROCESSING");
+
+        settlementService.generate(PERIOD, ADMIN);
+        settlementService.generate(PERIOD, ADMIN);
+        assertEquals(9900L, onlySettlement().getGrossAmount());
+        assertEquals(297L, onlySettlement().getCommissionAmount());
+        assertEquals(9603L, onlySettlement().getNetAmount());
         assertEquals(1, count("settlement_item"));
     }
 
@@ -127,6 +148,26 @@ class SettlementIntegrationTest {
         assertEquals(500L, forA.getCommissionAmount());
         assertEquals(300L, forB.getCommissionAmount());
         assertEquals(2, count("settlement"));
+    }
+
+    @Test
+    void categorySnapshotsUseWeightedCommissionAndFallbackRules() {
+        insertRule("R1", "PLATFORM", "*", 300);
+        insertRule("R2", "CATEGORY", "C1", 500);
+        insertRule("R3", "CATEGORY", "C2", 1000);
+        insertRule("R4", "SHOP", SELLER_B, 200);
+        insertOrder("O-MIX", SELLER_A, 399L, "COMPLETED", T1);
+        insertOrder("O-OLD", SELLER_A, 1000L, "COMPLETED", T1);
+        insertOrder("O-SHOP", SELLER_B, 1000L, "COMPLETED", T1);
+        jdbcTemplate.update("INSERT INTO mall_order.order_item(order_id, category_id_snapshot, subtotal)"
+                + " VALUES ('O-MIX', 'C1', 100),('O-MIX', 'C2', 300),('O-SHOP', 'C2', 1000)");
+
+        settlementService.generate(PERIOD, ADMIN);
+
+        assertEquals(35L, jdbcTemplate.queryForObject(
+                "SELECT commission_amount FROM settlement_item WHERE order_id='O-MIX'", Long.class));
+        assertEquals(65L, settlementMapperRow(SELLER_A).getCommissionAmount());
+        assertEquals(20L, settlementMapperRow(SELLER_B).getCommissionAmount());
     }
 
     @Test
@@ -190,7 +231,7 @@ class SettlementIntegrationTest {
         settlementService.generate(PERIOD, ADMIN);
 
         String settlementId = onlySettlement().getSettlementId();
-        settlementService.markPaid(settlementId, "PAID", ADMIN);
+        settlementService.markPaid(settlementId, "PAID", ADMIN, onlySettlement().getNetAmount(), "TEST-" + settlementId, null);
 
         insertOrder("O2", SELLER_A, 20000L, "COMPLETED", T2);
         SettlementGenerateResponse again = settlementService.generate(PERIOD, ADMIN);
@@ -202,6 +243,58 @@ class SettlementIntegrationTest {
         assertEquals(1, count("settlement_item"));
         assertEquals(10000L, onlySettlement().getGrossAmount());
         assertEquals(Settlement.STATUS_PAID, onlySettlement().getStatus());
+    }
+
+    @Test
+    void openMonthCannotBeMarkedPaid() {
+        LocalDateTime start = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Shanghai")).atDay(1).atStartOfDay();
+        String period = java.time.YearMonth.from(start).toString();
+        insertOrder("O-NOW", SELLER_A, 10000L, "COMPLETED", start);
+        settlementService.generate(period, ADMIN);
+        String id = onlySettlement().getSettlementId();
+        assertEquals(ErrorCode.SETTLEMENT_STATE_INVALID, assertThrows(BizException.class,
+                () -> settlementService.markPaid(id, "PAID", ADMIN, 10000L, "OPEN-MONTH", null)).getCode());
+        assertEquals("PENDING", onlySettlement().getStatus());
+    }
+
+    @Test
+    void payoutRequiresFreshAmountAndUniqueReference() {
+        insertRule("RP", "PLATFORM", "*", 300);
+        insertOrder("O-PAID", SELLER_A, 10000L, "COMPLETED", T1);
+        settlementService.generate(PERIOD, ADMIN);
+        String id = onlySettlement().getSettlementId();
+        insertRefund("RF-P", "O-PAID", "SUCCESS");
+        assertEquals(ErrorCode.SETTLEMENT_AMOUNT_CHANGED, assertThrows(BizException.class,
+                () -> settlementService.markPaid(id, "PAID", ADMIN, 9700L, "REF-42", null)).getCode());
+        assertEquals(9603L, onlySettlement().getNetAmount());
+        assertEquals(0, count("settlement_payout"));
+        var paid = settlementService.markPaid(id, "PAID", ADMIN, 9603L, "REF-42", "手工凭证");
+        assertEquals("REF-42", paid.getPayout().reference());
+        assertEquals(9603L, paid.getPayout().amount());
+        insertOrder("O-OTHER", SELLER_B, 500L, "COMPLETED", T1);
+        settlementService.generate(PERIOD, ADMIN);
+        var other = settlementMapperRow(SELLER_B);
+        assertEquals(ErrorCode.PARAM_INVALID, assertThrows(BizException.class,
+                () -> settlementService.markPaid(other.getSettlementId(), "PAID", ADMIN, 485L, "REF-42", null)).getCode());
+        assertEquals("PENDING", settlementMapperRow(SELLER_B).getStatus());
+        assertEquals(1, count("settlement_payout"));
+    }
+
+    @Test
+    void paidStatementRemainsFrozenAndRefundDeductsOnlyOnceFromNextPeriod() {
+        insertRule("R1", "PLATFORM", "*", 300);
+        insertOrder("O1", SELLER_A, 10000L, "COMPLETED", T1);
+        settlementService.generate(PERIOD, ADMIN);
+        String original = onlySettlement().getSettlementId();
+        settlementService.markPaid(original, "PAID", ADMIN, 9700L, "TEST-ORIGINAL", null);
+        insertRefund("RF1", "O1", "SUCCESS");
+        insertOrder("O2", SELLER_A, 5000L, "COMPLETED", NEXT_MONTH_START);
+        settlementService.generate("2024-12", ADMIN);
+        settlementService.generate("2024-12", ADMIN);
+        var before = settlementService.list(SELLER_A, PERIOD, 1, 20).getList().get(0);
+        var after = settlementService.list(SELLER_A, "2024-12", 1, 20).getList().get(0);
+        assertEquals(9700L, before.getNetAmount());
+        assertEquals(4850L - 97L, after.getNetAmount());
     }
 
     @Test
@@ -244,19 +337,19 @@ class SettlementIntegrationTest {
         settlementService.generate(PERIOD, ADMIN);
         String settlementId = onlySettlement().getSettlementId();
 
-        SettlementResponse paid = settlementService.markPaid(settlementId, "PAID", ADMIN);
+        SettlementResponse paid = settlementService.markPaid(settlementId, "PAID", ADMIN, onlySettlement().getNetAmount(), "TEST-" + settlementId, null);
         assertEquals(Settlement.STATUS_PAID, paid.getStatus());
 
         BizException again = assertThrows(BizException.class,
-                () -> settlementService.markPaid(settlementId, "PAID", ADMIN));
+                () -> settlementService.markPaid(settlementId, "PAID", ADMIN, onlySettlement().getNetAmount(), "TEST-" + settlementId, null));
         assertEquals(ErrorCode.SETTLEMENT_STATE_INVALID, again.getCode());
 
         BizException missing = assertThrows(BizException.class,
-                () -> settlementService.markPaid("ST-NOT-EXISTS", "PAID", ADMIN));
+                () -> settlementService.markPaid("ST-NOT-EXISTS", "PAID", ADMIN, 10000L, "TEST-MISSING", null));
         assertEquals(ErrorCode.SETTLEMENT_NOT_FOUND, missing.getCode());
 
         BizException badTarget = assertThrows(BizException.class,
-                () -> settlementService.markPaid(settlementId, "CONFIRMED", ADMIN));
+                () -> settlementService.markPaid(settlementId, "CONFIRMED", ADMIN, 10000L, "TEST-BAD", null));
         assertEquals(ErrorCode.PARAM_INVALID, badTarget.getCode());
     }
 

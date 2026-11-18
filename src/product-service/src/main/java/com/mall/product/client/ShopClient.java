@@ -18,6 +18,8 @@ public interface ShopClient {
     @GetMapping("/shops/{shopId}")
     Result<ShopBriefDTO> getByShopId(@PathVariable("shopId") String shopId);
 
-    @GetMapping("/shops/seller/{sellerId}")
-    Result<ShopBriefDTO> getBySeller(@PathVariable("sellerId") String sellerId);
+    @GetMapping("/shops/internal/publication/{sellerId}")
+    Result<PublicationEligibility> publication(@PathVariable("sellerId") String sellerId);
+
+    record PublicationEligibility(boolean publishable, String reason) {}
 }

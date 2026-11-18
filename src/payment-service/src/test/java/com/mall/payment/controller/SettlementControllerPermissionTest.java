@@ -127,6 +127,31 @@ class SettlementControllerPermissionTest {
     }
 
     @Test
+    void onlyAdminCanSaveAndListValidatedCommissionRules() throws Exception {
+        String route = "/api/settlements/commission-rules";
+        String rule = "{\"scope\":\"CATEGORY\",\"targetId\":\"C1\",\"rate\":500}";
+        mockMvc.perform(put(route).header("X-Internal-Token", INTERNAL_TOKEN)
+                        .header("X-User-Id", SELLER_A).header("X-User-Role", "SELLER")
+                        .contentType(MediaType.APPLICATION_JSON).content(rule))
+                .andExpect(jsonPath("$.code").value(10003));
+        for (int rate : new int[]{500, 625}) {
+            mockMvc.perform(put(route).header("X-Internal-Token", INTERNAL_TOKEN)
+                            .header("X-User-Id", "ADMIN01").header("X-User-Role", "ADMIN")
+                            .contentType(MediaType.APPLICATION_JSON).content(rule.replace("500", "" + rate)))
+                    .andExpect(jsonPath("$.code").value(0));
+        }
+        mockMvc.perform(put(route).header("X-Internal-Token", INTERNAL_TOKEN)
+                        .header("X-User-Id", "ADMIN01").header("X-User-Role", "ADMIN")
+                        .contentType(MediaType.APPLICATION_JSON).content(rule.replace("500", "10001")))
+                .andExpect(jsonPath("$.code").value(10001));
+        mockMvc.perform(get(route).header("X-Internal-Token", INTERNAL_TOKEN)
+                        .header("X-User-Id", "ADMIN01").header("X-User-Role", "ADMIN"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].rate").value(625));
+    }
+
+    @Test
     @DisplayName("标记打款仅管理员：卖家 10003，管理员对不存在结算单 60015")
     void updateStatusRequiresAdmin() throws Exception {
         mockMvc.perform(put("/api/settlements/ST-ANY/status")

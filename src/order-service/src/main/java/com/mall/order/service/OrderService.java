@@ -478,6 +478,7 @@ public class OrderService {
                     .skuId(sku.getSkuId())
                     .productId(product.getProductId())
                     .productTitle(product.getTitle())
+                    .categoryIdSnapshot(product.getCategoryId())
                     .specName(sku.getSpecName())
                     .priceSnapshot(sku.getPrice())
                     .quantity(cartItem.getQuantity())

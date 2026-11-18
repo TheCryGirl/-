@@ -12,4 +12,6 @@ import java.util.List;
 public interface CommissionRuleMapper {
 
     List<CommissionRule> selectAll();
+
+    int upsert(CommissionRule rule);
 }

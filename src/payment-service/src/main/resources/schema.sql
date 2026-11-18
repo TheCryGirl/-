@@ -250,11 +250,48 @@ CREATE TABLE IF NOT EXISTS settlement_item (
     order_id          VARCHAR(32)  NOT NULL COMMENT '子订单ID',
     gross_amount      BIGINT       NOT NULL COMMENT '该订单实付，单位分',
     commission_amount BIGINT       NOT NULL COMMENT '该订单佣金，单位分',
+    commission_snapshot TEXT DEFAULT NULL COMMENT '下单类目分摊权重与计算费率快照',
+    refunded_amount BIGINT NOT NULL DEFAULT 0 COMMENT '已反映在本明细的累计成功退款（分）',
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (id),
     UNIQUE KEY uk_item_order (order_id),
     KEY idx_settlement_id (settlement_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='结算明细';
+
+CREATE TABLE IF NOT EXISTS settlement_seller_lock (
+    seller_id VARCHAR(32) PRIMARY KEY
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS settlement_adjustment (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    seller_id VARCHAR(32) NOT NULL,
+    order_id VARCHAR(32) NOT NULL,
+    source_settlement_id VARCHAR(32) NOT NULL,
+    eligible_from DATETIME NOT NULL,
+    refunded_amount BIGINT NOT NULL,
+    amount BIGINT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_adjustment_refund (order_id, refunded_amount),
+    KEY idx_adjustment_period (seller_id, eligible_from)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS settlement_adjustment_use (
+    adjustment_id BIGINT NOT NULL,
+    settlement_id VARCHAR(32) NOT NULL,
+    amount BIGINT NOT NULL,
+    PRIMARY KEY (adjustment_id, settlement_id),
+    KEY idx_adjustment_statement (settlement_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS settlement_payout (
+    settlement_id VARCHAR(32) PRIMARY KEY,
+    reference VARCHAR(100) NOT NULL,
+    operator_id VARCHAR(32) NOT NULL,
+    amount BIGINT NOT NULL,
+    paid_at DATETIME NOT NULL,
+    remark VARCHAR(255),
+    UNIQUE KEY uk_settlement_payout_reference (reference)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 优惠券模板（#140）。发放量靠 issued_qty 条件自增，不建 uk；发放由管理员创建模板。
 CREATE TABLE IF NOT EXISTS coupon (

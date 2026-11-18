@@ -47,6 +47,9 @@ class RefundServiceIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
+    private SettlementService settlementService;
+
+    @Autowired
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     @MockBean
@@ -65,6 +68,50 @@ class RefundServiceIntegrationTest {
         insertPaidPayment();
         when(orderClient.markRefunded(ORDER_ID)).thenReturn(Result.success(null));
         when(productClient.refundRestock(any(StockConfirmRequest.class))).thenReturn(Result.success(null));
+    }
+
+    @Test
+    void simulatedRefundAndMonthlyPayoutAreReconciledAcrossPeriods() {
+        var firstMonth = java.time.LocalDateTime.of(2024, 8, 1, 12, 0);
+        var nextMonth = firstMonth.plusMonths(1);
+        jdbcTemplate.update("INSERT INTO mall_order.`order` (order_id,seller_id,pay_amount,status,updated_at,completed_at)"
+                + " VALUES (?,?,?,'COMPLETED',?,?)", ORDER_ID, SELLER_ID, PAID_AMOUNT, firstMonth, firstMonth);
+        jdbcTemplate.update("INSERT INTO commission_rule (rule_id,scope,target_id,rate) VALUES ('RATE-144','SHOP',?,1000)", SELLER_ID);
+        try {
+            settlementService.generate("2024-08", "ADMIN-SMOKE");
+            var statement = settlementService.list(SELLER_ID, "2024-08", 1, 20).getList().get(0);
+            assertEquals(10620L, statement.getNetAmount());
+
+            var refund = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(1800L));
+            refundService.auditRefund(refund.getRefundId(), true, SELLER_ID, "MOCK：结算验收");
+            var changed = assertThrows(BizException.class, () -> settlementService.markPaid(statement.getSettlementId(),
+                    "PAID", "ADMIN-SMOKE", 10620L, "MOCK-144-A", null));
+            assertEquals(ErrorCode.SETTLEMENT_AMOUNT_CHANGED, changed.getCode());
+            var paid = settlementService.markPaid(statement.getSettlementId(), "PAID", "ADMIN-SMOKE",
+                    9000L, "MOCK-144-A", null);
+            assertEquals(9000L, paid.getPayout().amount());
+
+            var later = refundService.createRefund(BUYER_ID, PAYMENT_ID, refund(2000L));
+            refundService.auditRefund(later.getRefundId(), true, SELLER_ID, "MOCK：跨期冲减");
+            jdbcTemplate.update("INSERT INTO mall_order.`order` (order_id,seller_id,pay_amount,status,updated_at,completed_at)"
+                    + " VALUES ('O-SMOKE-NEXT',?,10000,'COMPLETED',?,?)", SELLER_ID, nextMonth, nextMonth);
+            settlementService.generate("2024-09", "ADMIN-SMOKE");
+            settlementService.generate("2024-09", "ADMIN-SMOKE");
+            var adjusted = settlementService.list(SELLER_ID, "2024-09", 1, 20).getList().get(0);
+            assertEquals(7200L, adjusted.getNetAmount());
+            assertEquals(1, adjusted.getAdjustments().size());
+            assertEquals(1800L, adjusted.getAdjustments().get(0).amount());
+            assertEquals(9000L, settlementService.list(SELLER_ID, "2024-08", 1, 20).getList().get(0).getNetAmount());
+        } finally {
+            jdbcTemplate.update("DELETE FROM settlement_adjustment_use");
+            jdbcTemplate.update("DELETE FROM settlement_adjustment");
+            jdbcTemplate.update("DELETE FROM settlement_payout");
+            jdbcTemplate.update("DELETE FROM settlement_item");
+            jdbcTemplate.update("DELETE FROM settlement");
+            jdbcTemplate.update("DELETE FROM settlement_seller_lock");
+            jdbcTemplate.update("DELETE FROM commission_rule");
+            jdbcTemplate.update("DELETE FROM mall_order.`order`");
+        }
     }
 
     @Test

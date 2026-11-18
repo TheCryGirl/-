@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 Set-StrictMode -Version 2.0
 
 function Find-DemoJava17 {
@@ -117,7 +117,10 @@ function Get-DemoRecordedProcessId {
     $proc = Get-Process -Id ([int]$Record.ProcessId) -ErrorAction SilentlyContinue
     if (-not $proc) { return 0 }
     try {
-        $elapsed = [Math]::Abs(($proc.StartTime.ToUniversalTime() - [datetime]::Parse($Record.StartedUtc).ToUniversalTime()).TotalSeconds)
+        # PowerShell 7 can deserialize the ISO timestamp as a UTC DateTime already.
+        # Parsing its implicit string representation would discard the timezone and precision.
+        $started = if ($Record.StartedUtc -is [datetime]) { $Record.StartedUtc } else { [datetime]::Parse([string]$Record.StartedUtc) }
+        $elapsed = [Math]::Abs(($proc.StartTime.ToUniversalTime() - $started.ToUniversalTime()).TotalSeconds)
         if ($elapsed -lt 2) { return [int]$proc.Id }
     } catch { }
     return 0
@@ -176,12 +179,16 @@ function Start-DemoChild {
             $seen[$lower] = $true
             $variants = @(@([Environment]::GetEnvironmentVariables('Process').Keys) | Where-Object { ([string]$_).ToLowerInvariant() -eq $lower })
             if ($variants.Length -le 1) { continue }
-            [Environment]::SetEnvironmentVariable([string]$variants[0], $null, 'Process')
+            [Environment]::SetEnvironmentVariable([string]$variants[0], [System.Management.Automation.Language.NullString]::Value, 'Process')
             $null = $collapsed.Add([string]$variants[0])
         }
         foreach ($key in $Environment.Keys) {
             $null = $overridden.Add($key)
-            [Environment]::SetEnvironmentVariable($key, [string]$Environment[$key], 'Process')
+            if ($null -eq $Environment[$key]) {
+                [Environment]::SetEnvironmentVariable($key, [System.Management.Automation.Language.NullString]::Value, 'Process')
+            } else {
+                [Environment]::SetEnvironmentVariable($key, [string]$Environment[$key], 'Process')
+            }
         }
         $argsText = (@($Arguments | ForEach-Object { ConvertTo-DemoArgument $_ }) -join ' ')
         $p = Start-Process -FilePath $FilePath -ArgumentList $argsText -WorkingDirectory $WorkingDirectory `
@@ -192,10 +199,14 @@ function Start-DemoChild {
         return $p
     } finally {
         foreach ($key in $overridden) {
-            [Environment]::SetEnvironmentVariable($key, $null, 'Process')
+            [Environment]::SetEnvironmentVariable($key, [System.Management.Automation.Language.NullString]::Value, 'Process')
         }
         foreach ($item in $saved) {
-            [Environment]::SetEnvironmentVariable([string]$item.Name, [string]$item.Value, 'Process')
+            if ($null -eq $item.Value) {
+                [Environment]::SetEnvironmentVariable([string]$item.Name, [System.Management.Automation.Language.NullString]::Value, 'Process')
+            } else {
+                [Environment]::SetEnvironmentVariable([string]$item.Name, [string]$item.Value, 'Process')
+            }
         }
     }
 }

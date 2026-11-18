@@ -15,6 +15,8 @@ public interface SettlementItemMapper {
     /** 唯一键冲突时静默跳过（幂等插入） */
     int insertIgnoreDuplicate(SettlementItem item);
 
+    int updateRefundedAmounts(SettlementItem item);
+
     List<SettlementItem> lockBySettlementId(@Param("settlementId") String settlementId);
 
     List<SettlementItem> selectBySettlementIds(@Param("settlementIds") List<String> settlementIds);

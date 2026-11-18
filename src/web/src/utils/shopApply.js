@@ -56,6 +56,10 @@ export function publishBlockReason(shop) {
       ? `入驻审核已驳回：${shop.rejectReason}，请修改资质后重新提交`
       : '入驻审核未通过，请修改资质后重新提交'
   }
+  if (shop.status === 'SUSPENDED') return '店铺已停用，暂不能发布或上架商品'
+  if (shop.applyStatus === 'APPROVED' && shop.depositPaid === false) {
+    return '保证金尚未登记，请联系管理员确认后再发布或上架商品'
+  }
   return '当前店铺不能发布商品'
 }
 

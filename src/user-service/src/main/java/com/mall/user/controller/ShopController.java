@@ -103,6 +103,12 @@ public class ShopController {
         return Result.success(shopService.updateStatus(operatorId, shopId, request));
     }
 
+    /** 供商品服务校验新增与上架；网关不转发内部路径。 */
+    @GetMapping("/internal/publication/{sellerId}")
+    public Result<ShopService.PublicationEligibility> publication(@PathVariable("sellerId") String sellerId) {
+        return Result.success(shopService.publicationEligibility(sellerId));
+    }
+
     /** 按卖家查店铺，供 order-service 下单校验营业状态（服务间直连，不经过网关） */
     @GetMapping("/seller/{sellerId}")
     public Result<ShopResponse> bySeller(@PathVariable("sellerId") String sellerId) {

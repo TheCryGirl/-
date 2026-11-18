@@ -35,4 +35,9 @@ public interface ShopService {
 
     /** 按卖家查店铺，供 product-service、order-service 内部校验营业状态 */
     ShopResponse getBySellerId(String sellerId);
+
+    /** 仅服务间查询，不返回资质与保证金明细。 */
+    PublicationEligibility publicationEligibility(String sellerId);
+
+    record PublicationEligibility(boolean publishable, String reason) {}
 }

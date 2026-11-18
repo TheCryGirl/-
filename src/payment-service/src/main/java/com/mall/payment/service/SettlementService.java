@@ -14,6 +14,11 @@ import com.mall.payment.mapper.CommissionRuleMapper;
 import com.mall.payment.mapper.OrderCompletionMapper;
 import com.mall.payment.mapper.SettlementItemMapper;
 import com.mall.payment.mapper.SettlementMapper;
+import com.mall.payment.mapper.RefundMapper;
+import com.mall.payment.mapper.SettlementLedgerMapper;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.annotation.Isolation;
+import java.util.TreeMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,19 +55,30 @@ public class SettlementService {
     private final SettlementItemMapper settlementItemMapper;
     private final CommissionRuleMapper commissionRuleMapper;
     private final OrderCompletionMapper orderCompletionMapper;
+    private final RefundMapper refundMapper;
+    private final SettlementLedgerMapper ledger;
+    private static final java.time.ZoneId SETTLEMENT_ZONE = java.time.ZoneId.of("Asia/Shanghai");
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SettlementGenerateResponse generate(String periodRaw, String operatorId) {
         YearMonth period = parsePeriod(periodRaw);
         LocalDateTime start = period.atDay(1).atStartOfDay();
         LocalDateTime end = period.plusMonths(1).atDay(1).atStartOfDay();
 
+        return generateForPeriod(period, start, end, operatorId, null);
+    }
+
+    private SettlementGenerateResponse generateForPeriod(YearMonth period, LocalDateTime start, LocalDateTime end,
+                                                          String operatorId, String onlySeller) {
         List<OrderCompletion> candidates = orderCompletionMapper.selectCompletedInPeriod(start, end);
         Map<String, Integer> shopRates = new HashMap<>();
+        Map<String, Integer> categoryRates = new HashMap<>();
         Integer platformRate = null;
         for (CommissionRule rule : commissionRuleMapper.selectAll()) {
             if (CommissionRule.SCOPE_SHOP.equals(rule.getScope())) {
                 shopRates.put(rule.getTargetId(), rule.getRate());
+            } else if (CommissionRule.SCOPE_CATEGORY.equals(rule.getScope())) {
+                categoryRates.put(rule.getTargetId(), rule.getRate());
             } else if (CommissionRule.SCOPE_PLATFORM.equals(rule.getScope())
                     && CommissionRule.TARGET_PLATFORM.equals(rule.getTargetId())) {
                 platformRate = rule.getRate();
@@ -70,9 +86,18 @@ public class SettlementService {
         }
         int defaultRate = platformRate == null ? 0 : platformRate;
 
-        Map<String, List<OrderCompletion>> bySeller = new LinkedHashMap<>();
+        Map<String, List<OrderCompletion>> bySeller = new TreeMap<>();
+        for (String sellerId : settlementMapper.selectPendingSellers(start)) {
+            bySeller.put(sellerId, new ArrayList<>());
+        }
+        for (String sellerId : ledger.selectSellersWithAdjustments(start)) {
+            bySeller.computeIfAbsent(sellerId, key -> new ArrayList<>());
+        }
         for (OrderCompletion order : candidates) {
             bySeller.computeIfAbsent(order.getSellerId(), key -> new ArrayList<>()).add(order);
+        }
+        if (onlySeller != null) {
+            bySeller.keySet().removeIf(seller -> !onlySeller.equals(seller));
         }
 
         int created = 0;
@@ -81,7 +106,9 @@ public class SettlementService {
         for (Map.Entry<String, List<OrderCompletion>> entry : bySeller.entrySet()) {
             String sellerId = entry.getKey();
             List<OrderCompletion> orders = entry.getValue();
-            int rate = shopRates.getOrDefault(sellerId, defaultRate);
+            Integer shopRate = shopRates.get(sellerId);
+            lockSeller(sellerId);
+            recordPaidRefunds(sellerId);
             // Upsert first, then lock the current row; a snapshot read may miss a concurrent insert.
             Settlement fresh = new Settlement();
             fresh.setSettlementId(IdGenerator.settlementId());
@@ -95,22 +122,20 @@ public class SettlementService {
             fresh.setUpdatedBy(operatorId);
             settlementMapper.insertIgnoreDuplicate(fresh);
             Settlement settlement = settlementMapper.lockBySellerPeriod(sellerId, start);
-            if (settlement == null || !Settlement.STATUS_PENDING.equals(settlement.getStatus())) {
+            if (settlement == null || !!Settlement.STATUS_PAID.equals(settlement.getStatus())) {
                 skipped++;
                 continue;
             }
 
             String settlementId = settlement.getSettlementId();
-            insertItems(settlementId, orders, rate);
-            // Read current details under the same transaction; duplicate candidates never add money.
-            List<SettlementItem> items = settlementItemMapper.lockBySettlementId(settlementId);
-            long gross = items.stream().mapToLong(SettlementItem::getGrossAmount).sum();
-            long commission = items.stream().mapToLong(SettlementItem::getCommissionAmount).sum();
+            insertItems(settlementId, orders, shopRate, categoryRates, defaultRate);
+            rebuildEditableStatements(sellerId, operatorId);
+            Settlement current = settlementMapper.selectById(settlementId);
             if (fresh.getSettlementId().equals(settlementId)) {
-                settlementMapper.setAmounts(settlementId, gross, commission, gross - commission, operatorId);
                 created++;
-            } else if (gross != settlement.getGrossAmount() || commission != settlement.getCommissionAmount()) {
-                settlementMapper.setAmounts(settlementId, gross, commission, gross - commission, operatorId);
+            } else if (!current.getGrossAmount().equals(settlement.getGrossAmount())
+                    || !current.getCommissionAmount().equals(settlement.getCommissionAmount())
+                    || !current.getNetAmount().equals(settlement.getNetAmount())) {
                 updated++;
             }
         }
@@ -118,6 +143,30 @@ public class SettlementService {
                 operatorId, period, candidates.size(), created, updated, skipped);
         return SettlementGenerateResponse.of(period.toString(), created, updated, skipped,
                 candidates.size());
+    }
+
+    public List<CommissionRule> commissionRules() {
+        return commissionRuleMapper.selectAll();
+    }
+
+    public void saveCommissionRule(String scope, String targetId, Integer rate, String operatorId) {
+        if (scope == null || !List.of(CommissionRule.SCOPE_PLATFORM, CommissionRule.SCOPE_CATEGORY,
+                CommissionRule.SCOPE_SHOP).contains(scope) || rate == null || rate < 0 || rate > 10000) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "费率范围应为 0–10000 万分比，作用范围须明确");
+        }
+        String target = targetId == null ? "" : targetId.trim();
+        if (CommissionRule.SCOPE_PLATFORM.equals(scope) ? !"*".equals(target)
+                : target.isEmpty() || target.length() > 32 || "*".equals(target)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "平台目标为 *，店铺和类目规则须填写对应 ID");
+        }
+        CommissionRule rule = new CommissionRule();
+        rule.setRuleId(IdGenerator.settlementId());
+        rule.setScope(scope);
+        rule.setTargetId(target);
+        rule.setRate(rate);
+        rule.setCreatedBy(operatorId);
+        rule.setUpdatedBy(operatorId);
+        commissionRuleMapper.upsert(rule);
     }
 
     /** 管理员视角：可按卖家与周期过滤 */
@@ -138,33 +187,140 @@ public class SettlementService {
         return list(sellerId, periodRaw, page, size);
     }
 
-    @Transactional
-    public SettlementResponse markPaid(String settlementId, String targetStatus, String operatorId) {
+    @Transactional(isolation = Isolation.READ_COMMITTED, noRollbackFor = SettlementAmountChanged.class)
+    public SettlementResponse markPaid(String settlementId, String targetStatus, String operatorId,
+                                       Long expectedNet, String reference, String remark) {
         if (!Settlement.STATUS_PAID.equals(targetStatus)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "状态接口当前仅支持标记为 PAID");
         }
-        if (settlementMapper.selectById(settlementId) == null) {
+        Settlement initial = settlementMapper.selectById(settlementId);
+        if (initial == null) {
             throw new BizException(ErrorCode.SETTLEMENT_NOT_FOUND, "结算单不存在");
         }
-        int affected = settlementMapper.markPaid(settlementId, operatorId);
-        if (affected == 0) {
+        lockSeller(initial.getSellerId());
+        Settlement current = settlementMapper.lockBySellerPeriod(initial.getSellerId(), initial.getPeriodStart());
+        LocalDateTime now = LocalDateTime.now(SETTLEMENT_ZONE);
+        if (current == null || Settlement.STATUS_PAID.equals(current.getStatus()) || now.isBefore(current.getPeriodEnd())) {
+            throw new BizException(ErrorCode.SETTLEMENT_STATE_INVALID, "结算单已打款、周期未结束或状态不允许打款");
+        }
+        String receipt = reference == null ? "" : reference.strip();
+        String note = remark == null || remark.isBlank() ? null : remark.strip();
+        if (expectedNet == null || expectedNet < 0 || receipt.isEmpty() || receipt.length() > 100
+                || (note != null && note.length() > 255)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "请确认应结金额并填写有效且唯一的打款凭证编号");
+        }
+        generateForPeriod(YearMonth.from(current.getPeriodStart()), current.getPeriodStart(),
+                current.getPeriodEnd(), operatorId, current.getSellerId());
+        Settlement recalculated = settlementMapper.selectById(settlementId);
+        if (!expectedNet.equals(recalculated.getNetAmount())) {
+            throw new SettlementAmountChanged();
+        }
+        if (settlementMapper.markPaid(settlementId, operatorId) != 1) {
             throw new BizException(ErrorCode.SETTLEMENT_STATE_INVALID, "结算单已打款或状态不允许打款");
+        }
+        try {
+            ledger.insertPayout(settlementId, new SettlementLedgerMapper.Payout(receipt, operatorId, expectedNet, now, note));
+        } catch (DuplicateKeyException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "打款凭证编号已经使用");
         }
         return toResponse(settlementMapper.selectById(settlementId));
     }
 
-    /** 每笔订单按分四舍五入一次：pay × rate / 10000 */
-    private long commissionOf(long payAmount, int rate) {
-        return Math.round(payAmount * (double) rate / CommissionRule.RATE_BASE);
+    private static final class SettlementAmountChanged extends BizException {
+        SettlementAmountChanged() {
+            super(ErrorCode.SETTLEMENT_AMOUNT_CHANGED, "应结金额已变化，请刷新账单后重新确认");
+        }
     }
 
-    private void insertItems(String settlementId, List<OrderCompletion> orders, int rate) {
+    private void lockSeller(String sellerId) {
+        ledger.ensureSeller(sellerId);
+        ledger.lockSeller(sellerId);
+    }
+
+    private void recordPaidRefunds(String sellerId) {
+        for (var item : ledger.selectPaidRefundChanges(sellerId)) {
+            long original = Math.addExact(item.grossAmount(), item.refundedAmount());
+            long refunded = Math.min(original, item.totalRefunded());
+            if (refunded <= Math.max(item.refundedAmount(), item.recordedRefunded())) continue;
+            long remaining = original - refunded;
+            long commission = recalculatedCommission(remaining, item.commissionSnapshot(),
+                    item.grossAmount(), item.commissionAmount());
+            long deduction = Math.max(0L, (item.grossAmount() - item.commissionAmount())
+                    - (remaining - commission) - item.recordedDeduction());
+            ledger.insertAdjustment(sellerId, item, refunded, deduction);
+        }
+    }
+
+    private void rebuildEditableStatements(String sellerId, String operatorId) {
+        List<Settlement> statements = settlementMapper.lockEditableBySeller(sellerId);
+        // Reallocate only editable statements, earliest first. Uses belonging to paid statements stay immutable.
+        statements.forEach(statement -> ledger.clearApplied(statement.getSettlementId()));
+        for (Settlement statement : statements) {
+            String id = statement.getSettlementId();
+            List<SettlementItem> items = refreshItems(id);
+            long gross = items.stream().mapToLong(SettlementItem::getGrossAmount).reduce(0L, Math::addExact);
+            long commission = items.stream().mapToLong(SettlementItem::getCommissionAmount).reduce(0L, Math::addExact);
+            long net = gross - commission;
+            if (net > 0) {
+                for (var adjustment : ledger.lockAvailableAdjustments(sellerId, statement.getPeriodStart())) {
+                    long used = Math.min(net, adjustment.amount() - adjustment.appliedAmount());
+                    if (used <= 0) continue;
+                    ledger.applyAdjustment(id, adjustment.id(), used);
+                    net -= used;
+                    if (net == 0) break;
+                }
+            }
+            settlementMapper.setAmounts(id, gross, commission, net, operatorId);
+        }
+    }
+
+    private static long recalculatedCommission(long remaining, String snapshot, long gross, long commission) {
+        return snapshot == null ? SettlementCommission.historicalCommission(remaining, gross, commission)
+                : SettlementCommission.calculate(remaining, snapshot);
+    }
+
+    private List<SettlementItem> refreshItems(String settlementId) {
+        List<SettlementItem> items = settlementItemMapper.lockBySettlementId(settlementId);
+        for (SettlementItem item : items) {
+            long originalGross = Math.addExact(item.getGrossAmount(), item.getRefundedAmount());
+            long refunded = Math.min(originalGross, refundMapper.sumSettlementRefunds(item.getOrderId()));
+            if (refunded <= item.getRefundedAmount()) {
+                continue;
+            }
+            long remaining = originalGross - refunded;
+            String snapshot = item.getCommissionSnapshot();
+            long commission = snapshot == null
+                    ? SettlementCommission.historicalCommission(remaining, item.getGrossAmount(), item.getCommissionAmount())
+                    : SettlementCommission.calculate(remaining, snapshot);
+            item.setGrossAmount(remaining);
+            item.setCommissionAmount(commission);
+            item.setRefundedAmount(refunded);
+            settlementItemMapper.updateRefundedAmounts(item);
+        }
+        return items;
+    }
+
+    private void insertItems(String settlementId, List<OrderCompletion> orders, Integer shopRate,
+                             Map<String, Integer> categoryRates, int defaultRate) {
         for (OrderCompletion order : orders) {
+            var lines = shopRate == null ? orderCompletionMapper.selectLines(order.getOrderId()).stream()
+                    .map(line -> new SettlementCommission.Line(line.subtotal(),
+                            categoryRates.getOrDefault(line.categoryId(), defaultRate)))
+                    .toList() : List.of(new SettlementCommission.Line(1, shopRate));
+            if (lines.isEmpty()) {
+                lines = List.of(new SettlementCommission.Line(1, defaultRate));
+            }
+            String snapshot = SettlementCommission.snapshot(lines);
             SettlementItem item = new SettlementItem();
             item.setSettlementId(settlementId);
             item.setOrderId(order.getOrderId());
-            item.setGrossAmount(order.getPayAmount());
-            item.setCommissionAmount(commissionOf(order.getPayAmount(), rate));
+            long refunded = Math.min(order.getPayAmount(), order.getSuccessfulRefundAmount());
+            long remaining = order.getPayAmount() - refunded;
+            if (remaining <= 0) continue;
+            item.setGrossAmount(remaining);
+            item.setRefundedAmount(refunded);
+            item.setCommissionSnapshot(snapshot);
+            item.setCommissionAmount(SettlementCommission.calculate(remaining, snapshot));
             settlementItemMapper.insertIgnoreDuplicate(item);
         }
     }
@@ -180,8 +336,18 @@ public class SettlementService {
         }
         List<SettlementResponse> responses = new ArrayList<>(rows.size());
         for (Settlement settlement : rows) {
-            responses.add(SettlementResponse.of(settlement,
-                    itemsBySettlement.getOrDefault(settlement.getSettlementId(), List.of())));
+            String id = settlement.getSettlementId();
+            var response = SettlementResponse.of(settlement, itemsBySettlement.getOrDefault(id, List.of()));
+            response.setPayable(!Settlement.STATUS_PAID.equals(settlement.getStatus())
+                    && !LocalDateTime.now(SETTLEMENT_ZONE).isBefore(settlement.getPeriodEnd()));
+            var payout = ledger.selectPayout(id);
+            if (payout != null) {
+                response.setPayout(new SettlementResponse.Payout(payout.reference(), payout.operatorId(),
+                        payout.amount(), payout.paidAt(), payout.remark()));
+            }
+            response.setAdjustments(ledger.selectApplied(id).stream().map(a ->
+                    new SettlementResponse.Adjustment(a.sourceSettlementId(), a.orderId(), a.amount())).toList());
+            responses.add(response);
         }
         return responses;
     }
@@ -192,7 +358,7 @@ public class SettlementService {
 
     private YearMonth parsePeriod(String periodRaw) {
         String period = periodRaw == null || periodRaw.isBlank()
-                ? YearMonth.now().toString()
+                ? YearMonth.now(SETTLEMENT_ZONE).toString()
                 : periodRaw.trim();
         if (!period.matches("\\d{4}-(0[1-9]|1[0-2])")) {
             throw new BizException(ErrorCode.PARAM_INVALID, "周期格式应为 yyyy-MM");

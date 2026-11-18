@@ -17,6 +17,8 @@ public interface RefundMapper {
 
     Refund selectById(@Param("refundId") String refundId);
 
+    long sumSettlementRefunds(@Param("orderId") String orderId);
+
     List<Refund> selectPage(@Param("status") RefundStatus status,
                             @Param("buyerId") String buyerId,
                             @Param("sellerId") String sellerId,

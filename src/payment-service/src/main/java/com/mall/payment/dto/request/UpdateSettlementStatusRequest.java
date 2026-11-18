@@ -11,4 +11,7 @@ public class UpdateSettlementStatusRequest {
 
     @NotBlank(message = "目标状态不能为空")
     private String status;
+    private Long expectedNetAmount;
+    private String payoutReference;
+    private String payoutRemark;
 }

@@ -5,6 +5,9 @@ import com.mall.payment.common.ErrorCode;
 import com.mall.payment.common.PageResult;
 import com.mall.payment.common.Result;
 import com.mall.payment.dto.request.GenerateSettlementRequest;
+import com.mall.payment.dto.request.SaveCommissionRuleRequest;
+import com.mall.payment.entity.CommissionRule;
+import java.util.List;
 import com.mall.payment.dto.request.UpdateSettlementStatusRequest;
 import com.mall.payment.dto.response.SettlementGenerateResponse;
 import com.mall.payment.dto.response.SettlementResponse;
@@ -60,6 +63,24 @@ public class SettlementController {
         throw new BizException(ErrorCode.FORBIDDEN, "仅卖家或管理员可查看结算单");
     }
 
+    @GetMapping("/commission-rules")
+    public Result<List<CommissionRule>> commissionRules(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        requireAdmin(userId, role);
+        return Result.success(settlementService.commissionRules());
+    }
+
+    @PutMapping("/commission-rules")
+    public Result<Void> saveCommissionRule(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestBody SaveCommissionRuleRequest request) {
+        requireAdmin(userId, role);
+        settlementService.saveCommissionRule(request.scope(), request.targetId(), request.rate(), userId);
+        return Result.success(null);
+    }
+
     @PostMapping("/generate")
     public Result<SettlementGenerateResponse> generate(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
@@ -77,7 +98,8 @@ public class SettlementController {
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @Valid @RequestBody UpdateSettlementStatusRequest request) {
         requireAdmin(userId, role);
-        return Result.success(settlementService.markPaid(settlementId, request.getStatus(), userId));
+        return Result.success(settlementService.markPaid(settlementId, request.getStatus(), userId,
+                request.getExpectedNetAmount(), request.getPayoutReference(), request.getPayoutRemark()));
     }
 
     private void requireAdmin(String userId, String role) {

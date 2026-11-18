@@ -32,15 +32,17 @@ test('驳回理由回传给卖家，重新提交前仍拦住发布', () => {
   assert.match(publishBlockReason(noReason), /修改资质/)
 })
 
-test('审核通过即放行，保证金仅作记录不拦截发布', () => {
-  const noDeposit = { applyStatus: 'APPROVED', depositPaid: false, depositAmount: 0, publishable: true }
-  assert.equal(publishBlockReason(noDeposit), '')
+test('审核通过但保证金未登记时，明确拦住发布并提示联系管理员', () => {
+  const noDeposit = { applyStatus: 'APPROVED', status: 'ACTIVE', depositPaid: false, depositAmount: 0, publishable: false }
+  assert.match(publishBlockReason(noDeposit), /保证金.*管理员/)
   assert.equal(depositText(noDeposit.depositAmount), '保证金未缴纳')
-
-  const legacy = { applyStatus: 'APPROVED', depositPaid: false, depositAmount: 0, publishable: true }
-  assert.equal(publishBlockReason(legacy), '')
-  assert.equal(depositText(legacy.depositAmount), '保证金未缴纳')
   assert.equal(depositText(null), '保证金未缴纳')
+  assert.equal(canEditShopInfo(noDeposit), true)
+})
+
+test('已过审且缴纳保证金的停用店铺仍不能发布', () => {
+  const suspended = { applyStatus: 'APPROVED', status: 'SUSPENDED', depositPaid: true, publishable: false }
+  assert.match(publishBlockReason(suspended), /停用/)
 })
 
 test('可发布的店铺放行，保证金按分转元展示一次', () => {

@@ -15,5 +15,7 @@ public class SettlementItem {
     private String orderId;
     private Long grossAmount;
     private Long commissionAmount;
+    private String commissionSnapshot;
+    private long refundedAmount;
     private LocalDateTime createdAt;
 }

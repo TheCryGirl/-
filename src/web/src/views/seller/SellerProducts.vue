@@ -101,6 +101,10 @@ function handleEdit(row) {
  * 后端失败只提示错误、不改本地行数据，避免界面出现假成功。
  */
 async function handleChangeStatus(row, next) {
+  if (next === 'ON_SALE' && publishHint.value) {
+    showError(publishHint.value)
+    return
+  }
   const actionText = next === 'OFF_SHELF' ? '下架' : '上架'
 
   const ok = await confirmAction({
@@ -286,6 +290,7 @@ onMounted(() => {
             type="success"
             size="small"
             :loading="operatingId === row.productId"
+            :disabled="!!publishHint"
             :data-testid="`seller-products-on-sale-${row.productId}`"
             @click="handleChangeStatus(row, 'ON_SALE')"
           >

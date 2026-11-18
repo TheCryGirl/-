@@ -11,4 +11,5 @@ public class OrderCompletion {
     private String orderId;
     private String sellerId;
     private Long payAmount;
+    private long successfulRefundAmount;
 }

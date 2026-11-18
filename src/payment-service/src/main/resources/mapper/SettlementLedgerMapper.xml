@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mall.payment.mapper.SettlementLedgerMapper">
+    <insert id="ensureSeller">
+        INSERT INTO settlement_seller_lock (seller_id) VALUES (#{sellerId})
+        ON DUPLICATE KEY UPDATE seller_id = seller_id
+    </insert>
+
+    <select id="lockSeller" resultType="string">
+        SELECT seller_id FROM settlement_seller_lock WHERE seller_id = #{sellerId} FOR UPDATE
+    </select>
+
+    <select id="selectPaidRefundChanges" resultType="com.mall.payment.mapper.SettlementLedgerMapper$PaidItem">
+        SELECT s.settlement_id, i.order_id, i.gross_amount, i.commission_amount, i.commission_snapshot,
+               i.refunded_amount, s.period_end, r.total_refunded,
+               COALESCE(a.recorded_refunded, 0) AS recorded_refunded,
+               COALESCE(a.recorded_deduction, 0) AS recorded_deduction
+        FROM settlement s JOIN settlement_item i ON i.settlement_id = s.settlement_id
+        JOIN (SELECT order_id, SUM(amount) AS total_refunded FROM refund
+              WHERE status='SUCCESS' AND is_deleted=0 GROUP BY order_id) r ON r.order_id=i.order_id
+        LEFT JOIN (SELECT order_id, MAX(refunded_amount) AS recorded_refunded,
+                          SUM(amount) AS recorded_deduction
+                   FROM settlement_adjustment GROUP BY order_id) a ON a.order_id=i.order_id
+        WHERE s.seller_id=#{sellerId} AND s.status='PAID' AND s.is_deleted=0
+          AND r.total_refunded &gt; GREATEST(i.refunded_amount, COALESCE(a.recorded_refunded, 0))
+        ORDER BY s.period_start, i.id
+    </select>
+
+    <select id="selectSellersWithAdjustments" resultType="string">
+        SELECT DISTINCT s.seller_id FROM settlement s JOIN settlement_item i ON i.settlement_id=s.settlement_id
+        JOIN refund r ON r.order_id=i.order_id AND r.status='SUCCESS' AND r.is_deleted=0
+        WHERE s.status='PAID' AND s.is_deleted=0 AND s.period_end &lt;= #{periodStart}
+        UNION
+        SELECT DISTINCT a.seller_id FROM settlement_adjustment a
+        WHERE a.eligible_from &lt;= #{periodStart}
+    </select>
+
+    <insert id="insertAdjustment">
+        INSERT INTO settlement_adjustment
+            (seller_id, order_id, source_settlement_id, eligible_from, refunded_amount, amount)
+        VALUES (#{sellerId}, #{item.orderId}, #{item.settlementId}, #{item.periodEnd}, #{refunded}, #{amount})
+    </insert>
+
+    <select id="lockAvailableAdjustments" resultType="com.mall.payment.mapper.SettlementLedgerMapper$Adjustment">
+        SELECT a.id, a.order_id, a.source_settlement_id, a.amount,
+            COALESCE((SELECT SUM(u.amount) FROM settlement_adjustment_use u WHERE u.adjustment_id=a.id),0)
+                AS applied_amount
+        FROM settlement_adjustment a
+        WHERE a.seller_id = #{sellerId} AND a.eligible_from &lt;= #{periodStart}
+        ORDER BY a.eligible_from, a.id
+    </select>
+
+    <delete id="clearApplied">
+        DELETE FROM settlement_adjustment_use WHERE settlement_id=#{settlementId}
+    </delete>
+
+    <select id="selectApplied" resultType="com.mall.payment.mapper.SettlementLedgerMapper$Applied">
+        SELECT a.source_settlement_id, a.order_id, u.amount FROM settlement_adjustment_use u
+        JOIN settlement_adjustment a ON a.id=u.adjustment_id
+        WHERE u.settlement_id=#{settlementId} ORDER BY a.id
+    </select>
+
+    <insert id="applyAdjustment">
+        INSERT INTO settlement_adjustment_use (adjustment_id, settlement_id, amount)
+        VALUES (#{adjustmentId}, #{settlementId}, #{amount})
+    </insert>
+
+    <insert id="insertPayout">
+        INSERT INTO settlement_payout (settlement_id, reference, operator_id, amount, paid_at, remark)
+        VALUES (#{settlementId}, #{payout.reference}, #{payout.operatorId}, #{payout.amount}, #{payout.paidAt}, #{payout.remark})
+    </insert>
+
+    <select id="selectPayout" resultType="com.mall.payment.mapper.SettlementLedgerMapper$Payout">
+        SELECT reference, operator_id, amount, paid_at, remark FROM settlement_payout WHERE settlement_id=#{settlementId}
+    </select>
+</mapper>

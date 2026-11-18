@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 
+
 /**
  * 结算候选订单只读视图（#144 第二块）。
  *
@@ -21,6 +22,10 @@ public interface OrderCompletionMapper {
      * 完成时间以 order 表的 updated_at 为准：order-service 的 markCompleted
      * 只改 status 与 updated_at，且 COMPLETED 之后除退款外没有业务更新。
      */
+    record OrderLine(String categoryId, long subtotal) {}
+
+    List<OrderLine> selectLines(@Param("orderId") String orderId);
+
     List<OrderCompletion> selectCompletedInPeriod(@Param("start") LocalDateTime start,
                                                   @Param("end") LocalDateTime end);
 }

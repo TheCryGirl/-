@@ -128,6 +128,11 @@
           AND is_deleted = 0
     </update>
 
+    <select id="sumSettlementRefunds" resultType="long">
+        SELECT COALESCE(SUM(amount), 0) FROM refund
+        WHERE order_id = #{orderId} AND status = 'SUCCESS' AND is_deleted = 0
+    </select>
+
     <!-- 管理员资金汇总：口径为全部 is_deleted = 0 的退款单，SQL 聚合、不分页。
          refunded* 只认 status = SUCCESS；pending* 只认 status = PENDING（待审核）。 -->
     <select id="selectFinanceTotals" resultType="com.mall.payment.dto.response.FinanceSummaryRows$Totals">
