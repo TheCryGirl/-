@@ -47,3 +47,8 @@ uploads/
 src/web/src/auto-imports.d.ts
 src/web/src/components.d.ts
 
+# 组内填报过程材料仅留本地，不影响正式报告
+/docs/成员材料填写表.md
+/docs/成员材料填写表.xlsx
+/docs/成员材料填写说明.md
+
