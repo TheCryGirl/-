@@ -9,19 +9,45 @@
         <result property="requestHash" column="request_hash"/>
         <result property="orderId" column="order_id"/>
         <result property="status" column="status"/>
+        <result property="reservationOwner" column="reservation_owner"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.mall.order.entity.OrderIdempotency">
-        INSERT INTO order_idempotency(idem_key, buyer_id, request_hash, order_id, status, created_at, updated_at)
-        VALUES (#{idemKey}, #{buyerId}, #{requestHash}, #{orderId}, #{status}, #{createdAt}, #{updatedAt})
+        INSERT INTO order_idempotency(idem_key, buyer_id, request_hash, order_id, status, reservation_owner, created_at, updated_at)
+        VALUES (#{idemKey}, #{buyerId}, #{requestHash}, #{orderId}, #{status}, #{reservationOwner}, #{createdAt}, #{updatedAt})
     </insert>
 
     <select id="selectByKey" resultMap="IdempotencyMap">
-        SELECT id, idem_key, buyer_id, request_hash, order_id, status, created_at, updated_at
+        SELECT id, idem_key, buyer_id, request_hash, order_id, status, reservation_owner, created_at, updated_at
         FROM order_idempotency
         WHERE idem_key = #{idemKey}
+    </select>
+
+    <select id="lockByKey" resultMap="IdempotencyMap">
+        SELECT id, idem_key, buyer_id, request_hash, order_id, status, reservation_owner, created_at, updated_at
+        FROM order_idempotency WHERE idem_key = #{idemKey} FOR UPDATE
+    </select>
+
+    <update id="claimFlashReservation">
+        UPDATE order_idempotency SET status='RESERVING', reservation_owner=#{owner}, updated_at=#{updatedAt}
+        WHERE idem_key=#{idemKey} AND reservation_owner IS NOT NULL
+        AND (status='FAILED' OR (status='RESERVING' AND updated_at &lt; #{cutoff}))
+    </update>
+
+    <update id="markFlashSucceeded">
+        UPDATE order_idempotency SET status='SUCCESS', updated_at=#{updatedAt}
+        WHERE idem_key=#{idemKey} AND status='RESERVING' AND reservation_owner=#{owner}
+    </update>
+
+    <update id="markFlashFailed">
+        UPDATE order_idempotency SET status='FAILED', updated_at=#{updatedAt}
+        WHERE idem_key=#{idemKey} AND status='RESERVING' AND reservation_owner=#{owner}
+    </update>
+
+    <select id="hasSuccessfulOrder" resultType="boolean">
+        SELECT COUNT(*) &gt; 0 FROM order_idempotency WHERE order_id=#{orderId} AND status='SUCCESS'
     </select>
 
     <update id="markSuccess">

@@ -94,8 +94,9 @@ public class PaymentCallbackService {
             return result;
         }
 
-        boolean orderOk = notifyOrderPaid(payment);
-        boolean stockOk = confirmStock(payment);
+        boolean orderOk = notifyOrderPaid(payment, order.isFlashSale());
+        // Flash stock is released only after order-side cancellation. Do not confirm it after a lost race.
+        boolean stockOk = (!order.isFlashSale() || orderOk) && confirmStock(payment);
         if (orderOk && stockOk) {
             markReconciled(payment);
         }
@@ -243,9 +244,13 @@ public class PaymentCallbackService {
         }
     }
 
-    private boolean notifyOrderPaid(Payment payment) {
+    private boolean notifyOrderPaid(Payment payment, boolean flashSale) {
         try {
             Result<Void> result = orderClient.markPaid(payment.getOrderId());
+            if (result != null && flashSale && result.getCode() == ErrorCode.ORDER_TIMEOUT) {
+                autoRefundQuietly(payment, "秒杀订单已取消或超时，支付款自动退回");
+                return false;
+            }
             if (result == null || result.getCode() != 0) {
                 log.error("通知订单支付成功失败, orderId={}, code={}，等待对账任务重试",
                         payment.getOrderId(), result == null ? null : result.getCode());

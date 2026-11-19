@@ -14,6 +14,8 @@ public class FlashSaleOrder {
     private String saleOrderId;
     private String saleId;
     private String userId;
+    private String orderId;
+    private Long unitPrice;
     private Integer quantity;
     private LocalDateTime createdAt;
 }

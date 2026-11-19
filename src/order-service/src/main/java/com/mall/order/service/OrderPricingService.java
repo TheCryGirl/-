@@ -160,6 +160,27 @@ public class OrderPricingService {
         }
     }
 
+    public PricingResult priceFlashSale(ShopGoods shop, String region) {
+        Result<FreightConfigDTO> result;
+        try {
+            result = freightClient.bySeller(shop.sellerId());
+        } catch (RuntimeException e) {
+            throw new BizException(com.mall.order.common.ErrorCode.SERVICE_UNAVAILABLE, "无法核对秒杀运费", e);
+        }
+        if (result == null || result.getCode() != 0) {
+            throw new BizException(com.mall.order.common.ErrorCode.SERVICE_UNAVAILABLE, "无法核对秒杀运费");
+        }
+        long freight = FreightCalculator.calc(shop.goodsAmount(), result.getData(), region);
+        long pay;
+        try {
+            pay = Math.addExact(shop.goodsAmount(), freight);
+        } catch (ArithmeticException e) {
+            throw new BizException(com.mall.order.common.ErrorCode.PARAM_INVALID, "秒杀应付金额超出范围");
+        }
+        return new PricingResult(shop.goodsAmount(), freight, 0L, pay,
+                List.of(new ShopPricing(shop.sellerId(), shop.goodsAmount(), freight, 0L, pay)));
+    }
+
     private List<DiscountStep> sortedSteps() {
         return discountSteps.stream()
                 .sorted(Comparator.comparingInt(DiscountStep::order))

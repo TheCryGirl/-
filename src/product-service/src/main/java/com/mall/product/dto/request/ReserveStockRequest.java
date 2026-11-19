@@ -20,4 +20,10 @@ public class ReserveStockRequest {
     @Valid
     @NotEmpty(message = "预占明细不能为空")
     private List<ReserveItem> items;
+
+    @Valid
+    private FlashSale flashSale;
+
+    public record FlashSale(@NotBlank String saleId, @NotBlank String buyerId,
+                            @jakarta.validation.constraints.Positive long unitPrice) {}
 }

@@ -122,6 +122,127 @@ class Issue140CouponCheckoutTest {
     }
 
     @Test
+    void flashCheckoutDoesNotRequireCartAndRejectsStaleQuoteBeforeReserving() {
+        when(productClient.flashQuote("FS-145", BUYER, 1))
+                .thenReturn(Result.success(new ProductClient.FlashQuote("P140A", "S140A", 399)));
+        var config = emptyConfig();
+        var freight = new FreightConfigDTO.FreightRuleDTO();
+        freight.setRegionCode("DEFAULT");
+        freight.setMinAmount(0L);
+        freight.setFee(100L);
+        config.setRules(List.of(freight));
+        when(freightClient.bySeller(SELLER_A)).thenReturn(Result.success(config));
+        var previewRequest = new PreviewOrderRequest();
+        previewRequest.setFlashSaleId("FS-145");
+        previewRequest.setQuantity(1);
+        previewRequest.setAddressId(ADDRESS);
+        var preview = orderService.preview(BUYER, previewRequest);
+        assertThat(preview.getTotalAmount()).isEqualTo(399L);
+        assertThat(preview.getPayAmount()).isEqualTo(499L);
+        assertThat(preview.getDiscountAmount()).isZero();
+        verify(productClient, never()).reserve(any(), any());
+
+        var request = new CreateOrderRequest();
+        request.setFlashSaleId("FS-145");
+        request.setQuantity(1);
+        request.setAddressId(ADDRESS);
+        request.setExpectedUnitPrice(399L);
+        request.setExpectedPayAmount(498L);
+        assertThatThrownBy(() -> orderService.create(BUYER, "145-stale-0001", request))
+                .isInstanceOf(BizException.class).hasMessageContaining("重新预览");
+        verify(productClient, never()).reserve(any(), any());
+        request.setExpectedPayAmount(499L);
+        var order = orderService.create(BUYER, "145-valid-0001", request);
+        assertThat(order.getPayAmount()).isEqualTo(499L);
+        assertThat(orderService.detail(order.getOrderId(), BUYER, "BUYER").getPayAmount()).isEqualTo(499L);
+        assertThat(orderService.create(BUYER, "145-valid-0001", request).getOrderId()).isEqualTo(order.getOrderId());
+        assertThat(jdbcTemplate.queryForObject("SELECT price_snapshot FROM order_item WHERE order_id=?",
+                Long.class, order.getOrderId())).isEqualTo(399L);
+        assertThat(jdbcTemplate.queryForObject("SELECT flash_sale_id FROM order_item WHERE order_id=?",
+                String.class, order.getOrderId())).isEqualTo("FS-145");
+        var reserved = org.mockito.ArgumentCaptor.forClass(ReserveStockRequestDTO.class);
+        verify(productClient).reserve(any(), reserved.capture());
+        assertThat(reserved.getValue().getFlashSale())
+                .isEqualTo(new ReserveStockRequestDTO.FlashSale("FS-145", BUYER, 399));
+        org.mockito.Mockito.verifyNoInteractions(cartClient, promotionClient, couponClient);
+        assertThat(orderService.cancelTimeout(order.getOrderId())).isFalse();
+        jdbcTemplate.update("UPDATE `order` SET expire_at=? WHERE order_id=?", LocalDateTime.now().minusMinutes(1), order.getOrderId());
+        assertThat(orderService.cancelTimeout(order.getOrderId())).isTrue();
+        verify(productClient).release(any(), org.mockito.ArgumentMatchers.eq(new ProductClient.ReleaseRequest(order.getOrderId())));
+    }
+
+    @Test
+    void expiredFlashWorkerCannotFinalizeOrCancelTheSuccessorOrder() {
+        for (boolean failOldWorker : List.of(false, true)) {
+            String key = "145-lease-" + failOldWorker;
+            when(productClient.flashQuote("FS-145", BUYER, 1))
+                    .thenReturn(Result.success(new ProductClient.FlashQuote("P140A", "S140A", 399)));
+            var attempts = new java.util.concurrent.atomic.AtomicInteger();
+            when(productClient.reserve(anyString(), any(ReserveStockRequestDTO.class)))
+                    .thenAnswer(invocation -> {
+                        var request = invocation.<ReserveStockRequestDTO>getArgument(1);
+                        if (attempts.incrementAndGet() == 1) {
+                            jdbcTemplate.update("UPDATE order_idempotency SET updated_at=? WHERE idem_key=?",
+                                    LocalDateTime.now().minusMinutes(2), key);
+                            assertThatThrownBy(() -> orderService.detail(request.getOrderId(), BUYER, "BUYER"))
+                                    .isInstanceOf(BizException.class);
+                            var successor = new java.util.concurrent.FutureTask<>(() -> orderService.create(BUYER, key, flashRequest()));
+                            new Thread(successor).start();
+                            assertThat(successor.get(10, java.util.concurrent.TimeUnit.SECONDS).getOrderId())
+                                    .isEqualTo(request.getOrderId());
+                            if (failOldWorker) return Result.fail(ErrorCode.PARAM_INVALID, "stale failure");
+                        }
+                        assertThat(request.getFlashSale()).isEqualTo(new ReserveStockRequestDTO.FlashSale("FS-145", BUYER, 399));
+                        return Result.success(new ReserveStockResponseDTO("R-SLOW", request.getItems()));
+                    });
+            assertThatThrownBy(() -> orderService.create(BUYER, key, flashRequest())).isInstanceOf(BizException.class)
+                    .extracting(e -> ((BizException) e).getCode()).isEqualTo(ErrorCode.IDEMPOTENCY_CONFLICT);
+            assertThat(count("SELECT COUNT(*) FROM order_compensation")).isZero();
+            String orderId = jdbcTemplate.queryForObject("SELECT order_id FROM order_idempotency WHERE idem_key=?", String.class, key);
+            assertThat(orderService.detail(orderId, BUYER, "BUYER").getPayAmount()).isEqualTo(399L);
+            assertThat(orderService.create(BUYER, key, flashRequest()).getOrderId()).isEqualTo(orderId);
+            assertThat(attempts.get()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void failedQuoteBeforeInsertCanRetryWithSameKey() {
+        when(productClient.flashQuote("FS-145", BUYER, 1))
+                .thenReturn(Result.fail(ErrorCode.SERVICE_UNAVAILABLE, "报价暂不可用"))
+                .thenReturn(Result.success(new ProductClient.FlashQuote("P140A", "S140A", 399)));
+        assertThatThrownBy(() -> orderService.create(BUYER, "145-retry-quote", flashRequest())).isInstanceOf(BizException.class);
+        assertThat(count("SELECT COUNT(*) FROM `order`")).isZero();
+        assertThat(orderService.create(BUYER, "145-retry-quote", flashRequest()).getPayAmount()).isEqualTo(399L);
+        assertThat(count("SELECT COUNT(*) FROM `order` WHERE status='PENDING_PAYMENT'")).isEqualTo(1);
+    }
+
+    @Test
+    void expiredFlashOrderCannotBecomePaidAndCanBeClosedBeforeReleasingStock() {
+        when(productClient.flashQuote("FS-145", BUYER, 1))
+                .thenReturn(Result.success(new ProductClient.FlashQuote("P140A", "S140A", 399)));
+        var created = orderService.create(BUYER, "145-expiry-paid", flashRequest());
+        String id = created.getOrderId();
+        assertThat(orderService.expireFlashSale(id)).isFalse();
+        jdbcTemplate.update("UPDATE `order` SET expire_at=? WHERE order_id=?", LocalDateTime.now().minusMinutes(1), id);
+        assertThatThrownBy(() -> orderService.markPaid(id)).isInstanceOf(BizException.class)
+                .extracting(e -> ((BizException)e).getCode()).isEqualTo(ErrorCode.ORDER_TIMEOUT);
+        assertThat(orderService.expireFlashSale(id)).isTrue();
+        assertThat(orderService.expireFlashSale(id)).isTrue();
+        assertThat(orderService.detail(id, BUYER, "BUYER").getStatus().name()).isEqualTo("CANCELLED");
+        verify(productClient, never()).release(any(), any());
+    }
+
+    private static CreateOrderRequest flashRequest() {
+        var request = new CreateOrderRequest();
+        request.setFlashSaleId("FS-145");
+        request.setQuantity(1);
+        request.setAddressId(ADDRESS);
+        request.setExpectedUnitPrice(399L);
+        request.setExpectedPayAmount(399L);
+        return request;
+    }
+
+    @Test
     void createWithCouponOccupiesAndDiscounts() {
         CreateOrderResponse created = orderService.create(BUYER, "idem-140-create-01",
                 createRequest("I140A", USER_COUPON_ID));

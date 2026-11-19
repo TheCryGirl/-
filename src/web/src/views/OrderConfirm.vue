@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { addressApi, http, isOk, orderApi, unwrapResult } from '../api'
 import { auth } from '../stores/auth'
 import { resolveErrorMessage, showError, showSuccess, showWarning } from '../components/ui/message'
@@ -10,6 +10,13 @@ import PageHero from '../components/store/PageHero.vue'
 import { createIdempotencyKey } from '../utils/idempotency'
 
 const router = useRouter()
+const route = useRoute()
+const flashSaleId = computed(() => typeof route.query.flashSaleId === 'string' ? route.query.flashSaleId : '')
+const flashMode = computed(() => !!flashSaleId.value)
+let previewSequence = 0
+let flashAttempt = null
+const quotedAddress = ref('')
+const quotedSale = ref('')
 const items = ref([])
 const addresses = ref([])
 const selectedAddressId = ref('')
@@ -43,7 +50,12 @@ const couponError = ref('')
 const selectedCouponId = ref('')
 
 async function loadPreview() {
-  if (!items.value.length) return
+  const sequence = ++previewSequence
+  const saleId = flashSaleId.value
+  const addressId = selectedAddressId.value
+  quotedAddress.value = ''
+  quotedSale.value = ''
+  if (!saleId && !items.value.length) return
   if (!addresses.value.length) {
     // 运费按收货地区算，没有地址就没有可用的运费；页面已提示先添加地址
     preview.value = null
@@ -53,22 +65,28 @@ async function loadPreview() {
   previewLoading.value = true
   previewError.value = ''
   try {
-    const { data } = await orderApi.preview({
+    const { data } = await orderApi.preview(saleId ? { flashSaleId: saleId, quantity: 1, addressId } : {
       cartItemIds: items.value.map((i) => i.cartItemId),
-      addressId: selectedAddressId.value || undefined,
+      addressId: addressId || undefined,
       userCouponId: selectedCouponId.value || undefined,
     })
+    if (sequence !== previewSequence || saleId !== flashSaleId.value || addressId !== selectedAddressId.value) return
     if (!isOk(data)) {
       previewError.value = data?.message || '结算预览加载失败'
       preview.value = null
       return
     }
     preview.value = unwrapResult(data)
+    if (saleId) {
+      quotedAddress.value = addressId
+      quotedSale.value = saleId
+    }
   } catch (err) {
+    if (sequence !== previewSequence) return
     previewError.value = resolveErrorMessage(err, '结算预览加载失败')
     preview.value = null
   } finally {
-    previewLoading.value = false
+    if (sequence === previewSequence) previewLoading.value = false
   }
 }
 
@@ -133,32 +151,42 @@ function isDefaultAddress(addr) {
   return Boolean(addr.defaultAddress ?? addr.isDefault)
 }
 
+const flashLine = computed(() => preview.value?.shops?.[0]?.items?.[0])
+const canSubmitFlash = computed(() => !previewLoading.value && !!flashLine.value && !!preview.value?.payAmount
+  && !!selectedAddressId.value && quotedAddress.value === selectedAddressId.value && quotedSale.value === flashSaleId.value)
+
 async function load() {
   loading.value = true
   loadError.value = ''
+  previewReady = false
+  previewSequence++
+  preview.value = null
+  previewLoading.value = false
+  selectedCouponId.value = ''
   try {
-    const raw = sessionStorage.getItem('checkoutItems')
-    if (!raw) {
-      router.replace({ name: 'cart' })
-      return
-    }
     if (!auth.user?.userId) {
       loadError.value = '登录状态已失效，请重新登录'
       return
     }
-
-    let parsed
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      loadError.value = '结算信息已失效，请返回购物车重新选择'
-      return
+    if (flashMode.value) {
+      items.value = []
+    } else {
+      const raw = sessionStorage.getItem('checkoutItems')
+      if (!raw) {
+        router.replace({ name: 'cart' })
+        return
+      }
+      let parsed
+      try { parsed = JSON.parse(raw) } catch {
+        loadError.value = '结算信息已失效，请返回购物车重新选择'
+        return
+      }
+      if (!Array.isArray(parsed) || !parsed.length) {
+        loadError.value = '没有可结算的商品，请返回购物车重新选择'
+        return
+      }
+      items.value = parsed
     }
-    if (!Array.isArray(parsed) || !parsed.length) {
-      loadError.value = '没有可结算的商品，请返回购物车重新选择'
-      return
-    }
-    items.value = parsed
     selectedAddressId.value = ''
 
     const { data } = await addressApi.list(auth.user.userId)
@@ -177,7 +205,7 @@ async function load() {
     }
     await loadPreview()
     previewReady = true
-    if (preview.value) {
+    if (preview.value && !flashMode.value) {
       await loadCoupons()
     }
   } catch (err) {
@@ -193,26 +221,32 @@ async function submit() {
     showWarning('请选择收货地址')
     return
   }
-  if (!items.value.length) {
-    showWarning('没有可结算的商品')
+  if (flashMode.value ? !canSubmitFlash.value : !items.value.length) {
+    showWarning(flashMode.value ? '请先取得有效的秒杀报价' : '没有可结算的商品')
     return
   }
 
   submitting.value = true
   try {
-    const cartItemIds = items.value.map((i) => i.cartItemId)
-    // 与原实现一致：每次提交尝试生成一个幂等键，失败后可安全重试
-    const idempotencyKey = createIdempotencyKey()
-    const { data } = await orderApi.create(
-      {
-        addressId: selectedAddressId.value,
-        cartItemIds,
-        userCouponId: selectedCouponId.value || undefined,
-      },
-      idempotencyKey,
-    )
+    const saleId = flashSaleId.value
+    const payload = saleId ? {
+      flashSaleId: saleId, quantity: 1, addressId: selectedAddressId.value,
+      expectedUnitPrice: flashLine.value.price, expectedPayAmount: preview.value.payAmount,
+    } : {
+      addressId: selectedAddressId.value, cartItemIds: items.value.map((i) => i.cartItemId),
+      userCouponId: selectedCouponId.value || undefined,
+    }
+    if (saleId) {
+      const signature = JSON.stringify(payload)
+      if (flashAttempt?.signature !== signature) flashAttempt = { signature, key: createIdempotencyKey() }
+    }
+    const { data } = await orderApi.create(payload, saleId ? flashAttempt.key : createIdempotencyKey())
     if (!isOk(data)) {
       showError(data?.message || '下单失败')
+      if (saleId && [10001, 30002, 30003, 30007, 30008, 30009].includes(Number(data?.code))) {
+        flashAttempt = null
+        await loadPreview()
+      }
       return
     }
     const order = unwrapResult(data)
@@ -220,7 +254,8 @@ async function submit() {
       showError('下单失败：未返回订单号')
       return
     }
-    sessionStorage.removeItem('checkoutItems')
+    if (saleId) flashAttempt = null
+    else sessionStorage.removeItem('checkoutItems')
     showSuccess('下单成功')
     // 跨店结算（#135）：跳主订单支付页，一次支付覆盖全部子订单
     if (order.mainOrderId) {
@@ -240,16 +275,18 @@ function goProfile() {
 }
 
 function goCart() {
-  router.push({ name: 'cart' })
+  if (flashMode.value) router.push('/products')
+  else router.push({ name: 'cart' })
 }
 
+watch(flashSaleId, load)
 onMounted(load)
 </script>
 
 <template>
   <div class="max-w-3xl mx-auto space-y-4">
     <PageHero
-      title="确认订单"
+      :title="flashMode ? '确认秒杀订单' : '确认订单'"
       subtitle="请核对收货地址与商品明细，提交后进入支付"
       icon="tag"
       tone="teal"
@@ -258,7 +295,7 @@ onMounted(load)
     <el-result v-if="loadError" status="error" title="无法结算" :sub-title="loadError">
       <template #extra>
         <el-button type="primary" data-testid="order-confirm-retry" @click="load">重试</el-button>
-        <el-button data-testid="order-confirm-back-cart" @click="goCart">返回购物车</el-button>
+        <el-button data-testid="order-confirm-back-cart" @click="goCart">{{ flashMode ? '返回活动' : '返回购物车' }}</el-button>
       </template>
     </el-result>
 
@@ -313,7 +350,16 @@ onMounted(load)
       </el-card>
 
       <!-- 商品清单：跨店时按店铺分块（#135），单店保持原清单 -->
-      <template v-if="isMultiShop">
+      <el-card v-if="flashMode" shadow="never">
+        <template #header>秒杀商品</template>
+        <p v-if="flashLine && canSubmitFlash" class="text-sm">
+          {{ flashLine.productTitle }} · {{ flashLine.specName }} × {{ flashLine.quantity }}
+          <strong class="text-red-600">¥{{ formatPrice(flashLine.price) }}</strong>
+        </p>
+        <p v-else class="text-sm text-gray-500">选择有效地址后，系统核对活动价格及库存。</p>
+        <p class="mt-2 text-xs text-gray-500">秒杀单独结算，不叠加优惠；运费按收货地址计算。</p>
+      </el-card>
+      <template v-else-if="isMultiShop">
         <el-card
           v-for="shop in previewShops"
           :key="shop.sellerId"
@@ -393,7 +439,7 @@ onMounted(load)
       </el-card>
 
       <!-- 优惠券（#140）：选券后重新调预览刷新优惠与应付；未达门槛的置灰并显示差额 -->
-      <el-card v-if="preview" shadow="never">
+      <el-card v-if="preview && !flashMode" shadow="never">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-base font-medium">优惠券</span>
@@ -487,7 +533,7 @@ onMounted(load)
           <el-button
             type="primary"
             :loading="submitting"
-            :disabled="!selectedAddressId || !items.length"
+            :disabled="!selectedAddressId || (flashMode ? !canSubmitFlash : !items.length)"
             data-testid="order-confirm-submit"
             @click="submit"
           >
@@ -495,7 +541,8 @@ onMounted(load)
           </el-button>
         </div>
         <p v-if="previewError" class="text-xs text-amber-600 mt-2" data-testid="order-confirm-preview-error">
-          分店预览加载失败（{{ previewError }}），应付金额以提交订单时服务端计算为准
+          <template v-if="flashMode">秒杀报价不可用：{{ previewError }} <el-button link @click="loadPreview">重试</el-button></template>
+          <template v-else>分店预览加载失败（{{ previewError }}），应付金额以提交订单时服务端计算为准</template>
         </p>
         <p v-else-if="previewLoading" class="text-xs text-gray-400 mt-2">正在按收货地址重新计算运费…</p>
       </el-card>

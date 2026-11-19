@@ -10,6 +10,8 @@ public final class ErrorCode {
     public static final int UNAUTHORIZED = 10002;
     public static final int FORBIDDEN = 10003;
     public static final int SERVICE_UNAVAILABLE = 10005;
+    /** Returned by order-service when a flash order cannot accept a late payment. */
+    public static final int ORDER_TIMEOUT = 50004;
 
     public static final int PAYMENT_NOT_FOUND = 60001;
     public static final int SIGN_VERIFY_FAILED = 60002;

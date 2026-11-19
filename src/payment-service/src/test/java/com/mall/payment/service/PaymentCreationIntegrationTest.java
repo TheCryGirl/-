@@ -78,6 +78,21 @@ class PaymentCreationIntegrationTest {
     }
 
     @Test
+    void mockPaymentPersistsAuthoritativeFlashCheckoutTotalIncludingFreight() {
+        OrderDTO flash = order(499L, OrderStatus.PENDING_PAYMENT, BUYER_ID);
+        flash.setFlashSale(true);
+        flash.setExpireAt(java.time.LocalDateTime.now().plusMinutes(5)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID)).thenReturn(Result.success(flash));
+
+        var response = paymentService.createPayment(BUYER_ID, "flash-145-verify", request(ChannelType.MOCK));
+
+        assertEquals(499L, response.getAmount());
+        assertEquals(499L, paymentMapper.selectById(response.getPaymentId()).getAmount());
+        assertEquals("mock://pay/" + response.getPaymentId(), response.getPayUrl());
+    }
+
+    @Test
     void sameIdempotencyKeyReturnsSamePaymentWithoutQueryingOrderAgain() {
         when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(11800L, OrderStatus.PENDING_PAYMENT, BUYER_ID)));

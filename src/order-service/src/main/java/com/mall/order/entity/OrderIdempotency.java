@@ -19,6 +19,7 @@ public class OrderIdempotency {
     private String requestHash;
     private String orderId;
     private IdempotencyStatus status;
+    private String reservationOwner;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

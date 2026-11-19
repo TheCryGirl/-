@@ -137,6 +137,13 @@ public class OrderController {
         return Result.success();
     }
 
+    @PostMapping("/internal/{orderId}/expire-flash-sale")
+    public Result<Boolean> expireFlashSale(@PathVariable String orderId,
+            @RequestHeader(value = "X-Internal-Token", required = false) String token) {
+        internalTokenVerifier.verify(token);
+        return Result.success(orderService.expireFlashSale(orderId));
+    }
+
     /** 预留的退款完成通知入口，供 payment-service 后续接入。 */
     @PostMapping("/{orderId}/refunded")
     public Result<Void> refunded(@PathVariable String orderId,

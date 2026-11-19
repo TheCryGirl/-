@@ -44,4 +44,13 @@
           AND end_at &gt;= #{now}
           AND is_deleted = 0
     </update>
+    <select id="lockById" resultType="com.mall.product.entity.FlashSale">
+        SELECT <include refid="columns"/> FROM flash_sale
+        WHERE sale_id = #{saleId} AND is_deleted = 0 FOR UPDATE
+    </select>
+
+    <update id="restoreStock">
+        UPDATE flash_sale SET sale_stock = sale_stock + #{quantity}, updated_at = NOW()
+        WHERE sale_id = #{saleId}
+    </update>
 </mapper>

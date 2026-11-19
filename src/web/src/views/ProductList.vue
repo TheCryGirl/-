@@ -420,7 +420,6 @@ function flyToCart(startEl) {
 const flashSales = ref([])
 const flashSaleLoading = ref(false)
 const flashSaleFailed = ref(false)
-const flashReservingId = ref('')
 const now = ref(Date.now())
 let flashTimer = null
 
@@ -455,23 +454,16 @@ function flashRemain(sale) {
   return `${h}:${m}:${s}`
 }
 
-async function reserveFlashSale(sale) {
-  if (!requireLogin()) return
-  if (flashReservingId.value) return
-  flashReservingId.value = sale.saleId
-  try {
-    const { data } = await http.post(`/products/flash-sales/${sale.saleId}/reserve`, { quantity: 1 })
-    if (!isOk(data)) {
-      showError(data?.message || '抢购失败')
-      return
-    }
-    showSuccess('抢购成功')
-    await loadFlashSales()
-  } catch (err) {
-    showError(resolveErrorMessage(err, '抢购失败'))
-  } finally {
-    flashReservingId.value = ''
+function reserveFlashSale(sale) {
+  if (sale.soldOut || !sale.saleId || flashRemain(sale) === '已结束') return
+  const destination = { name: 'order-confirm', query: { flashSaleId: sale.saleId } }
+  if (!isLoggedIn.value) {
+    sessionStorage.setItem('redirectAfterLogin', router.resolve(destination).fullPath)
+    showInfo('登录后即可提交秒杀订单')
+    router.push({ name: 'login' })
+    return
   }
+  router.push(destination)
 }
 
 /* ---------------- 生命周期 ---------------- */
@@ -589,7 +581,7 @@ watch(
             size="small"
             type="danger"
             :disabled="sale.soldOut"
-            :loading="flashReservingId === sale.saleId"
+
             class="jd-flash-live__buy"
             :data-testid="`home-flash-buy-${sale.saleId}`"
             @click.stop="reserveFlashSale(sale)"

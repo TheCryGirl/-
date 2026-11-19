@@ -33,7 +33,7 @@ public class FlashSaleController {
         return Result.success(flashSaleService.ongoing());
     }
 
-    /** 秒杀下单：条件 UPDATE 扣库存，限购靠唯一键 */
+    /** 兼容旧客户端，但不再生成无法付款的抢购记录。 */
     @PostMapping("/{saleId}/reserve")
     public Result<FlashSaleReserveResponse> reserve(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
@@ -43,6 +43,14 @@ public class FlashSaleController {
             throw new com.mall.product.common.BizException(
                     com.mall.product.common.ErrorCode.UNAUTHORIZED, "未登录或用户信息缺失");
         }
-        return Result.success(flashSaleService.reserve(userId, saleId, request.getQuantity()));
+        throw new com.mall.product.common.BizException(com.mall.product.common.ErrorCode.PARAM_INVALID,
+                "独立抢购入口已停用，请从确认订单页提交秒杀订单");
+    }
+
+    @GetMapping("/internal/{saleId}/quote")
+    public Result<FlashSaleService.Quote> quote(@PathVariable("saleId") String saleId,
+            @org.springframework.web.bind.annotation.RequestParam("buyerId") String buyerId,
+            @org.springframework.web.bind.annotation.RequestParam("quantity") int quantity) {
+        return Result.success(flashSaleService.quote(buyerId, saleId, quantity));
     }
 }

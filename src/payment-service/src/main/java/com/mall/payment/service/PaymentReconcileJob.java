@@ -42,6 +42,7 @@ public class PaymentReconcileJob {
     private final PaymentMapper paymentMapper;
     private final OrderClient orderClient;
     private final ProductClient productClient;
+    private final RefundService refundService;
 
     /** 单次最多处理的支付单数量，避免一次扫太多把下游打满。 */
     @Value("${payment.reconcile.batch-size:50}")
@@ -212,11 +213,19 @@ public class PaymentReconcileJob {
         if (order.getStatus() == OrderStatus.CANCELLED || order.getStatus() == OrderStatus.REFUNDED) {
             // 订单已被关闭而款项已到账，属于需要人工介入的异常单，交给回调侧同一套判断，
             // 这里不做自动退款，只记录并停止对账，避免与用户侧操作冲突。
+            if (order.isFlashSale()) {
+                refundService.autoRefund(payment, "秒杀订单已关闭，支付款自动退回");
+                return false;
+            }
             log.error("对账发现订单已关闭但支付成功，需人工处理, paymentId={}, orderId={}, orderStatus={}",
                     payment.getPaymentId(), payment.getOrderId(), order.getStatus());
             return false;
         }
         Result<Void> result = orderClient.markPaid(payment.getOrderId());
+        if (result != null && order.isFlashSale() && result.getCode() == com.mall.payment.common.ErrorCode.ORDER_TIMEOUT) {
+            refundService.autoRefund(payment, "秒杀订单已取消或超时，支付款自动退回");
+            return false;
+        }
         if (result == null || result.getCode() != 0) {
             log.warn("对账补齐订单支付状态失败, orderId={}, code={}",
                     payment.getOrderId(), result == null ? null : result.getCode());

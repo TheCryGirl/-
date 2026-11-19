@@ -11,6 +11,19 @@ public interface IdempotencyMapper {
 
     OrderIdempotency selectByKey(@Param("idemKey") String idemKey);
 
+    boolean hasSuccessfulOrder(@Param("orderId") String orderId);
+
+    OrderIdempotency lockByKey(@Param("idemKey") String idemKey);
+
+    int claimFlashReservation(@Param("idemKey") String idemKey, @Param("owner") String owner,
+                              @Param("cutoff") LocalDateTime cutoff, @Param("updatedAt") LocalDateTime updatedAt);
+
+    int markFlashSucceeded(@Param("idemKey") String idemKey, @Param("owner") String owner,
+                           @Param("updatedAt") LocalDateTime updatedAt);
+
+    int markFlashFailed(@Param("idemKey") String idemKey, @Param("owner") String owner,
+                        @Param("updatedAt") LocalDateTime updatedAt);
+
     int markSuccess(@Param("idemKey") String idemKey,
                     @Param("orderId") String orderId,
                     @Param("updatedAt") LocalDateTime updatedAt);

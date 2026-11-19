@@ -163,6 +163,19 @@ class PaymentCallbackIntegrationTest {
     }
 
     @Test
+    void flashCancellationWinningAfterCallbackLookupRefundsWithoutConfirmingStock() {
+        OrderDTO flash = order(OrderStatus.PENDING_PAYMENT);
+        flash.setFlashSale(true);
+        when(orderClient.getOrder(ORDER_ID, BUYER_ID)).thenReturn(Result.success(flash));
+        when(orderClient.markPaid(ORDER_ID)).thenReturn(Result.fail(ErrorCode.ORDER_TIMEOUT, "秒杀订单已关闭"));
+
+        assertTrue(callbackService.process(callback("T-FLASH-EXPIRED", AMOUNT)).isSuccess());
+        assertEquals("REFUNDED", paymentStatus());
+        assertEquals(AMOUNT, paymentRefundedAmount());
+        verify(productClient, never()).confirmStock(any(StockConfirmRequest.class));
+    }
+
+    @Test
     void refundedOrderTriggersAutomaticRefund() {
         when(orderClient.getOrder(ORDER_ID, BUYER_ID))
                 .thenReturn(Result.success(order(OrderStatus.REFUNDED)));

@@ -1,6 +1,5 @@
 package com.mall.order.dto.request;
 
-import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
 import java.util.List;
@@ -14,8 +13,9 @@ import java.util.List;
 @Data
 public class PreviewOrderRequest {
 
-    @NotEmpty(message = "请选择要结算的商品")
     private List<String> cartItemIds;
+    private String flashSaleId;
+    private Integer quantity;
 
     /** 收货地址ID；为空时取默认地址 */
     private String addressId;

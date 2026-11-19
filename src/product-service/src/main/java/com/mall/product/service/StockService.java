@@ -49,6 +49,9 @@ public class StockService {
     private final SkuMapper skuMapper;
     private final ProductMapper productMapper;
     private final TransactionTemplate transactionTemplate;
+    private final FlashSaleService flashSaleService;
+    private final com.mall.product.mapper.FlashSaleOrderMapper flashSaleOrderMapper;
+    private final com.mall.product.client.PurchaseHistoryClient orderClient;
 
     public ReserveStockResponse reserve(ReserveStockRequest request) {
         String orderId = requireText(request.getOrderId(), "orderId");
@@ -57,14 +60,19 @@ public class StockService {
             throw new BizException(ErrorCode.PARAM_INVALID, "expireAt 必须是未来时间");
         }
         Map<String, Integer> items = normalizeItems(request.getItems());
+        var flash = request.getFlashSale();
+        if (flash != null && (request.getItems().size() != 1 || flash.saleId() == null || flash.saleId().isBlank()
+                || flash.buyerId() == null || flash.buyerId().isBlank() || flash.unitPrice() <= 0)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "秒杀预占必须包含一个 SKU 及完整活动信息");
+        }
 
         StockReservation existing = reservationMapper.selectByOrderId(orderId);
         if (existing != null) {
-            return replay(existing);
+            return replay(existing, items, flash);
         }
 
         try {
-            ReserveStockResponse response = transactionTemplate.execute(status -> doReserve(orderId, expireAt, items));
+            ReserveStockResponse response = transactionTemplate.execute(status -> doReserve(orderId, expireAt, items, flash));
             if (response == null) {
                 throw new IllegalStateException("reserve transaction returned null");
             }
@@ -73,16 +81,17 @@ public class StockService {
             // 并发重复预占：唯一索引冲突后回读首个预占结果。
             StockReservation winner = reservationMapper.selectByOrderId(orderId);
             if (winner != null) {
-                return replay(winner);
+                return replay(winner, items, flash);
             }
             throw e;
         }
     }
 
-    private ReserveStockResponse doReserve(String orderId, LocalDateTime expireAt, Map<String, Integer> items) {
+    private ReserveStockResponse doReserve(String orderId, LocalDateTime expireAt, Map<String, Integer> items,
+                                           ReserveStockRequest.FlashSale flash) {
         StockReservation again = reservationMapper.selectByOrderId(orderId);
         if (again != null) {
-            return replay(again);
+            return replay(again, items, flash);
         }
         LocalDateTime now = LocalDateTime.now();
         String reservationId = IdGenerator.reservationId();
@@ -110,6 +119,10 @@ public class StockService {
                         "SKU " + entry.getKey() + " 库存不足或商品不在售");
             }
             responses.add(new ReserveItemResponse(entry.getKey(), entry.getValue()));
+        }
+        if (flash != null) {
+            var item = items.entrySet().iterator().next();
+            flashSaleService.reserveForOrder(orderId, flash, item.getKey(), item.getValue());
         }
         return new ReserveStockResponse(reservationId, responses);
     }
@@ -167,6 +180,7 @@ public class StockService {
                         "库存回补失败，SKU " + item.getSkuId() + " 的 locked 库存不足");
             }
         }
+        flashSaleService.releaseForOrder(orderId);
         return true;
     }
 
@@ -255,6 +269,12 @@ public class StockService {
         List<String> orderIds = reservationMapper.selectExpiredOrderIds(LocalDateTime.now(), 100);
         for (String orderId : orderIds) {
             try {
+                if (flashSaleOrderMapper.selectByOrderId(orderId) != null) {
+                    var result = orderClient.expireFlashSale(orderId);
+                    if (result == null || result.getCode() != ErrorCode.SUCCESS || !Boolean.TRUE.equals(result.getData())) {
+                        continue;
+                    }
+                }
                 release(orderId);
                 log.info("过期预占已释放, orderId={}", orderId);
             } catch (BizException e) {
@@ -266,7 +286,8 @@ public class StockService {
         }
     }
 
-    private ReserveStockResponse replay(StockReservation reservation) {
+    private ReserveStockResponse replay(StockReservation reservation, Map<String, Integer> requested,
+                                        ReserveStockRequest.FlashSale flash) {
         if (reservation.getStatus() == ReservationStatus.RELEASED) {
             throw new BizException(ErrorCode.RESERVATION_NOT_FOUND, "预占记录已释放，不能重复预占");
         }
@@ -274,6 +295,15 @@ public class StockService {
                 .stream()
                 .map(item -> new ReserveItemResponse(item.getSkuId(), item.getQuantity()))
                 .toList();
+        var linked = flashSaleOrderMapper.selectByOrderId(reservation.getOrderId());
+        if (linked != null || flash != null) {
+            if (linked == null || flash == null || !linked.getSaleId().equals(flash.saleId())
+                    || !linked.getUserId().equals(flash.buyerId()) || linked.getUnitPrice() == null
+                    || linked.getUnitPrice() != flash.unitPrice() || items.size() != 1 || requested.size() != 1
+                    || !items.get(0).getQuantity().equals(requested.get(items.get(0).getSkuId()))) {
+                throw new BizException(ErrorCode.PARAM_INVALID, "相同订单不能使用不同的秒杀预占参数");
+            }
+        }
         return new ReserveStockResponse(reservation.getReservationId(), items);
     }
 
@@ -289,7 +319,7 @@ public class StockService {
             if (item == null || item.getSkuId() == null || item.getSkuId().isBlank()) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "skuId 不能为空");
             }
-            if (item.getQuantity() == null || item.getQuantity() <= 0) {
+            if (item.getQuantity() == null || item.getQuantity() <= 0 || item.getQuantity() > 999) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "预占数量必须大于 0");
             }
             int total = merged.merge(item.getSkuId().trim(), item.getQuantity(), Integer::sum);

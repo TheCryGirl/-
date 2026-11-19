@@ -18,6 +18,7 @@ public class OrderItem {
     private String productId;
     private String productTitle;
     private String categoryIdSnapshot;
+    private String flashSaleId;
     private String specName;
     private Long priceSnapshot;
     private Integer quantity;

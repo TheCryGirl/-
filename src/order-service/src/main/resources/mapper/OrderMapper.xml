@@ -61,6 +61,11 @@
         WHERE order_id = #{orderId} AND is_deleted = 0
     </select>
 
+    <select id="lockById" resultMap="OrderMap">
+        SELECT <include refid="orderColumns"/> FROM `order`
+        WHERE order_id = #{orderId} AND is_deleted = 0 FOR UPDATE
+    </select>
+
     <!-- 主订单下的全部店铺子订单（#135），按落库顺序返回。
          同一事务内所有子订单 created_at 相同，order_id 的随机后缀也不保证创建顺序，
          因此用明细表的自增 id（先插入的子订单明细 id 更小）作为稳定排序键。 -->

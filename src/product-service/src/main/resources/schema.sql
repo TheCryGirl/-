@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS flash_sale_order (
     quantity       INT          NOT NULL DEFAULT 1 COMMENT '购买件数',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (sale_order_id),
+    order_id VARCHAR(32) DEFAULT NULL COMMENT '正式订单 ID；历史独立抢购为空',
+    unit_price BIGINT DEFAULT NULL COMMENT '正式预占确认的活动单价（分）',
     UNIQUE KEY uk_sale_user (sale_id, user_id),
+    UNIQUE KEY uk_flash_formal_order (order_id),
     KEY idx_sale (sale_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='秒杀下单记录';

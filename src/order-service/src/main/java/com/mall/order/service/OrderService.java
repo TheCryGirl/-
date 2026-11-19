@@ -110,17 +110,26 @@ public class OrderService {
     public CreateOrderResponse create(String buyerId, String idempotencyKey, CreateOrderRequest request) {
         requireUser(buyerId);
         String key = requireIdempotencyKey(idempotencyKey);
-        List<String> cartItemIds = normalizeCartItemIds(request.getCartItemIds());
+        FlashCheckout flash = flashCheckout(request.getFlashSaleId(), request.getQuantity(),
+                request.getCartItemIds(), request.getUserCouponId());
+        List<String> cartItemIds = flash == null ? normalizeCartItemIds(request.getCartItemIds()) : List.of();
         String addressId = requireText(request.getAddressId(), "收货地址");
         String userCouponId = trimToNull(request.getUserCouponId());
-        String requestHash = hashRequest(buyerId, addressId, cartItemIds, userCouponId);
+        if (flash != null && (request.getExpectedUnitPrice() == null || request.getExpectedUnitPrice() <= 0
+                || request.getExpectedPayAmount() == null || request.getExpectedPayAmount() <= 0)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "请先预览秒杀订单并确认应付金额");
+        }
+        String requestHash = hashRequest(buyerId, addressId, cartItemIds, userCouponId, flash,
+                request.getExpectedUnitPrice(), request.getExpectedPayAmount());
 
         OrderIdempotency existing = idempotencyMapper.selectByKey(key);
         if (existing != null) {
-            return resume(existing, requestHash, buyerId, userCouponId);
+            return flash == null ? resume(existing, requestHash, buyerId, userCouponId)
+                    : resumeFlash(existing, requestHash, buyerId, addressId, flash, request);
         }
 
         String orderId = IdGenerator.orderId();
+        String owner = flash == null ? null : java.util.UUID.randomUUID().toString();
         LocalDateTime now = LocalDateTime.now();
         try {
             // 直接以 RESERVING 入库：插入成功即表示本次调用取得了库存预占的执行权，
@@ -131,32 +140,37 @@ public class OrderService {
                     .requestHash(requestHash)
                     .orderId(orderId)
                     .status(IdempotencyStatus.RESERVING)
+                    .reservationOwner(owner)
                     .createdAt(now)
                     .updatedAt(now)
                     .build());
         } catch (DataIntegrityViolationException e) {
             OrderIdempotency winner = idempotencyMapper.selectByKey(key);
             if (winner != null) {
-                return resume(winner, requestHash, buyerId, userCouponId);
+                return flash == null ? resume(winner, requestHash, buyerId, userCouponId)
+                        : resumeFlash(winner, requestHash, buyerId, addressId, flash, request);
             }
             throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "幂等令牌冲突");
         }
 
         try {
-            return createFresh(orderId, key, buyerId, addressId, cartItemIds, userCouponId);
+            return createFresh(orderId, key, buyerId, addressId, cartItemIds, userCouponId, flash, owner,
+                    request.getExpectedUnitPrice(), request.getExpectedPayAmount());
+        } catch (FlashReservationInProgress e) {
+            throw e;
         } catch (RuntimeException e) {
             // 首次尝试失败时退回执行权并释放幂等键，允许用户用同一个 key 重试。
-            idempotencyMapper.markFailed(key, LocalDateTime.now());
+            if (owner == null) idempotencyMapper.markFailed(key, LocalDateTime.now());
+            else idempotencyMapper.markFlashFailed(key, owner, LocalDateTime.now());
             throw e;
         }
     }
 
     private CreateOrderResponse createFresh(String orderId, String key, String buyerId,
                                             String addressId, List<String> cartItemIds,
-                                            String userCouponId) {
-        List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
+                                            String userCouponId, FlashCheckout flash, String owner, Long expectedUnit, Long expectedPay) {
         AddressDTO address = findAddress(buyerId, addressId);
-        List<ValidatedItem> validated = validateItems(selectedItems);
+        List<ValidatedItem> validated = checkoutItems(buyerId, cartItemIds, flash);
 
         // 按店铺分组（#135）：LinkedHashMap 保持购物车勾选顺序，跨店时生成主订单 + 子订单
         Map<String, List<ValidatedItem>> bySeller = new LinkedHashMap<>();
@@ -179,8 +193,13 @@ public class OrderService {
                 .map(entry -> new OrderPricingService.ShopGoods(entry.getKey(),
                         entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
                 .toList();
-        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods,
-                address.getProvince(), buyerId, coupon);
+        OrderPricingService.PricingResult pricing = flash == null
+                ? orderPricingService.price(shopGoods, address.getProvince(), buyerId, coupon)
+                : orderPricingService.priceFlashSale(shopGoods.get(0), address.getProvince());
+        if (flash != null && (expectedUnit != validated.get(0).unitPrice()
+                || expectedPay != pricing.payAmount())) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "秒杀价格或应付金额已变化，请重新预览");
+        }
         Map<String, OrderPricingService.ShopPricing> pricingBySeller = new HashMap<>();
         for (OrderPricingService.ShopPricing shop : pricing.shops()) {
             pricingBySeller.put(shop.sellerId(), shop);
@@ -192,7 +211,7 @@ public class OrderService {
         for (Map.Entry<String, List<ValidatedItem>> entry : bySeller.entrySet()) {
             String sellerId = entry.getKey();
             // 商品状态同步可能失败，下单前再向用户服务确认一次店铺营业状态（#49）
-            if (!shopActive(sellerId)) {
+            if (flash == null && !shopActive(sellerId)) {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
             }
             OrderPricingService.ShopPricing shopPricing = pricingBySeller.get(sellerId);
@@ -257,6 +276,7 @@ public class OrderService {
 
         final MainOrder mainOrderToInsert = mainOrder;
         transactionTemplate.executeWithoutResult(status -> {
+            if (owner != null) assertFlashOwner(idempotencyMapper.lockByKey(key), owner);
             if (mainOrderToInsert != null) {
                 mainOrderMapper.insert(mainOrderToInsert);
             }
@@ -275,14 +295,22 @@ public class OrderService {
                         .filter(item -> item.getOrderId().equals(subOrder.getOrderId()))
                         .map(item -> new ReserveItemDTO(item.getSkuId(), item.getQuantity()))
                         .toList();
-                reserveUnderOwnership(subOrder.getOrderId(), expireAt, reserveItems);
+                reserveUnderOwnership(subOrder.getOrderId(), expireAt, reserveItems, flash == null ? null
+                        : new ReserveStockRequestDTO.FlashSale(flash.saleId(), buyerId, validated.get(0).unitPrice()));
                 reserved.add(subOrder);
             }
             if (coupon != null) {
                 occupyCoupon(coupon, subOrders, buyerId);
             }
-            finishReservation(key, subOrders);
+            if (owner == null) finishReservation(key, subOrders);
+            else finishFlashReservation(key, owner, orderId);
+        } catch (FlashReservationInProgress e) {
+            throw e;
         } catch (BizException e) {
+            if (owner != null) {
+                failFlashReservation(key, owner, orderId, e);
+                throw e;
+            }
             // 先释放已预占成功的店（此时订单尚未软删除，释放标记可正常抢占），
             // 再软删除全部子订单与主订单，避免悬空预占。
             for (Order done : reserved) {
@@ -340,9 +368,10 @@ public class OrderService {
      */
     public OrderPreviewResponse preview(String buyerId, PreviewOrderRequest request) {
         requireUser(buyerId);
-        List<String> cartItemIds = normalizeCartItemIds(request.getCartItemIds());
-        List<CartItemDTO> selectedItems = selectCartItems(buyerId, cartItemIds);
-        List<ValidatedItem> validated = validateItems(selectedItems);
+        FlashCheckout flash = flashCheckout(request.getFlashSaleId(), request.getQuantity(),
+                request.getCartItemIds(), request.getUserCouponId());
+        List<String> cartItemIds = flash == null ? normalizeCartItemIds(request.getCartItemIds()) : List.of();
+        List<ValidatedItem> validated = checkoutItems(buyerId, cartItemIds, flash);
         AddressDTO address = resolvePreviewAddress(buyerId, request.getAddressId());
 
         Map<String, List<ValidatedItem>> bySeller = new LinkedHashMap<>();
@@ -350,7 +379,7 @@ public class OrderService {
             bySeller.computeIfAbsent(item.product().getSellerId(), seller -> new ArrayList<>()).add(item);
         }
         for (String sellerId : bySeller.keySet()) {
-            if (!shopActive(sellerId)) {
+            if (flash == null && !shopActive(sellerId)) {
                 throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
             }
         }
@@ -362,8 +391,9 @@ public class OrderService {
                         entry.getValue().stream().mapToLong(ValidatedItem::subtotal).sum()))
                 .toList();
         String region = address == null ? null : address.getProvince();
-        OrderPricingService.PricingResult pricing = orderPricingService.price(shopGoods, region,
-                buyerId, coupon);
+        OrderPricingService.PricingResult pricing = flash == null
+                ? orderPricingService.price(shopGoods, region, buyerId, coupon)
+                : orderPricingService.priceFlashSale(shopGoods.get(0), region);
 
         Map<String, OrderPricingService.ShopPricing> pricingBySeller = new java.util.HashMap<>();
         for (OrderPricingService.ShopPricing shop : pricing.shops()) {
@@ -382,7 +412,7 @@ public class OrderService {
                             item.product().getTitle(),
                             item.sku().getSpecName(),
                             item.product().getMainImage(),
-                            item.sku().getPrice(),
+                            item.unitPrice(),
                             item.cartItem().getQuantity(),
                             item.subtotal()))
                     .toList();
@@ -465,13 +495,57 @@ public class OrderService {
             if (sku.getStockAvailable() != null && sku.getStockAvailable() < quantity) {
                 throw new BizException(ErrorCode.STOCK_INSUFFICIENT, "库存不足: " + product.getTitle());
             }
-            validated.add(new ValidatedItem(cartItem, product, sku, sku.getPrice() * quantity));
+            validated.add(new ValidatedItem(cartItem, product, sku, sku.getPrice(), sku.getPrice() * quantity, null));
         }
         return validated;
     }
 
-    /** 校验通过的一条购物车项：商品/SKU 快照 + 小计（单位分）。 */
-    private record ValidatedItem(CartItemDTO cartItem, ProductDetailDTO product, SkuDTO sku, long subtotal) {
+    private record FlashCheckout(String saleId, int quantity) {}
+
+    private static FlashCheckout flashCheckout(String activity, Integer quantity, List<String> cartIds, String coupon) {
+        if (activity == null) {
+            if (quantity != null) throw new BizException(ErrorCode.PARAM_INVALID, "购买数量只能用于秒杀结算");
+            return null;
+        }
+        String saleId = activity.trim();
+        if (!saleId.matches("[A-Za-z0-9_-]{1,32}") || quantity == null || quantity <= 0 || quantity > 999
+                || (cartIds != null && !cartIds.isEmpty()) || trimToNull(coupon) != null) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "秒杀必须单独结算，数量需合法且不能使用优惠券");
+        }
+        return new FlashCheckout(saleId, quantity);
+    }
+
+    private List<ValidatedItem> checkoutItems(String buyerId, List<String> cartIds, FlashCheckout flash) {
+        if (flash == null) return validateItems(selectCartItems(buyerId, cartIds));
+        ProductClient.FlashQuote quote;
+        try {
+            quote = unwrap(productClient.flashQuote(flash.saleId(), buyerId, flash.quantity()), "秒杀报价服务");
+        } catch (BizException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "无法取得秒杀报价，请重新预览", e);
+        }
+        if (quote.unitPrice() <= 0) throw new BizException(ErrorCode.PARAM_INVALID, "秒杀价格无效");
+        CartItemDTO selected = new CartItemDTO();
+        selected.setProductId(quote.productId());
+        selected.setSkuId(quote.skuId());
+        selected.setQuantity(flash.quantity());
+        ValidatedItem item = validateItems(List.of(selected)).get(0);
+        requireFlashShopActive(item.product().getSellerId());
+        if (buyerId.equals(item.product().getSellerId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "不能购买自己发布的商品");
+        }
+        try {
+            return List.of(new ValidatedItem(selected, item.product(), item.sku(), quote.unitPrice(),
+                    Math.multiplyExact(quote.unitPrice(), flash.quantity()), flash.saleId()));
+        } catch (ArithmeticException e) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "秒杀金额超出范围");
+        }
+    }
+
+    /** 校验通过的商品/SKU 快照和小计（分）。 */
+    private record ValidatedItem(CartItemDTO cartItem, ProductDetailDTO product, SkuDTO sku,
+                                 long unitPrice, long subtotal, String flashSaleId) {
         OrderItem toOrderItem(String orderId, LocalDateTime now) {
             return OrderItem.builder()
                     .orderId(orderId)
@@ -480,7 +554,8 @@ public class OrderService {
                     .productTitle(product.getTitle())
                     .categoryIdSnapshot(product.getCategoryId())
                     .specName(sku.getSpecName())
-                    .priceSnapshot(sku.getPrice())
+                    .priceSnapshot(unitPrice)
+                    .flashSaleId(flashSaleId)
                     .quantity(cartItem.getQuantity())
                     .subtotal(subtotal)
                     .mainImage(product.getMainImage())
@@ -502,13 +577,24 @@ public class OrderService {
      */
     private void reserveUnderOwnership(String orderId, LocalDateTime expireAt,
                                        List<ReserveItemDTO> reserveItems) {
-        callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems));
+        reserveUnderOwnership(orderId, expireAt, reserveItems, null);
+    }
+
+    private void reserveUnderOwnership(String orderId, LocalDateTime expireAt, List<ReserveItemDTO> reserveItems,
+                                       ReserveStockRequestDTO.FlashSale flash) {
+        callReserve(new ReserveStockRequestDTO(orderId, TimeUtils.format(expireAt), reserveItems, flash));
     }
 
     /**
      * 全部子订单预占且优惠券占用成功后才把幂等键落终态。
      * 执行权被回收时，为每个子订单写补偿任务兜底，避免预占悬空。
      */
+    private static final class FlashReservationInProgress extends BizException {
+        FlashReservationInProgress() {
+            super(ErrorCode.IDEMPOTENCY_CONFLICT, "秒杀订单正在确认，请用同一请求重试");
+        }
+    }
+
     private void finishReservation(String key, List<Order> subOrders) {
         Order first = subOrders.get(0);
         int updated = idempotencyMapper.markSuccessIfReserving(key, first.getOrderId(), LocalDateTime.now());
@@ -526,6 +612,93 @@ public class OrderService {
      * <p>已经处于 RESERVING 的调用者不再抢占，由 {@link #awaitOrderCreated(OrderIdempotency)}
      * 等待其完成，避免重复预占。
      */
+    private CreateOrderResponse resumeFlash(OrderIdempotency existing, String requestHash, String buyerId,
+                                             String addressId, FlashCheckout flash, CreateOrderRequest request) {
+        if (!existing.getRequestHash().equals(requestHash)) {
+            throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "同一 Idempotency-Key 不能用于不同的下单请求");
+        }
+        String key = existing.getIdemKey();
+        String orderId = existing.getOrderId();
+        if (existing.getStatus() == IdempotencyStatus.SUCCESS) return createResponse(requireOrder(orderId));
+        String owner = java.util.UUID.randomUUID().toString();
+        LocalDateTime now = LocalDateTime.now();
+        if (idempotencyMapper.claimFlashReservation(key, owner, now.minusSeconds(RESERVING_TIMEOUT_SECONDS), now) != 1) {
+            Order ready = awaitOrderCreated(existing);
+            if (ready != null) return createResponse(ready);
+            throw new FlashReservationInProgress();
+        }
+        try {
+            Order order = orderMapper.selectById(orderId);
+            if (order == null) {
+                // A transient error before INSERT is retryable with exactly the same request and ID.
+                return createFresh(orderId, key, buyerId, addressId, List.of(), null, flash, owner,
+                        request.getExpectedUnitPrice(), request.getExpectedPayAmount());
+            }
+            if (order.getStatus() != OrderStatus.PENDING_PAYMENT || !order.getExpireAt().isAfter(now)) {
+                throw new BizException(ErrorCode.ORDER_STATE_INVALID, "秒杀订单已关闭或超时，请重新下单");
+            }
+            List<OrderItem> items = orderItemMapper.selectByOrderId(orderId);
+            if (items.size() != 1 || !flash.saleId().equals(items.get(0).getFlashSaleId())) {
+                throw new BizException(ErrorCode.IDEMPOTENCY_CONFLICT, "秒杀订单明细不一致");
+            }
+            OrderItem item = items.get(0);
+            try {
+                reserveUnderOwnership(orderId, order.getExpireAt(), List.of(new ReserveItemDTO(item.getSkuId(), item.getQuantity())),
+                        new ReserveStockRequestDTO.FlashSale(item.getFlashSaleId(), buyerId, item.getPriceSnapshot()));
+                finishFlashReservation(key, owner, orderId);
+            } catch (FlashReservationInProgress e) {
+                throw e;
+            } catch (BizException e) {
+                failFlashReservation(key, owner, orderId, e);
+                throw e;
+            }
+            return createResponse(requireOrder(orderId));
+        } catch (FlashReservationInProgress e) {
+            throw e;
+        } catch (RuntimeException e) {
+            idempotencyMapper.markFlashFailed(key, owner, LocalDateTime.now());
+            throw e;
+        }
+    }
+
+    private static void assertFlashOwner(OrderIdempotency state, String owner) {
+        if (state == null || state.getStatus() != IdempotencyStatus.RESERVING || !owner.equals(state.getReservationOwner())) {
+            throw new FlashReservationInProgress();
+        }
+    }
+
+    private void finishFlashReservation(String key, String owner, String orderId) {
+        transactionTemplate.executeWithoutResult(ignored -> {
+            assertFlashOwner(idempotencyMapper.lockByKey(key), owner);
+            Order current = orderMapper.lockById(orderId);
+            LocalDateTime now = LocalDateTime.now();
+            if (current == null || current.getStatus() != OrderStatus.PENDING_PAYMENT || !current.getExpireAt().isAfter(now)) {
+                throw new BizException(ErrorCode.ORDER_STATE_INVALID, "秒杀订单已关闭或超时，请重新下单");
+            }
+            if (idempotencyMapper.markFlashSucceeded(key, owner, now) != 1) throw new FlashReservationInProgress();
+        });
+    }
+
+    private void failFlashReservation(String key, String owner, String orderId, BizException error) {
+        if (error.getCode() == ErrorCode.SERVICE_UNAVAILABLE) {
+            // Inventory may already be reserved. Recover the same order and let the product hold expire if abandoned.
+            idempotencyMapper.markFlashFailed(key, owner, LocalDateTime.now());
+            return;
+        }
+        transactionTemplate.executeWithoutResult(ignored -> {
+            assertFlashOwner(idempotencyMapper.lockByKey(key), owner);
+            Order current = orderMapper.lockById(orderId);
+            if (current != null && current.getStatus() == OrderStatus.PENDING_PAYMENT) {
+                orderMapper.markCancelled(orderId, LocalDateTime.now());
+            }
+            if (current != null && (current.getStatus() == OrderStatus.CANCELLED
+                    || current.getStatus() == OrderStatus.PENDING_PAYMENT)) {
+                compensationService.enqueue(orderId);
+            }
+            idempotencyMapper.markFlashFailed(key, owner, LocalDateTime.now());
+        });
+    }
+
     private boolean claimReserving(String key, OrderIdempotency existing) {
         if (existing != null && existing.getStatus() == IdempotencyStatus.RESERVING) {
             return false;
@@ -729,11 +902,20 @@ public class OrderService {
     public OrderDetailResponse detail(String orderId, String userId, String role) {
         Order order = requireOrder(orderId);
         checkReadAccess(order, userId, role);
+        if (order.getStatus() == OrderStatus.PENDING_PAYMENT
+                && orderItemMapper.selectByOrderId(orderId).stream().anyMatch(item -> item.getFlashSaleId() != null)
+                && !idempotencyMapper.hasSuccessfulOrder(orderId)) {
+            throw new BizException(ErrorCode.ORDER_STATE_INVALID, "秒杀订单尚未完成预占，请稍后重试");
+        }
         return toDetail(order);
     }
 
     public void markPaid(String orderId) {
         Order order = requireOrder(orderId);
+        if (orderItemMapper.selectByOrderId(orderId).stream().anyMatch(item -> item.getFlashSaleId() != null)) {
+            transactionTemplate.executeWithoutResult(ignored -> markFlashPaid(orderId));
+            return;
+        }
         if (order.getStatus() == OrderStatus.PAID) {
             promoteMainOrderIfPaid(order);
             return;
@@ -750,6 +932,23 @@ public class OrderService {
             }
         }
         promoteMainOrderIfPaid(order);
+    }
+
+    private void markFlashPaid(String orderId) {
+        Order order = orderMapper.lockById(orderId);
+        if (order == null) throw new BizException(ErrorCode.ORDER_NOT_FOUND, "订单不存在");
+        if (order.getStatus() == OrderStatus.PAID || order.getStatus() == OrderStatus.SHIPPED
+                || order.getStatus() == OrderStatus.COMPLETED) return;
+        var now = LocalDateTime.now();
+        if (order.getStatus() != OrderStatus.PENDING_PAYMENT || !order.getExpireAt().isAfter(now)) {
+            throw new BizException(ErrorCode.ORDER_TIMEOUT, "秒杀订单已关闭或超时");
+        }
+        if (!idempotencyMapper.hasSuccessfulOrder(orderId)) {
+            throw new BizException(ErrorCode.ORDER_STATE_INVALID, "秒杀订单尚未完成库存预占");
+        }
+        if (orderMapper.markPaid(orderId, now) != 1) {
+            throw new BizException(ErrorCode.ORDER_STATE_INVALID, "订单支付状态更新失败");
+        }
     }
 
     /**
@@ -792,6 +991,11 @@ public class OrderService {
         }
         if (order.getStatus() == OrderStatus.CANCELLED) {
             return toDetail(order);
+        }
+        if (order.getStatus() == OrderStatus.PENDING_PAYMENT
+                && orderItemMapper.selectByOrderId(orderId).stream().anyMatch(item -> item.getFlashSaleId() != null)
+                && !idempotencyMapper.hasSuccessfulOrder(orderId)) {
+            throw new FlashReservationInProgress();
         }
         OrderStateMachine.assertCanTransit(order.getStatus(), OrderStatus.CANCELLED);
         int updated = orderMapper.markCancelled(orderId, LocalDateTime.now());
@@ -995,13 +1199,30 @@ public class OrderService {
         return toDetail(requireOrder(orderId));
     }
 
+    /** 商品库存扫描只在订单端判定已关闭后才能释放秒杀预占。 */
+    public boolean expireFlashSale(String orderId) {
+        return Boolean.TRUE.equals(transactionTemplate.execute(ignored -> {
+            Order order = orderMapper.lockById(orderId);
+            if (order == null) return false;
+            if (orderItemMapper.selectByOrderId(orderId).stream().noneMatch(item -> item.getFlashSaleId() != null)) {
+                return false;
+            }
+            if (order.getStatus() == OrderStatus.CANCELLED) return true;
+            LocalDateTime now = LocalDateTime.now();
+            return order.getStatus() == OrderStatus.PENDING_PAYMENT && !order.getExpireAt().isAfter(now)
+                    && orderMapper.markCancelled(orderId, now) == 1;
+        }));
+    }
+
     /**
      * 超时取消入口。扫描任务只找候选，状态 CAS 在这里完成。
      * 跨店子订单（#135）的整体取消由主订单扫描负责，这里跳过，避免只取消一半。
      */
     public boolean cancelTimeout(String orderId) {
         Order order = orderMapper.selectById(orderId);
-        if (order != null && order.getMainOrderId() != null) {
+        if (order != null && (order.getMainOrderId() != null
+                || (order.getExpireAt().isAfter(LocalDateTime.now())
+                    && orderItemMapper.selectByOrderId(orderId).stream().anyMatch(item -> item.getFlashSaleId() != null)))) {
             return false;
         }
         int updated = orderMapper.markCancelled(orderId, LocalDateTime.now());
@@ -1176,6 +1397,22 @@ public class OrderService {
         }
     }
 
+    private void requireFlashShopActive(String sellerId) {
+        Result<ShopBriefDTO> result;
+        try {
+            result = userClient.shopBySeller(sellerId);
+        } catch (RuntimeException e) {
+            throw new BizException(ErrorCode.SERVICE_UNAVAILABLE, "无法确认秒杀店铺营业状态", e);
+        }
+        if (result != null && result.getCode() == 20007) {
+            throw new BizException(ErrorCode.SHOP_SUSPENDED, "秒杀店铺不存在");
+        }
+        ShopBriefDTO shop = unwrap(result, "秒杀店铺查询");
+        if (!"ACTIVE".equalsIgnoreCase(shop.getStatus())) {
+            throw new BizException(ErrorCode.SHOP_SUSPENDED, "店铺已停用，暂不能下单");
+        }
+    }
+
     /** 店铺名（#135 预览分组展示）；查询失败回退为卖家ID，不阻塞预览。 */
     private String shopName(String sellerId) {
         try {
@@ -1302,8 +1539,9 @@ public class OrderService {
         }
         response.setAddressSnapshot(new AddressSnapshot(order.getReceiver(), order.getReceiverPhone(),
                 order.getAddressFull()));
-        response.setItems(orderItemMapper.selectByOrderId(order.getOrderId()).stream()
-                .map(this::toItemResponse).toList());
+        List<OrderItem> lines = orderItemMapper.selectByOrderId(order.getOrderId());
+        response.setFlashSale(lines.stream().anyMatch(item -> item.getFlashSaleId() != null));
+        response.setItems(lines.stream().map(this::toItemResponse).toList());
         response.setCreatedAt(TimeUtils.format(order.getCreatedAt()));
         response.setPaidAt(TimeUtils.format(order.getPaidAt()));
         response.setExpireAt(TimeUtils.format(order.getExpireAt()));
@@ -1392,9 +1630,12 @@ public class OrderService {
     }
 
     private static String hashRequest(String buyerId, String addressId, List<String> cartItemIds,
-                                      String userCouponId) {
+                                      String userCouponId, FlashCheckout flash, Long expectedUnit, Long expectedPay) {
         String canonical = buyerId + "|" + addressId + "|" + String.join(",", cartItemIds)
                 + "|" + (userCouponId == null ? "" : userCouponId);
+        if (flash != null) {
+            canonical += "|flash:" + flash.saleId() + ":" + flash.quantity() + ":" + expectedUnit + ":" + expectedPay;
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));

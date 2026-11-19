@@ -22,6 +22,7 @@ public class OrderDetailResponse {
     /** 优惠抵扣，单位分（#136） */
     private Long discountAmount;
     private Long payAmount;
+    private boolean flashSale;
     private AddressSnapshot addressSnapshot;
     private List<OrderItemResponse> items;
     private String trackingNo;

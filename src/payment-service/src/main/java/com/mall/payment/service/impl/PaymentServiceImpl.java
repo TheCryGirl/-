@@ -23,6 +23,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 /**
  * 支付单创建与查询实现。
  *
@@ -80,6 +83,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
             throw new BizException(ErrorCode.PARAM_INVALID, "订单当前状态不可支付");
+        }
+        if (order.isFlashSale() && (order.getExpireAt() == null || !LocalDateTime.parse(order.getExpireAt(),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).isAfter(LocalDateTime.now()))) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "秒杀订单已超时，不能发起支付");
         }
         if (order.getPayAmount() == null || order.getPayAmount() <= 0) {
             throw new BizException(ErrorCode.PARAM_INVALID, "订单应付金额异常");

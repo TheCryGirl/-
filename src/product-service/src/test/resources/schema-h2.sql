@@ -102,7 +102,10 @@ CREATE TABLE flash_sale_order (
     quantity       INT          NOT NULL DEFAULT 1,
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (sale_order_id),
-    CONSTRAINT uk_sale_user UNIQUE (sale_id, user_id)
+    order_id VARCHAR(32),
+    unit_price BIGINT,
+    CONSTRAINT uk_sale_user UNIQUE (sale_id, user_id),
+    CONSTRAINT uk_flash_formal_order UNIQUE (order_id)
 );
 
 CREATE INDEX idx_flash_sale_order_sale ON flash_sale_order (sale_id);

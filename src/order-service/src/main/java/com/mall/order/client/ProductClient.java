@@ -18,6 +18,13 @@ public interface ProductClient {
     @GetMapping("/products/{productId}")
     Result<ProductDetailDTO> getProduct(@PathVariable("productId") String productId);
 
+    @GetMapping("/products/flash-sales/internal/{saleId}/quote")
+    Result<FlashQuote> flashQuote(@PathVariable("saleId") String saleId,
+            @org.springframework.web.bind.annotation.RequestParam("buyerId") String buyerId,
+            @org.springframework.web.bind.annotation.RequestParam("quantity") int quantity);
+
+    record FlashQuote(String productId, String skuId, long unitPrice) {}
+
     @PostMapping("/products/skus/reserve")
     Result<ReserveStockResponseDTO> reserve(
             @RequestHeader(value = "X-Internal-Token", required = false) String internalToken,

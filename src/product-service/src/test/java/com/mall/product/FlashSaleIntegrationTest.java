@@ -3,7 +3,6 @@ package com.mall.product;
 import com.mall.product.common.BizException;
 import com.mall.product.common.ErrorCode;
 import com.mall.product.common.ProductStatus;
-import com.mall.product.dto.response.FlashSaleReserveResponse;
 import com.mall.product.dto.response.FlashSaleResponse;
 import com.mall.product.entity.Product;
 import com.mall.product.mapper.ProductMapper;
@@ -55,6 +54,8 @@ class FlashSaleIntegrationTest {
     void setUp() {
         jdbcTemplate.update("DELETE FROM flash_sale_order");
         jdbcTemplate.update("DELETE FROM flash_sale");
+        jdbcTemplate.update("DELETE FROM stock_reservation_item");
+        jdbcTemplate.update("DELETE FROM stock_reservation");
         jdbcTemplate.update("DELETE FROM sku");
         jdbcTemplate.update("DELETE FROM product");
 
@@ -64,6 +65,8 @@ class FlashSaleIntegrationTest {
                 .categoryId("C01").status(ProductStatus.ON_SALE).salesCount(0L)
                 .createdAt(now).updatedAt(now).createdBy("U-SELLER-FS").updatedBy("U-SELLER-FS").isDeleted(0)
                 .build());
+        jdbcTemplate.update("INSERT INTO sku (sku_id,product_id,spec_name,price,stock_available,created_at,updated_at)"
+                + " VALUES (?,?,?,12000,20,?,?)", SKU_ID, PRODUCT_ID, "标准款", now, now);
         insertSale(SALE_ID, 9900L, 10, 1, now.minusHours(1), now.plusDays(1));
     }
 
@@ -89,57 +92,104 @@ class FlashSaleIntegrationTest {
         assertThat(active.getEndAt()).isNotNull();
     }
 
-    @Test
-    void reserveDecrementsStockAndRecordsOrder() {
-        FlashSaleReserveResponse reserved = flashSaleService.reserve("U-FS-1", SALE_ID, 1);
+    @Autowired
+    private com.mall.product.service.StockService stockService;
 
-        assertThat(reserved.getSaleId()).isEqualTo(SALE_ID);
+    @Test
+    void formalReservationConsumesBothStocksAndCancellationRestoresEachOnce() {
+        var request = formal("FORMAL-A", "U-FS-1", 9900);
+        var first = stockService.reserve(request);
+        assertThat(stockService.reserve(request).getReservationId()).isEqualTo(first.getReservationId());
         assertThat(stock(SALE_ID)).isEqualTo(9);
-        assertThat(count("SELECT COUNT(*) FROM flash_sale_order WHERE sale_id = '" + SALE_ID + "'")).isEqualTo(1);
-    }
-
-    @Test
-    void reserveRejectsUnknownSaleAndOutOfWindow() {
-        assertThatThrownBy(() -> flashSaleService.reserve("U-FS-1", "FS-NOT-EXISTS", 1))
+        assertThat(skuStock()).isEqualTo(19);
+        assertThatThrownBy(() -> stockService.reserve(formal("FORMAL-B", "U-FS-1", 9900)))
                 .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getCode())
-                .isEqualTo(ErrorCode.FLASH_SALE_NOT_FOUND);
-
-        insertSale("FS-TEST-EXPIRED", 500L, 5, 1,
-                LocalDateTime.now().minusDays(2), LocalDateTime.now().minusMinutes(1));
-        assertThatThrownBy(() -> flashSaleService.reserve("U-FS-1", "FS-TEST-EXPIRED", 1))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getCode())
-                .isEqualTo(ErrorCode.FLASH_SALE_SOLD_OUT);
-
-        insertSale("FS-TEST-NOT-STARTED", 500L, 5, 1,
-                LocalDateTime.now().plusHours(1), LocalDateTime.now().plusDays(2));
-        assertThatThrownBy(() -> flashSaleService.reserve("U-FS-1", "FS-TEST-NOT-STARTED", 1))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getCode())
-                .isEqualTo(ErrorCode.FLASH_SALE_SOLD_OUT);
-    }
-
-    @Test
-    void reserveRejectsOverLimitQuantity() {
-        assertThatThrownBy(() -> flashSaleService.reserve("U-FS-1", SALE_ID, 2))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getCode())
-                .isEqualTo(ErrorCode.FLASH_SALE_LIMIT_EXCEEDED);
+                .extracting(e -> ((BizException) e).getCode()).isEqualTo(ErrorCode.FLASH_SALE_LIMIT_EXCEEDED);
+        stockService.release("FORMAL-A");
+        stockService.release("FORMAL-A");
         assertThat(stock(SALE_ID)).isEqualTo(10);
+        assertThat(skuStock()).isEqualTo(20);
+        stockService.reserve(formal("FORMAL-C", "U-FS-1", 9900));
+        assertThat(stock(SALE_ID)).isEqualTo(9);
+    }
+
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private com.mall.product.client.PurchaseHistoryClient orderClient;
+
+    @Test
+    void expiredHoldIsReleasedOnlyAfterOrderServiceClosesOrder() {
+        stockService.reserve(formal("FORMAL-EXP", "U-FS-1", 9900));
+        jdbcTemplate.update("UPDATE stock_reservation SET expire_at=? WHERE order_id='FORMAL-EXP'",
+                LocalDateTime.now().minusMinutes(1));
+        org.mockito.Mockito.when(orderClient.expireFlashSale("FORMAL-EXP"))
+                .thenReturn(com.mall.product.common.Result.success(false));
+        stockService.releaseExpiredReservations();
+        assertThat(stock(SALE_ID)).isEqualTo(9);
+        assertThat(skuStock()).isEqualTo(19);
+
+        org.mockito.Mockito.when(orderClient.expireFlashSale("FORMAL-EXP"))
+                .thenReturn(com.mall.product.common.Result.success(true));
+        stockService.releaseExpiredReservations();
+        stockService.releaseExpiredReservations();
+        assertThat(stock(SALE_ID)).isEqualTo(10);
+        assertThat(skuStock()).isEqualTo(20);
     }
 
     @Test
-    void sameUserSecondReserveIsRejectedAndStockRollsBack() {
-        flashSaleService.reserve("U-FS-1", SALE_ID, 1);
-        assertThat(stock(SALE_ID)).isEqualTo(9);
+    void failedSkuReservationRollsBackActivityAndLimitRecord() {
+        jdbcTemplate.update("UPDATE sku SET stock_available=0 WHERE sku_id=?", SKU_ID);
+        assertThatThrownBy(() -> stockService.reserve(formal("FORMAL-A", "U-FS-1", 9900)))
+                .isInstanceOf(BizException.class);
+        assertThat(stock(SALE_ID)).isEqualTo(10);
+        assertThat(count("SELECT COUNT(*) FROM flash_sale_order")).isZero();
+        assertThat(count("SELECT COUNT(*) FROM stock_reservation")).isZero();
+    }
 
-        assertThatThrownBy(() -> flashSaleService.reserve("U-FS-1", SALE_ID, 1))
-                .isInstanceOf(BizException.class)
-                .extracting(e -> ((BizException) e).getCode())
-                .isEqualTo(ErrorCode.FLASH_SALE_LIMIT_EXCEEDED);
-        // 第二次的扣库存随事务回滚
+    @Test
+    void stalePriceDoesNotReserveAndPaidRefundKeepsActivityEligibilityConsumed() {
+        assertThatThrownBy(() -> stockService.reserve(formal("FORMAL-A", "U-FS-1", 9800)))
+                .isInstanceOf(BizException.class);
+        assertThat(stock(SALE_ID)).isEqualTo(10);
+        assertThat(skuStock()).isEqualTo(20);
+        stockService.reserve(formal("FORMAL-B", "U-FS-1", 9900));
+        stockService.confirm("FORMAL-B");
+        stockService.refundRestock("FORMAL-B");
+        assertThat(skuStock()).isEqualTo(20);
         assertThat(stock(SALE_ID)).isEqualTo(9);
+        assertThat(count("SELECT COUNT(*) FROM flash_sale_order")).isEqualTo(1);
+    }
+
+    private com.mall.product.dto.request.ReserveStockRequest formal(String order, String buyer, long price) {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        return mapper.convertValue(java.util.Map.of("orderId", order,
+                "expireAt", com.mall.product.common.TimeUtils.format(LocalDateTime.now().plusMinutes(10)),
+                "items", List.of(java.util.Map.of("skuId", SKU_ID, "quantity", 1)),
+                "flashSale", java.util.Map.of("saleId", SALE_ID, "buyerId", buyer, "unitPrice", price)),
+                com.mall.product.dto.request.ReserveStockRequest.class);
+    }
+
+    private int skuStock() {
+        return jdbcTemplate.queryForObject("SELECT stock_available FROM sku WHERE sku_id=?", Integer.class, SKU_ID);
+    }
+
+    @Test
+    void quoteDoesNotWriteAndRejectsUnknownExpiredOrOverLimitActivity() {
+        var quote = flashSaleService.quote("U-FS-1", SALE_ID, 1);
+        assertThat(quote.unitPrice()).isEqualTo(9900L);
+        assertThat(quote.skuId()).isEqualTo(SKU_ID);
+        assertThat(stock(SALE_ID)).isEqualTo(10);
+        assertThat(count("SELECT COUNT(*) FROM flash_sale_order")).isZero();
+        assertThatThrownBy(() -> flashSaleService.quote("U-FS-1", "FS-NOT-EXISTS", 1))
+                .isInstanceOf(BizException.class).extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.FLASH_SALE_NOT_FOUND);
+        insertSale("FS-TEST-EXPIRED", 500L, 5, 1, LocalDateTime.now().minusDays(2), LocalDateTime.now().minusMinutes(1));
+        assertThatThrownBy(() -> flashSaleService.quote("U-FS-1", "FS-TEST-EXPIRED", 1))
+                .isInstanceOf(BizException.class).extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.FLASH_SALE_SOLD_OUT);
+        assertThatThrownBy(() -> flashSaleService.quote("U-FS-1", SALE_ID, 2))
+                .isInstanceOf(BizException.class).extracting(e -> ((BizException) e).getCode())
+                .isEqualTo(ErrorCode.FLASH_SALE_LIMIT_EXCEEDED);
     }
 
     @Test
@@ -159,7 +209,7 @@ class FlashSaleIntegrationTest {
                     ready.countDown();
                     start.await(5, TimeUnit.SECONDS);
                     try {
-                        flashSaleService.reserve(userId, SALE_ID, 1);
+                        stockService.reserve(formal(userId, userId, 9900));
                         return true;
                     } catch (BizException e) {
                         if (e.getCode() == ErrorCode.FLASH_SALE_SOLD_OUT) {

@@ -13,4 +13,11 @@ public class ReserveStockRequestDTO {
     private String orderId;
     private String expireAt;
     private List<ReserveItemDTO> items;
+    private FlashSale flashSale;
+
+    public ReserveStockRequestDTO(String orderId, String expireAt, List<ReserveItemDTO> items) {
+        this(orderId, expireAt, items, null);
+    }
+
+    public record FlashSale(String saleId, String buyerId, long unitPrice) {}
 }

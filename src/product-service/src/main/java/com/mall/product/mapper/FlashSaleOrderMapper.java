@@ -10,5 +10,9 @@ public interface FlashSaleOrderMapper {
 
     int insert(FlashSaleOrder order);
 
+    FlashSaleOrder selectByOrderId(@Param("orderId") String orderId);
+
+    int deleteByOrderId(@Param("orderId") String orderId);
+
     FlashSaleOrder selectBySaleAndUser(@Param("saleId") String saleId, @Param("userId") String userId);
 }

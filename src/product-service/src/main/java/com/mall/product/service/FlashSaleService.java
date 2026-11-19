@@ -1,6 +1,6 @@
 package com.mall.product.service;
 
-import com.mall.product.dto.response.FlashSaleReserveResponse;
+import com.mall.product.dto.request.ReserveStockRequest;
 import com.mall.product.dto.response.FlashSaleResponse;
 
 import java.util.List;
@@ -13,6 +13,11 @@ public interface FlashSaleService {
     /** 进行中的秒杀活动（首页秒杀位），含商品标题/主图与已抢光展示态 */
     List<FlashSaleResponse> ongoing();
 
-    /** 秒杀下单：条件 UPDATE 扣活动库存 + 唯一键限购 */
-    FlashSaleReserveResponse reserve(String userId, String saleId, int quantity);
+    record Quote(String productId, String skuId, long unitPrice) {}
+
+    Quote quote(String buyerId, String saleId, int quantity);
+
+    void reserveForOrder(String orderId, ReserveStockRequest.FlashSale flash, String skuId, int quantity);
+
+    void releaseForOrder(String orderId);
 }

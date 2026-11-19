@@ -15,6 +15,8 @@ public class OrderDTO {
     private String buyerId;
     private String sellerId;
     private Long payAmount;
+    private boolean flashSale;
+    private String expireAt;
     /** 主订单ID（#135）：跨店结算时非空，支付按主订单金额聚合 */
     private String mainOrderId;
     /** 主订单号（#135） */
