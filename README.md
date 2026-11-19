@@ -184,6 +184,8 @@ bash demo-init.sh --gateway http://127.0.0.1:9000
 
 前提：本机已有 MySQL、Nacos 2.x、JDK 17、Node.js、前端依赖与六个已打包 JAR；新克隆仓库需先配置依赖，入口不是免安装包。完整说明与检查命令见 [演示一键启动](docs/演示一键启动.md)。
 
+**登录账号**：新库建成后没有任何账号，执行一次 [演示账号种子](src/docker/seed-demo-accounts.sql) 即可补齐 5 个账号（`demo_buyer`、`demo_buyer2`、`demo_seller`、`demo_seller2`、`demo_admin`），共用演示口令 `Demo12345`。种子幂等，只用于本地演示，详见 [演示账号](docs/演示一键启动.md#演示账号拉下来就能登录)。
+
 ### 方式二：本地逐个启动
 
 原有开发流程用一键启停脚本，会按 Nacos → gateway → 各业务服务的顺序启动并写日志到 `logs/`：
