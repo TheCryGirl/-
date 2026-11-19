@@ -1,10 +1,16 @@
 -- #136 运费模板与优惠计价：user-service 侧增量脚本
 -- 说明：schema.sql 用 CREATE TABLE IF NOT EXISTS 覆盖新库；既有库请手工执行本脚本一次。
--- 幂等性：表创建可重复执行；列新增在 MySQL 8 上重复执行会报 Duplicate column，
--- 执行前请先确认 shop.freight_template_id 是否已存在。
+-- 可重复执行；列已存在也会继续创建缺少的表。
 
-ALTER TABLE shop
-    ADD COLUMN freight_template_id VARCHAR(32) DEFAULT NULL COMMENT '当前生效的运费模板ID（#136）';
+SET @mall_136_shop_ddl = IF(
+    EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE()
+           AND TABLE_NAME='shop' AND COLUMN_NAME='freight_template_id'),
+    'SELECT 1',
+    'ALTER TABLE shop ADD COLUMN freight_template_id VARCHAR(32) DEFAULT NULL COMMENT ''当前生效的运费模板ID（#136）'''
+);
+PREPARE mall_136_shop_stmt FROM @mall_136_shop_ddl;
+EXECUTE mall_136_shop_stmt;
+DEALLOCATE PREPARE mall_136_shop_stmt;
 
 CREATE TABLE IF NOT EXISTS freight_template (
     template_id    VARCHAR(32)  NOT NULL COMMENT '运费模板ID',
