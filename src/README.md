@@ -124,39 +124,21 @@ src/web/src/
 | --- | --- |
 | `DB_PASSWORD` | MySQL root 口令 |
 | `JWT_SECRET` | JWT 签名密钥，网关与 user-service 必须一致 |
+| `INTERNAL_TOKEN` | 网关与五个服务间一致的内部令牌 |
 | `ADMIN_BOOTSTRAP_ACCOUNT` / `ADMIN_BOOTSTRAP_PASSWORD` | 初始管理员，不配置则不创建 |
 
 ### 启动
 
-推荐 Docker Compose（八容器一键起）：
+容器部署按[根目录 README](../README.md#docker-compose可选)准备依赖与本地环境变量。先在源码目录用 JDK 17 打包，再进入编排目录：
 
 ```bash
-cd src/docker
+# 当前目录为 src/
+mvn -B package
+cd docker
 docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
 ```
 
-注意 WSL 下 dockerd 需用独立进程方式启动，详见根目录 [README](../README.md) 的「本地启动」一节。
-
-本地逐个启动用 `src/scripts/dev.bat`，见 [一键启停说明](docs/一键启停说明.md)。
-
-#### 两种运行方式，产物来源不同（容易混淆）
-
-上面这条 `up -d` **直接运行镜像内的 jar**，不会使用你刚在 `src/<服务>/target/` 下构建出的包。若要让容器跑本次构建的产物，还需要额外的挂载步骤：
-
-本次交付验收时实际采用的是 **只读 bind mount** 方式，实测挂载形态为：
-
-```
-/opt/mall/src/<服务>/target/<服务>-1.0.0-SNAPSHOT.jar  →  /app/app.jar   （ro）
-启动命令：java -jar app.jar
-工作目录：/app
-```
-
-即把构建产物放到部署目录下对应的 `target/` 路径，再由 compose 以只读方式挂载进容器。**替换 jar 后需要重建容器**（`--force-recreate`），单纯 `restart` 可能仍然绑定旧文件句柄。
-
-> **待核事项**：上述挂载路径与重建步骤来自 2026-11-02 对运行中容器的只读核查（`docker inspect` 的 Mounts 与 Cmd 字段），**部署目录 `/opt/mall/src` 与仓库 `src/` 的对应关系、以及原始部署脚本**尚未确认，此处不给出未经证实的命令。
->
-> **已知现象**：在 WSL 环境下曾多次观测到容器被整体重建——表现为 `docker ps` 中所有容器状态反复显示 `Up N seconds`（N 很小）、`StartedAt` 时间戳刷新、而 `RestartCount` 仍为 0，同时网关可能短时报 `503 Unable to find instance for <service>`。这与容器自身崩溃不同：**容器未崩溃，是 WSL 实例被重建导致连带重启**。具体触发原因（是否为 WSL socket 激活或其他）**尚未证实**。遇到该现象时，等待服务重新注册完成后再访问即可，不要据此判断业务代码有问题。
-
+[Compose](docker/docker-compose.yml) 从各模块的 `target/` 只读挂载 JAR，不在镜像内编译。已有数据卷不会重跑初始化脚本。Windows 原生演示见[一键启动指南](../docs/演示一键启动.md)；开发者可参考[手动启停说明](docs/一键启停说明.md)。
 
 ### 冷启动后商品库为空是预期行为
 

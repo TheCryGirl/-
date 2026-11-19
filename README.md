@@ -4,6 +4,12 @@
 
 以 Nacos 注册发现 + Spring Cloud Gateway + 多服务多库为主线，实现一个包含买家、卖家、平台管理员三类角色的在线商城；重点实践微服务拆分、服务间调用与数据一致性、网关统一鉴权、幂等与补偿。
 
+## 从这里开始
+
+- **首次运行**：按[本机演示指南](docs/演示一键启动.md)准备依赖，依次建库、启动建表、导入演示账号；容器部署另见下文。
+- **课程验收**：从[指导书要求与证据索引](docs/课程仓库验收索引.md)进入 UML、核心流程、测试与协作记录。
+- **协作留痕**：[提交历史](https://github.com/TheCryGirl/-/commits/main/) · [全部 Issue](https://github.com/TheCryGirl/-/issues?q=is%3Aissue) · [已合并 PR](https://github.com/TheCryGirl/-/pulls?q=is%3Apr+is%3Amerged)。
+
 ## 目录结构
 
 ```
@@ -16,7 +22,7 @@
 ├── design/                    UML 源文件（uml/）、渲染图（images/）与生成脚本（scripts/）
 ├── logs/                      本地启动日志（启动器生成，不纳入版本控制）
 ├── scripts/                   报告与截图工具（docx 批量编辑、CDP 截图、成员材料）
-├── .github/                   PR 模板（8 项自检）
+├── .github/                   PR 模板（验证与人工核查）
 ├── AGENTS.md                  报告排版与交付规范
 ├── 启动演示.cmd               双击拉起全栈演示
 └── src/
@@ -27,7 +33,7 @@
     ├── order-service/         订单服务（9004），库 mall_order
     ├── payment-service/       支付服务（9005），库 mall_payment
     ├── web/                   Vue 3 前端（开发端口 5173）
-    ├── docker/                docker compose 编排与 init-db.sql（已实测验收，见下文）
+    ├── docker/                Docker Compose、建库与可选演示种子
     └── scripts/               dev.bat / dev.ps1 本地一键启停
 ```
 
@@ -43,7 +49,7 @@
 | 组件库 | **Element Plus 2.14**（按需引入；2026-11 完成一轮前台视觉与交互重构） |
 | 建模 | PlantUML（.puml 源文件在 `design/uml/`） |
 | 可观测性 | 全链路 TraceId（网关生成 + 五服务 MDC 透传 + Feign 传递） |
-| 部署 | Docker Compose（八容器：六服务 + Nacos + MySQL，已实测） |
+| 部署 | Docker Compose（八容器：六个后端进程 + Nacos + MySQL；另起前端） |
 | Redis | 未接入；一致性靠 DB 唯一约束、条件更新与定时补偿 |
 
 ## 功能概览（按角色）
@@ -64,54 +70,30 @@
 
 ## 本地启动
 
-### 方式一：Docker Compose（推荐，已实测）
+### Docker Compose（可选）
 
-八个容器一键启动，含 Nacos、MySQL 与六个服务。
+需要 Docker Engine 和 Compose v2。**配置直接挂载本仓库的 `target/` JAR，不会替你构建。** 从仓库根目录用 JDK 17 先执行：
 
 ```bash
-# 1. 启动 dockerd
-#    注意：WSL 下 systemd 的 socket 激活方式会导致 daemon 周期性重启，
-#    必须用独立进程启动，否则容器会反复重启
-wsl -d Ubuntu -u root -- bash -c 'systemctl stop docker.service docker.socket; \
-  setsid nohup /usr/bin/dockerd -H unix:///var/run/docker.sock \
-  --containerd=/run/containerd/containerd.sock > /var/log/dockerd-standalone.log 2>&1 < /dev/null &'
-sleep 12
+cd src
+mvn -B package
+cd docker
+```
 
-# 2. 启动全栈（verify overlay 用于避开宿主机 3306 端口占用）
-cd src/docker
+在 [Compose 配置目录](src/docker/)自行创建本地 `.env`（不要提交），填写 `DB_PASSWORD`、至少 32 字符的随机 `JWT_SECRET` 与 `INTERNAL_TOKEN`。若需要独立的初始管理员，可另设 `ADMIN_BOOTSTRAP_ACCOUNT` 与 `ADMIN_BOOTSTRAP_PASSWORD`；不设置则不自动创建。然后启动：
+
+```bash
+# 在 src/docker/ 内。使用验证覆盖配置需 Compose v2.24.4+（!override）。
 docker compose -f docker-compose.yml -f docker-compose.verify.yml up -d
-# 等待约 1 分钟，确认 Nacos 与 MySQL 健康后再访问
-
-# 3. 前端（网关映射到 19000）
-cd src/web
-VITE_GATEWAY_TARGET=http://localhost:19000 pnpm dev
+docker compose -f docker-compose.yml -f docker-compose.verify.yml ps
+cd ../web
+pnpm install --frozen-lockfile
+VITE_GATEWAY_TARGET=http://127.0.0.1:19000 pnpm dev
 ```
 
-> **注意：这条 `up -d` 跑的是镜像内的 jar，不是你在 `src/<服务>/target/` 下构建出的包。**
->
-> 若要容器运行本次构建的产物，需先把 jar 放到部署目录对应的 `target/` 路径，再以只读 bind mount 方式挂进容器（实测形态：`/opt/mall/src/<服务>/target/<服务>-1.0.0-SNAPSHOT.jar → /app/app.jar`，`Cmd: java -jar app.jar`，`WorkingDir: /app`），并 **`--force-recreate` 重建容器**——单纯 `restart` 可能仍绑定旧文件句柄。
->
-> 上述挂载路径来自 2026-11-02 对运行中容器的只读核查；**部署目录与仓库的对应关系、原始部署脚本尚未确认**，此处不给出未经证实的命令。详见 [src/README](src/README.md)。
+前端 <http://127.0.0.1:5173/products>，网关 <http://127.0.0.1:19000>，Nacos 控制台 <http://127.0.0.1:18848/nacos>，MySQL 端口 `13306`。不加验证覆盖配置时，使用 `9000` / `8848` / `3306`；选定后不要混用两套数据库。重新打包后需要用相同的 Compose 文件重建对应服务容器以重新挂载 JAR；不要为此删除数据卷。
 
-> **已知现象：容器会被反复重置**
->
-> 在 WSL 环境下曾多次观测到：`docker ps` 中所有容器状态反复显示 `Up N seconds`（N 很小）、`StartedAt` 刷新，而 `RestartCount` 仍为 0；网关短时报 `503 Unable to find instance for <service>`。
->
-> 这是 **WSL 实例被重建导致容器连带重启，不是容器自身崩溃，也不是业务代码问题**。具体触发原因尚未证实。遇到时等待服务重新注册完成后再访问即可。
-
-
-访问地址：前端 http://localhost:5173 ，网关 http://localhost:19000 ，Nacos 控制台 http://localhost:18848/nacos ，MySQL 端口 13306。
-
-**管理员账号**通过环境变量初始化，不写入默认值。**`src/docker/.env` 需要你自己创建**（仓库里没有这个文件，也不含任何真实凭据），创建后填写：
-
-```bash
-# src/docker/.env（自行创建，不提交；以下为说明性占位，请自行填写）
-DB_PASSWORD=你的数据库口令
-JWT_SECRET=你的至少32字符随机签名密钥
-INTERNAL_TOKEN=你的至少32字符全栈共享内部令牌
-ADMIN_BOOTSTRAP_ACCOUNT=admin
-ADMIN_BOOTSTRAP_PASSWORD=你的管理员口令
-```
+[通用建库脚本](src/docker/init-db.sql)可手动用于本机 MySQL；[Docker 授权脚本](src/docker/init-db-docker-grants.sql)只随新容器数据卷初始化执行。已有数据库按[迁移说明](docs/演示一键启动.md)升级，不能靠重启自动迁移。
 
 ### 冷启动后商品列表为空是预期行为
 
@@ -184,9 +166,9 @@ bash demo-init.sh --gateway http://127.0.0.1:9000
 
 前提：本机已有 MySQL、Nacos 2.x、JDK 17、Node.js、前端依赖与六个已打包 JAR；新克隆仓库需先配置依赖，入口不是免安装包。完整说明与检查命令见 [演示一键启动](docs/演示一键启动.md)。
 
-**登录账号**：新库建成后没有任何账号，执行一次 [演示账号种子](src/docker/seed-demo-accounts.sql) 即可补齐 5 个账号（`demo_buyer`、`demo_buyer2`、`demo_seller`、`demo_seller2`、`demo_admin`），共用演示口令 `Demo12345`。种子幂等，只用于本地演示，详见 [演示账号](docs/演示一键启动.md#演示账号拉下来就能登录)。
+**登录账号**：先建库并等待 `user-service` 启动建表，再手动执行 [演示账号种子](src/docker/seed-demo-accounts.sql) 即可补齐 5 个账号（`demo_buyer`、`demo_buyer2`、`demo_seller`、`demo_seller2`、`demo_admin`），共用演示口令 `Demo12345`。种子幂等，只用于本地演示，详见 [演示账号](docs/演示一键启动.md#演示账号拉下来就能登录)。
 
-### 方式二：本地逐个启动
+### 备用：本地逐个启动
 
 原有开发流程用一键启停脚本，会按 Nacos → gateway → 各业务服务的顺序启动并写日志到 `logs/`：
 
@@ -313,7 +295,7 @@ src/web/src/
 
 ## 验证状态与边界
 
-**已实机跑通**（本地 Docker Compose 全栈，验证记录更新至 2026-11-10）：
+**历史实机与回归记录（2026-11-10 至 2026-11-13，不代表当前版本复测）：**
 
 - 后端接口链路：`/api/products`、`/api/categories` 等 HTTP 200，响应 10~13 ms
 - 注册、登录、网关签发与校验 JWT
@@ -325,7 +307,7 @@ src/web/src/
 - 买家 / 卖家 / 管理员三角色页面在真实浏览器中可访问并完成主要操作
 - **前端界面点击走查（2026-11-10）**：搜索与推荐 19 项、登录角色与原自助卖家开通 9 项（自助开通已从本次集成排除）、买家端 21 项断言全部通过；管理端 10 页与卖家端 6 页渲染检查无控制台错误
 - 全链路 TraceId：请求头带 `X-Trace-Id` 时原样回写，未带时自动生成
-- 压力测试：6 个只读场景，P95 延迟 19~101 ms，错误率 0
+- 历史只读压测：报告记录 6 个场景，P95 为 19–101 ms；逐请求原始数据未归档，不当作本次复测。
 - 后端 233 个单元/集成测试用例（46 个测试类，2026-11-13 实测 0 失败）
 
 **本次新增（2026-11-17）**：[#106 站内消息验证记录](docs/修复记录/站内消息-106-20261117.md)记录了 245 项后端测试、26 项前端测试及通过真实网关完成的双账号往返。该链路使用本机隔离 H2 数据库；真实 MySQL 与浏览器视觉验收尚未完成。外部通知与实时推送不属于本次范围。
@@ -335,6 +317,8 @@ src/web/src/
 - 后端 466 项、前端 65 项、启动器 21 项测试通过，前端生产构建与六个后端打包成功。模拟数据验证覆盖商品发布门槛、MOCK 退款、旧金额拒绝、凭证登记、跨期冲减及重复生成不重扣。
 - 本机 MySQL 完成订单和支付库备份及增量迁移；六个后端返回 `UP`，前端及商品代理请求返回 HTTP 200。资金场景用隔离测试数据验证，不执行真实打款；本次未重做浏览器视觉验收。
 - [#144 第一阶段记录](docs/ui-evidence/fd/144-商家入驻与资质第一块-20261117.md) 仅作历史追溯；[#136 的补充修复](https://github.com/TheCryGirl/-/pull/154) 已合入。
+
+**#145 与空库复测（2026-11-19）**：[#145](https://github.com/TheCryGirl/-/issues/145) 已关闭，秒杀按活动价与运费生成正式订单，不叠加优惠；超时和取消回补活动与 SKU 库存。加入演示账号后，本地后端 474 项、前端 67 项、启动脚本 21 项测试通过，六个后端打包及前端生产构建通过。随后在隔离 MySQL 8.4 重跑建库、建表、种子导入及五个角色账号登录；使用临时服务地址，不是新版 Docker 容器复测。详见[验收索引](docs/课程仓库验收索引.md)。
 
 **尚未完成或未验证**：
 
@@ -350,8 +334,8 @@ src/web/src/
 
 本项目使用 Git 管理版本，任务通过 [GitHub Projects 看板](https://github.com/users/TheCryGirl/projects/1) 跟踪，分支与提交规范见 [Git 协作与版本留痕规范](docs/03-Git协作规范.md)。
 
-提 PR 时 `.github/pull_request_template.md` 会自动带出 8 项自检清单。
+新建 PR 会自动带出[验证与人工核查模板](.github/pull_request_template.md)，填写实际测试结果与未验证范围。
 
 ## AI 使用声明
 
-本项目在需求梳理、UML 源文件编写、前端骨架搭建、缺陷修复与文档排版等环节使用了 AI 辅助工具（DeepSeek Harness）。所有 AI 生成的代码与文档均经过人工审查与修改，具体使用情况记录在各报告的「AI 使用记录」章节中。
+本项目在需求梳理、UML 源文件编写、前端骨架搭建、缺陷修复与文档排版等环节使用了 AI 辅助工具（DeepSeek Harness）。人工审查、修改和验证应据实际情况记录；具体使用与参与情况以已有报告及对应 PR 记录为准，不把自动化测试等同于人工审查。

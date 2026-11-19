@@ -44,6 +44,7 @@ services:
     container_name: mall-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      MYSQL_ROOT_HOST: '%'
       TZ: Asia/Shanghai
     ports:
       - "127.0.0.1:3306:3306"
@@ -53,8 +54,9 @@ services:
       - --default-time-zone=+08:00
     volumes:
       - mysql-data:/var/lib/mysql
-      # 相对本文件所在目录（src/docker/），因此是 ./init-db.sql
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      # 新数据卷按文件名前缀依次建库、执行容器专用授权。
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql:ro
+      - ./init-db-docker-grants.sql:/docker-entrypoint-initdb.d/02-docker-grants.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:?Set DB_PASSWORD}"]
       interval: 10s
