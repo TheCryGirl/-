@@ -505,12 +505,12 @@ main h1:not(.jd-detail__title) span {
 .el-button:not(.is-disabled):not(.is-link):hover {
   transform: translateY(-1px);
 }
-.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link) {
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):not(.is-text) {
   background-image: linear-gradient(120deg, #ff6a4d, var(--jd-red, #e1251b));
   border-color: transparent;
   box-shadow: 0 8px 18px -12px rgba(225, 37, 27, 0.75);
 }
-.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):not(.is-text):hover {
   filter: brightness(1.03);
   box-shadow: 0 12px 22px -12px rgba(225, 37, 27, 0.85);
 }

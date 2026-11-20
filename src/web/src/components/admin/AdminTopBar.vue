@@ -43,7 +43,7 @@ function handleLogout() {
           <StoreIcon name="shield" :size="18" />
         </span>
         <span class="admin-bar__brand-text">
-          <strong>校园商城 · 管理中心</strong>
+          <strong>在线商城 · 管理中心</strong>
           <small>ADMIN CONSOLE</small>
         </span>
       </RouterLink>

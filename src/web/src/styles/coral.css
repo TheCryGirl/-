@@ -362,15 +362,23 @@ body {
   border-radius: 999px;
   font-weight: 600;
 }
-.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link) {
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):not(.is-text) {
   background-image: none;
   background-color: var(--c-accent);
   border-color: var(--c-accent);
   box-shadow: var(--c-shadow-accent);
 }
-.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):not(.is-text):hover {
   background-color: var(--c-accent-deep);
   border-color: var(--c-accent-deep);
+}
+/* 文字按钮不使用实心主按钮皮肤；保证浅底、悬停和键盘聚焦时文字可读。 */
+.el-button--primary.is-text:not(.is-disabled) {
+  color: #a42d49;
+}
+.el-button--primary.is-text:not(.is-disabled):is(:hover, :focus-visible, :active) {
+  color: #842039;
+  background-color: #ffe8ec;
 }
 .el-table .el-table__header th.el-table__cell {
   background: var(--c-cream);
