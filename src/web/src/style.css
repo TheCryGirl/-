@@ -135,10 +135,15 @@
     border: 0;
   }
 
-  /* 保证键盘可达性：默认去掉 outline 后必须给出可见焦点 */
+  /* 保证键盘可达性：默认去掉 outline 后必须给出可见焦点，颜色与品牌一致 */
   :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-    outline: 2px solid #2563eb;
+    outline: 2px solid var(--jd-red, #e1251b);
     outline-offset: 2px;
+  }
+
+  :where(::selection) {
+    background: rgba(225, 37, 27, 0.16);
+    color: #7a100a;
   }
 }
 
@@ -146,6 +151,21 @@
 :root {
   --app-content-max-width: 1200px;
   --app-color-danger: #dc2626;
+  color-scheme: light;
+  accent-color: var(--jd-red, #e1251b);
+}
+
+/* Element Plus 主题与品牌红对齐：复选框、开关、链接、加载环不再残留默认蓝。
+   变量写在 :root，EP 组件内部通过 var() 消费，无需改组件源码。 */
+:root {
+  --el-color-primary: #e1251b;
+  --el-color-primary-light-3: #ea665f;
+  --el-color-primary-light-5: #f0928d;
+  --el-color-primary-light-7: #f6bdbb;
+  --el-color-primary-light-8: #f9d3d1;
+  --el-color-primary-light-9: #fce9e8;
+  --el-color-primary-dark-2: #b41e16;
+  --el-border-radius-base: 8px;
 }
 
 /* 商品卡片图片统一比例，避免长短图把网格撑歪 */
@@ -623,6 +643,113 @@ main h1:not(.jd-detail__title) span {
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #b9bdc7;
+}
+
+/* ============================================================
+   全局响应式层（前台 + 卖家端 + 管理端共用）
+   ------------------------------------------------------------
+   内页（购物车、订单、售后、个人中心等）此前没有断点，
+   窄屏下表格与多栏布局会被挤破。这里统一兜底：
+   只改外观与排布，不改结构与数据流。
+   ============================================================ */
+@media (max-width: 768px) {
+  /* 页面主容器收窄内边距，把宽度让给内容 */
+  main.storefront-page {
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-top: 14px;
+  }
+
+  /* 标题与副标题在窄屏允许换行，不再互相挤压 */
+  main h1:not(.jd-detail__title) {
+    font-size: 19px;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  /* 卡片内边距收紧 */
+  .el-card.el-card .el-card__body {
+    padding: 14px;
+  }
+  .el-card.el-card .el-card__header {
+    padding: 12px 14px;
+  }
+
+  /* 表格：窄屏横向滚动留在表格内部，页面不整体溢出 */
+  .ui-table .el-table {
+    font-size: 13px;
+  }
+  .ui-table__pagination {
+    justify-content: center;
+  }
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+
+  /* 筛选表单：inline 表单项改为整行堆叠，避免半截输入框 */
+  .workspace .el-form--inline .el-form-item {
+    display: flex;
+    width: 100%;
+    margin-right: 0;
+  }
+  .workspace .el-form--inline .el-form-item__content {
+    flex: 1;
+  }
+  .workspace .el-form--inline .el-input,
+  .workspace .el-form--inline .el-select {
+    width: 100%;
+  }
+
+  /* 对话框窄屏几乎全宽，避免左右贴边裁切 */
+  .el-dialog {
+    --el-dialog-width: calc(100vw - 32px);
+    margin: 8vh auto !important;
+  }
+  .el-message-box {
+    max-width: calc(100vw - 48px);
+  }
+
+  /* 描述列表两栏改单栏 */
+  .el-descriptions__table {
+    display: block;
+  }
+  .el-descriptions__body tr {
+    display: flex;
+    flex-direction: column;
+  }
+  .el-descriptions__cell {
+    display: block;
+    width: 100% !important;
+  }
+
+  /* 步骤条文字缩小，节点不溢出 */
+  .el-step__title {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .el-step__description {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* 空态插画缩小，按钮全宽更易点按 */
+  .el-empty {
+    padding: 24px 0;
+  }
+  .el-empty__image {
+    width: 120px;
+  }
+  .el-result {
+    padding: 24px 12px;
+  }
+
+  /* 标签页头部可横滑，不挤成两行 */
+  .el-tabs__nav-wrap {
+    overflow-x: auto;
+  }
 }
 
 /* 尊重系统「减少动态效果」设置 */

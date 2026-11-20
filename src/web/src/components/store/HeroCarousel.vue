@@ -13,6 +13,17 @@ let timer = null
 
 const active = computed(() => props.slides[index.value] || {})
 
+/**
+ * 巨型标题按「·」拆两行：整行直排会在词中间断开（如「至 / 高直降」），
+ * 语义断行既避免难看的折行，也让第二行可以带珊瑚重音。
+ * 没有分隔符时整体作一行，行为与原来一致。
+ */
+const titleLines = computed(() => {
+  const raw = String(active.value.title || '')
+  const parts = raw.split('·').map((s) => s.trim()).filter(Boolean)
+  return parts.length > 1 ? parts : [raw]
+})
+
 function start() {
   stop()
   timer = window.setInterval(() => {
@@ -52,13 +63,29 @@ onBeforeUnmount(stop)
     @focusin="pause"
     @focusout="resume"
   >
-    <!-- 装饰光斑，给纯色渐变增加层次 -->
+    <!-- 舞台纹理：细网格 + 珊瑚光晕 -->
+    <span class="jd-hero__grid" aria-hidden="true"></span>
     <span class="jd-hero__glow jd-hero__glow--a" aria-hidden="true"></span>
     <span class="jd-hero__glow jd-hero__glow--b" aria-hidden="true"></span>
 
+    <!-- 巨型序号水印：杂志式版面锚点 -->
+    <span class="jd-hero__numeral" aria-hidden="true">
+      {{ String(index + 1).padStart(2, '0') }}
+    </span>
+
     <div class="jd-hero__copy" :key="active.id">
-      <span class="jd-hero__badge">{{ active.badge }}</span>
-      <h2 class="jd-hero__title">{{ active.title }}</h2>
+      <div class="jd-hero__eyebrow">
+        <span class="accent-line jd-hero__line"></span>
+        <span class="jd-hero__badge">{{ active.badge }}</span>
+      </div>
+      <h2 class="jd-hero__title">
+        <span
+          v-for="(line, li) in titleLines"
+          :key="li"
+          class="jd-hero__title-line"
+          :class="{ 'is-accent': li > 0 }"
+        >{{ line }}</span>
+      </h2>
       <p class="jd-hero__subtitle">{{ active.subtitle }}</p>
       <div class="jd-hero__actions">
         <RouterLink :to="active.to" class="jd-hero__cta">
@@ -100,147 +127,217 @@ onBeforeUnmount(stop)
         <StoreIcon name="chevron-right" :size="18" />
       </button>
     </div>
+
+    <!-- coral 标志折线层 -->
+    <svg class="zigzag-layer jd-hero__zigzag" viewBox="0 0 1200 26" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="0,20 60,6 120,20 180,6 240,20 300,6 360,20 420,6 480,20 540,6 600,20 660,6 720,20 780,6 840,20 900,6 960,20 1020,6 1080,20 1140,6 1200,20" />
+    </svg>
   </section>
 </template>
 
 <style scoped>
+/* ============================================================
+   CORAL 首屏：近黑舞台 + 巨型显示字 + 珊瑚重音
+   ============================================================ */
 .jd-hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   align-items: center;
-  min-height: 320px;
-  padding: 34px 40px;
-  border-radius: var(--jd-radius-lg);
+  gap: 24px;
+  min-height: 460px;
+  /* 底部留白必须容纳绝对定位的轮播控制条，否则它会压住 CTA */
+  padding: 56px 56px 108px;
+  border-radius: var(--c-r-lg, 28px);
   overflow: hidden;
-  color: #fff;
   isolation: isolate;
-  box-shadow: var(--jd-shadow-card);
+  color: #fff;
+  background: var(--v-grad-hero, linear-gradient(115deg, #ff4d6d, #ff7a45 52%, #ffb703));
+  box-shadow: 0 30px 70px -40px rgba(255, 77, 109, 0.55);
 }
 
-/* 三套主题渐变 */
+/* 三套主题换鲜亮渐变：珊瑚橙 / 紫蓝 / 橙琥珀，保持高饱和明亮 */
 .jd-hero--red {
-  background:
-    radial-gradient(120% 120% at 88% 12%, #ff8a6d 0%, transparent 55%),
-    linear-gradient(120deg, #d81e12 0%, #e8442b 46%, #ff7a4d 100%);
+  background: linear-gradient(115deg, #ff4d6d 0%, #ff7a45 52%, #ffb703 100%);
+  --hero-glow: rgba(255, 255, 255, 0.4);
 }
 .jd-hero--dark {
-  background:
-    radial-gradient(110% 110% at 85% 15%, #4b5563 0%, transparent 60%),
-    linear-gradient(120deg, #1c2333 0%, #2a3448 55%, #3f4d69 100%);
+  background: linear-gradient(115deg, #8b5cf6 0%, #6366f1 48%, #38bdf8 100%);
+  --hero-glow: rgba(255, 255, 255, 0.34);
 }
 .jd-hero--amber {
-  background:
-    radial-gradient(120% 120% at 86% 16%, #ffd08a 0%, transparent 58%),
-    linear-gradient(120deg, #b45309 0%, #d97706 48%, #f59e0b 100%);
+  background: linear-gradient(115deg, #ff7a45 0%, #ffb703 55%, #ffd60a 100%);
+  --hero-glow: rgba(255, 255, 255, 0.42);
 }
 
-/* 光斑 */
+/* 细网格纹理 */
+.jd-hero__grid {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(120% 100% at 20% 0%, #000 30%, transparent 78%);
+}
+
 .jd-hero__glow {
   position: absolute;
   border-radius: 50%;
-  filter: blur(6px);
-  opacity: 0.35;
   pointer-events: none;
   z-index: -1;
+  filter: blur(10px);
 }
 .jd-hero__glow--a {
-  width: 280px;
-  height: 280px;
-  top: -120px;
-  left: -60px;
-  background: rgba(255, 255, 255, 0.35);
+  width: 460px;
+  height: 460px;
+  top: -180px;
+  right: -80px;
+  background: radial-gradient(circle, var(--hero-glow, rgba(232, 93, 93, 0.5)) 0%, transparent 66%);
 }
 .jd-hero__glow--b {
-  width: 200px;
-  height: 200px;
-  bottom: -110px;
-  right: 30%;
-  background: rgba(255, 255, 255, 0.18);
+  width: 340px;
+  height: 340px;
+  bottom: -190px;
+  left: 12%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.28) 0%, transparent 68%);
 }
 
+/* 巨型序号水印 */
+.jd-hero__numeral {
+  position: absolute;
+  right: 40px;
+  top: 18px;
+  font-family: var(--c-display, 'Bebas Neue', sans-serif);
+  font-size: 150px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  z-index: -1;
+  user-select: none;
+}
+
+/* 切换幻灯片时只做位移、不做淡入：巨型标题必须始终满对比度，
+   否则每次轮播都会出现「标题发灰」的一瞬间，削弱冲击力。 */
+@keyframes coral-hero-in {
+  from {
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
 .jd-hero__copy {
-  max-width: 520px;
-  animation: jd-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  max-width: 700px;
+  animation: coral-hero-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.jd-hero__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.jd-hero__line {
+  width: 44px;
+  height: 4px;
+  flex: none;
 }
 .jd-hero__badge {
   display: inline-flex;
   align-items: center;
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  font-size: 12px;
-  letter-spacing: 1px;
-  backdrop-filter: blur(4px);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-on-stage-muted, rgba(247, 243, 236, 0.62));
 }
+
+/* 巨型标题：中文走 900 字重专用显示字，形成真正的冲击力 */
 .jd-hero__title {
-  margin-top: 14px;
-  font-size: clamp(22px, 2.4vw, 34px);
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  line-height: 1.22;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.16);
+  font-family: var(--c-display, 'Bebas Neue', sans-serif);
+  font-size: clamp(38px, 5.6vw, 76px);
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+/* 每行独立成块：语义断行。窄屏放不下时用 balance 均分两行，
+   避免末尾单字掉行（如「…的样 / 子」）这种难看的孤字。 */
+.jd-hero__title-line {
+  display: block;
+  text-wrap: balance;
+}
+.jd-hero__title-line.is-accent {
+  color: var(--c-accent, #e85d5d);
 }
 .jd-hero__subtitle {
-  margin-top: 12px;
-  max-width: 460px;
-  font-size: 13px;
+  margin-top: 20px;
+  max-width: 46ch;
+  font-size: 15px;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--c-on-stage-muted, rgba(247, 243, 236, 0.62));
+  /* 窄屏均分两行，避免末尾单字掉行（如「…低至 5 / 折」） */
+  text-wrap: balance;
 }
 .jd-hero__actions {
   display: flex;
   align-items: center;
-  gap: 18px;
-  margin-top: 24px;
+  gap: 28px;
+  flex-wrap: wrap;
+  margin-top: 34px;
 }
 .jd-hero__cta {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 42px;
-  padding: 0 22px;
+  gap: 8px;
+  height: 52px;
+  padding: 0 32px;
   border-radius: 999px;
   background: #fff;
-  color: var(--jd-red);
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--c-accent-deep, #e63e5c);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.jd-hero--dark .jd-hero__cta,
-.jd-hero--amber .jd-hero__cta {
-  color: #1f2937;
+  box-shadow: 0 16px 34px -16px rgba(232, 93, 93, 0.8);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
 }
 .jd-hero__cta::after {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
   animation: jd-shine 3.6s ease-in-out infinite;
-  opacity: 0.55;
 }
 .jd-hero__cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 30px -18px rgba(0, 0, 0, 0.55);
+  background: #1a1a1a;
+  color: #fff;
+  transform: translateY(-3px);
 }
 .jd-hero__stat {
   display: flex;
   flex-direction: column;
-  line-height: 1.3;
+  line-height: 1.1;
 }
 .jd-hero__stat strong {
-  font-size: 18px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--c-display, 'Bebas Neue', sans-serif);
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #fff;
 }
 .jd-hero__stat span {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.75);
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-on-stage-muted, rgba(247, 243, 236, 0.62));
 }
 
 /* 右侧产品图 */
@@ -248,16 +345,16 @@ onBeforeUnmount(stop)
   position: relative;
   display: grid;
   place-items: center;
-  min-height: 240px;
-  animation: jd-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 300px;
+  animation: coral-hero-in 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .jd-hero__ring {
   position: absolute;
-  width: 260px;
-  height: 260px;
+  width: 330px;
+  height: 330px;
   border-radius: 50%;
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  animation: jd-spin 26s linear infinite;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  animation: jd-spin 30s linear infinite;
 }
 @keyframes jd-spin {
   to {
@@ -266,67 +363,73 @@ onBeforeUnmount(stop)
 }
 .jd-hero__img {
   position: relative;
-  width: min(260px, 80%);
+  width: min(300px, 84%);
   aspect-ratio: 1;
   object-fit: cover;
   border-radius: 24px;
-  border: 6px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.6);
-  animation: jd-float 6s ease-in-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 40px 70px -30px rgba(0, 0, 0, 0.8);
+  animation: jd-float 7s ease-in-out infinite;
 }
 .jd-hero__float-tag {
   position: absolute;
-  right: 4%;
-  bottom: 8%;
-  padding: 6px 12px;
+  right: 2%;
+  bottom: 10%;
+  padding: 8px 16px;
   border-radius: 999px;
-  background: rgba(17, 24, 39, 0.62);
-  font-size: 11px;
-  letter-spacing: 1px;
-  backdrop-filter: blur(6px);
+  background: #1a1a1a;
+  color: #ffb703;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  box-shadow: 0 12px 26px -12px rgba(232, 93, 93, 0.9);
 }
 
 /* 控制条 */
 .jd-hero__controls {
   position: absolute;
-  right: 24px;
-  bottom: 20px;
+  left: 56px;
+  bottom: 30px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .jd-hero__arrow {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  transition: background 0.2s ease, transform 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
 }
 .jd-hero__arrow:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: scale(1.06);
+  background: #fff;
+  border-color: #fff;
+  color: var(--c-accent-deep, #e63e5c);
+  transform: scale(1.08);
 }
 .jd-hero__dots {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .jd-hero__dot {
   position: relative;
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   overflow: hidden;
-  transition: width 0.28s ease, background 0.28s ease;
+  transition: width 0.35s ease, background 0.35s ease;
 }
 .jd-hero__dot.is-active {
-  width: 30px;
-  background: rgba(255, 255, 255, 0.32);
+  width: 38px;
+  background: rgba(255, 255, 255, 0.24);
 }
 .jd-hero__dot-progress {
   position: absolute;
@@ -346,19 +449,62 @@ onBeforeUnmount(stop)
   }
 }
 
+/* 折线层在深色舞台上用浅色描边 */
+.jd-hero__zigzag {
+  height: 22px;
+  opacity: 0.3;
+}
+.jd-hero__zigzag polyline {
+  stroke: #f7f3ec;
+  stroke-width: 2.5;
+}
+
 @media (max-width: 1024px) {
   .jd-hero {
     grid-template-columns: 1fr;
-    padding: 26px 24px 56px;
+    min-height: 0;
+    padding: 40px 28px 76px;
   }
   .jd-hero__media {
     display: none;
+  }
+  .jd-hero__numeral {
+    font-size: 100px;
+    right: 20px;
+  }
+  .jd-hero__controls {
+    left: 28px;
   }
   .jd-hero__subtitle {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+}
+@media (max-width: 640px) {
+  .jd-hero {
+    padding: 32px 20px 72px;
+    border-radius: 22px;
+  }
+  .jd-hero__title {
+    font-size: clamp(30px, 8.6vw, 42px);
+  }
+  .jd-hero__actions {
+    gap: 18px;
+    margin-top: 26px;
+  }
+  .jd-hero__cta {
+    height: 46px;
+    padding: 0 24px;
+    font-size: 14px;
+  }
+  .jd-hero__stat strong {
+    font-size: 26px;
+  }
+  .jd-hero__controls {
+    left: 20px;
+    bottom: 24px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

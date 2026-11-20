@@ -1,0 +1,1953 @@
+/*
+ * ============================================================
+ *  CORAL —— 商城视觉重塑层
+ * ------------------------------------------------------------
+ *  设计方向：近黑舞台 #1A1A1A + 温暖奶油内容区 + 饱和珊瑚红 #E85D5D。
+ *  Bebas Neue 巨型显示字（拉丁/数字）配 Inter 正文，中文走系统黑体族。
+ *  杂志式排版：极大字号对比、宽字距标签、短横条重音、折线装饰。
+ *
+ *  分层原则：
+ *  本文件在 style.css 之后引入，只做「视觉皮肤」——不改结构、不改数据流。
+ *  Element Plus 样式未分层，优先级高于 @layer，因此这里一律用足够具体的
+ *  选择器覆盖，而不是塞进 @layer base（那样会静默失效）。
+ * ============================================================
+ */
+
+/* ---------- 自托管字体：不依赖外网 CDN ---------- */
+@font-face {
+  font-family: 'Bebas Neue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bebas-neue-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin-800-normal.woff2') format('woff2');
+}
+
+/* 中文显示字：Noto Sans SC 实例化到 900 字重并按项目用字子集化（169 KB）。
+   巨量中文标题若回退系统雅黑，字重不够，冲击力会明显减弱。
+   字体授权为 SIL OFL 1.1，许可证见 public/fonts/OFL-Noto.txt。 */
+@font-face {
+  font-family: 'Mall Display SC';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-display-900.woff2') format('woff2');
+}
+
+/* ---------- 设计令牌 ---------- */
+:root {
+  /* 舞台与内容 */
+  --c-stage: #1a1a1a;
+  --c-stage-2: #232323;
+  --c-stage-3: #2e2e2e;
+  --c-cream: #f7f3ec;
+  --c-cream-2: #fffdf9;
+  --c-paper: #ffffff;
+
+  /* 重音 */
+  --c-accent: #e85d5d;
+  --c-accent-deep: #c94343;
+  --c-accent-soft: #fdeceb;
+
+  /* 文字 */
+  --c-ink: #1a1a1a;
+  --c-ink-2: #3d3d3d;
+  --c-muted: #6b6b6b;
+  --c-muted-2: #9a9a9a;
+  --c-on-stage: #f7f3ec;
+  --c-on-stage-muted: rgba(247, 243, 236, 0.62);
+
+  /* 线与形 */
+  --c-line: rgba(26, 26, 26, 0.1);
+  --c-line-stage: rgba(255, 255, 255, 0.14);
+  --c-r-sm: 10px;
+  --c-r: 18px;
+  --c-r-lg: 28px;
+
+  /* 字体族：拉丁显示字 + 中文黑体，避免回退宋体 */
+  --c-display: 'Bebas Neue', 'Mall Display SC', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+  --c-body: 'Inter', 'HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+
+  --c-shadow: 0 2px 6px rgba(26, 26, 26, 0.05), 0 24px 48px -32px rgba(26, 26, 26, 0.4);
+  --c-shadow-lift: 0 8px 20px rgba(26, 26, 26, 0.07), 0 40px 70px -40px rgba(26, 26, 26, 0.5);
+  --c-shadow-accent: 0 14px 30px -16px rgba(232, 93, 93, 0.7);
+
+  /* 兼容既有变量：让未改到的组件也自动换肤 */
+  --jd-red: #e85d5d;
+  --jd-red-dark: #c94343;
+  --jd-red-soft: #fdeceb;
+  --jd-ink: #1a1a1a;
+  --jd-ink-2: #3d3d3d;
+  --jd-ink-3: #6b6b6b;
+  --jd-ink-4: #9a9a9a;
+  --jd-line: rgba(26, 26, 26, 0.1);
+  --jd-bg: #f7f3ec;
+  --jd-radius-sm: 10px;
+  --jd-radius: 18px;
+  --jd-radius-lg: 28px;
+  --jd-shadow-card: var(--c-shadow);
+  --jd-shadow-lift: var(--c-shadow-lift);
+  --jd-shadow-red: var(--c-shadow-accent);
+  --jd-container: 1320px;
+  --app-content-max-width: 1320px;
+
+  /* Element Plus 主题对齐 */
+  --el-color-primary: #e85d5d;
+  --el-color-primary-light-3: #ef8b8b;
+  --el-color-primary-light-5: #f4a9a9;
+  --el-color-primary-light-7: #f9c7c7;
+  --el-color-primary-light-8: #fbd6d6;
+  --el-color-primary-light-9: #fdeceb;
+  --el-color-primary-dark-2: #c94343;
+  --el-border-radius-base: 10px;
+  --el-font-family: var(--c-body);
+  --el-text-color-primary: #1a1a1a;
+  --el-text-color-regular: #3d3d3d;
+  --el-border-color-lighter: rgba(26, 26, 26, 0.1);
+
+  accent-color: var(--c-accent);
+}
+
+/* ---------- 全站底色：奶油纸 + 极淡网格 ---------- */
+body {
+  font-family: var(--c-body);
+  color: var(--c-ink);
+  background-color: var(--c-cream);
+  line-height: 1.7;
+}
+
+.app-backdrop {
+  background-color: var(--c-cream);
+  background-image:
+    radial-gradient(46rem 26rem at 6% -8%, rgba(232, 93, 93, 0.14), transparent 62%),
+    radial-gradient(40rem 22rem at 98% 0%, rgba(232, 93, 93, 0.08), transparent 60%),
+    linear-gradient(rgba(26, 26, 26, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 26, 26, 0.028) 1px, transparent 1px);
+  background-size: auto, auto, 64px 64px, 64px 64px;
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+}
+
+:where(::selection) {
+  background: rgba(232, 93, 93, 0.22);
+  color: #7d2020;
+}
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+/* ---------- 排版基元 ---------- */
+
+/* 巨型显示字：拉丁与数字用 Bebas Neue，中文自动落黑体 */
+.c-display {
+  font-family: var(--c-display);
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* 宽字距小标签（杂志式 meta） */
+.c-label {
+  font-family: var(--c-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-muted);
+}
+
+/* 珊瑚色短横条重音 */
+.accent-line {
+  display: block;
+  width: 56px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--c-accent);
+}
+
+/* 折线装饰层：coral 的标志元素 */
+.zigzag-layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 26px;
+  pointer-events: none;
+  opacity: 0.22;
+}
+.zigzag-layer polyline {
+  fill: none;
+  stroke: #1a1a1a;
+  stroke-width: 3;
+}
+
+/* 圆形导航点 / 箭头（深色舞台上） */
+.nav-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-arrow {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: var(--c-on-stage);
+  transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+}
+.nav-arrow:hover {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  transform: scale(1.06);
+}
+
+/* ---------- 区块标题：杂志式大标题 + 序号 ---------- */
+.c-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.c-section-head__main {
+  min-width: 0;
+}
+.c-section-head__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.c-section-head__title {
+  font-family: var(--c-display);
+  font-size: clamp(30px, 4.4vw, 52px);
+  font-weight: 400;
+  line-height: 0.94;
+  letter-spacing: 0.01em;
+  color: var(--c-ink);
+}
+.c-section-head__sub {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--c-muted);
+  max-width: 62ch;
+}
+
+/* ---------- 卡片：奶油纸面 + 细线 + 悬浮抬升 ---------- */
+.c-card {
+  position: relative;
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--c-r);
+  box-shadow: var(--c-shadow);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.45s ease,
+    border-color 0.3s ease;
+}
+.c-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--c-shadow-lift);
+  border-color: rgba(232, 93, 93, 0.35);
+}
+
+/* ---------- 按钮 ---------- */
+.c-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 26px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--c-accent);
+  color: #fff;
+  box-shadow: var(--c-shadow-accent);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease,
+    background 0.3s ease;
+}
+.c-btn:hover {
+  background: var(--c-accent-deep);
+  transform: translateY(-2px);
+}
+.c-btn--ghost {
+  background: transparent;
+  color: var(--c-on-stage);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: none;
+}
+.c-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #fff;
+}
+
+/* ---------- 价格：Bebas 数字 ---------- */
+.jd-price {
+  font-family: var(--c-display);
+  color: var(--c-accent);
+  letter-spacing: 0.01em;
+}
+.jd-price__symbol {
+  font-size: 0.6em;
+}
+.jd-price__int {
+  font-size: 1.5em;
+}
+.jd-price__dec {
+  font-size: 0.72em;
+}
+
+/* ---------- Element Plus 换肤 ---------- */
+.el-card.el-card {
+  border-radius: var(--c-r);
+  border-color: var(--c-line);
+  background: var(--c-paper);
+  box-shadow: var(--c-shadow);
+}
+.el-card.el-card:hover {
+  border-color: rgba(232, 93, 93, 0.3);
+  box-shadow: var(--c-shadow-lift);
+}
+.el-card.el-card .el-card__header {
+  background: var(--c-cream-2);
+  border-bottom-color: var(--c-line);
+  padding: 16px 20px;
+}
+.el-card.el-card .el-card__body {
+  padding: 20px;
+}
+.el-button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link) {
+  background-image: none;
+  background-color: var(--c-accent);
+  border-color: var(--c-accent);
+  box-shadow: var(--c-shadow-accent);
+}
+.el-button--primary:not(.is-disabled):not(.is-plain):not(.is-link):hover {
+  background-color: var(--c-accent-deep);
+  border-color: var(--c-accent-deep);
+}
+.el-table .el-table__header th.el-table__cell {
+  background: var(--c-cream);
+  color: var(--c-ink);
+  font-weight: 600;
+}
+.el-table .el-table__row:hover > td.el-table__cell,
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background: var(--c-accent-soft);
+}
+.el-tag {
+  border-radius: 999px;
+  font-weight: 600;
+}
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--c-r-sm);
+}
+
+/* 主标题：去掉旧竖条，改用显示字 */
+main h1:not(.jd-detail__title) {
+  font-family: var(--c-display);
+  font-size: clamp(26px, 3.2vw, 40px);
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+main h1:not(.jd-detail__title)::before {
+  width: 6px;
+  height: 0.82em;
+  background: var(--c-accent);
+}
+main h1:not(.jd-detail__title) span {
+  font-family: var(--c-body);
+  letter-spacing: 0.04em;
+}
+
+/* 滚动条 */
+*::-webkit-scrollbar-thumb {
+  background: rgba(26, 26, 26, 0.22);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--c-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .c-card,
+  .c-btn,
+  .nav-arrow {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   导航：深色舞台头部
+   ------------------------------------------------------------
+   AppHeader 的 scoped 样式优先级高于本文件，故外观属性用 !important
+   精确覆盖；只改颜色/字体/圆角，不动布局与交互。
+   ============================================================ */
+.jd-theme-header {
+  background: var(--c-stage) !important;
+  border-bottom: 1px solid var(--c-line-stage);
+}
+.jd-theme-header.is-scrolled {
+  box-shadow: 0 18px 40px -30px rgba(0, 0, 0, 0.9) !important;
+}
+.jd-topbar {
+  background: #141414 !important;
+  color: var(--c-on-stage-muted) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.jd-topbar__link,
+.jd-topbar__btn {
+  color: var(--c-on-stage-muted) !important;
+}
+.jd-topbar__link:hover,
+.jd-topbar__btn:hover {
+  color: var(--c-accent) !important;
+}
+.jd-head {
+  border-bottom: 1px solid var(--c-line-stage) !important;
+}
+
+/* Logo：珊瑚方块 + 显示字 */
+.jd-logo__mark {
+  background: var(--c-accent) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--c-shadow-accent) !important;
+  font-weight: 700 !important;
+}
+.jd-logo__text strong {
+  color: #fff !important;
+  font-size: 20px !important;
+  letter-spacing: 0.04em !important;
+}
+.jd-logo__text small {
+  color: var(--c-on-stage-muted) !important;
+  letter-spacing: 0.24em !important;
+}
+
+/* 分类按钮 */
+.jd-category__btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--c-line-stage) !important;
+  color: var(--c-on-stage) !important;
+  font-weight: 500 !important;
+}
+.jd-category__btn:hover {
+  background: var(--c-accent) !important;
+  border-color: var(--c-accent) !important;
+}
+
+/* 搜索框：舞台上描边胶囊 */
+.jd-search__box {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--c-line-stage) !important;
+  height: 46px !important;
+}
+.jd-search__box:focus-within {
+  border-color: var(--c-accent) !important;
+  box-shadow: 0 0 0 4px rgba(232, 93, 93, 0.18) !important;
+}
+.jd-search__icon {
+  color: var(--c-accent) !important;
+}
+.jd-search__input {
+  color: #fff !important;
+}
+.jd-search__input::placeholder {
+  color: rgba(247, 243, 236, 0.4) !important;
+}
+.jd-search__btn {
+  background: var(--c-accent) !important;
+  height: 38px !important;
+  letter-spacing: 0.06em !important;
+}
+.jd-search__btn:hover {
+  background: var(--c-accent-deep) !important;
+}
+.jd-search__hot-label {
+  color: var(--c-on-stage-muted) !important;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.jd-search__hot-item {
+  color: rgba(247, 243, 236, 0.55) !important;
+}
+.jd-search__hot-item:hover {
+  color: var(--c-accent) !important;
+}
+
+/* 动作区：幽灵胶囊 */
+.jd-cart,
+.jd-user,
+.jd-ghost-btn {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--c-line-stage) !important;
+  color: var(--c-on-stage) !important;
+}
+.jd-cart:hover,
+.jd-user:hover,
+.jd-ghost-btn:hover {
+  border-color: var(--c-accent) !important;
+  color: var(--c-accent) !important;
+  box-shadow: none !important;
+}
+.jd-primary-btn {
+  background: var(--c-accent) !important;
+  box-shadow: var(--c-shadow-accent);
+}
+.jd-primary-btn:hover {
+  background: var(--c-accent-deep) !important;
+}
+.jd-cart__badge {
+  background: var(--c-accent) !important;
+}
+
+/* 主导航 */
+.jd-nav {
+  border-bottom: 1px solid var(--c-line-stage) !important;
+  background: var(--c-stage);
+}
+.jd-nav__link {
+  color: var(--c-on-stage-muted) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.04em;
+}
+.jd-nav__link:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+.jd-nav__link.is-active {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+}
+.jd-nav__hint {
+  color: rgba(247, 243, 236, 0.4) !important;
+  letter-spacing: 0.08em;
+}
+
+/* 下拉面板保持浅色纸面，与深色头部形成层次 */
+.jd-category__panel,
+.jd-user__panel,
+.jd-nav__panel {
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  border-radius: var(--c-r) !important;
+  box-shadow: var(--c-shadow-lift) !important;
+}
+.jd-user__item,
+.jd-nav__panel-item,
+.jd-category__title,
+.jd-category__child {
+  color: var(--c-ink-2) !important;
+}
+.jd-user__item:hover,
+.jd-nav__panel-item:hover,
+.jd-category__child:hover {
+  background: var(--c-accent-soft) !important;
+  color: var(--c-accent-deep) !important;
+}
+
+/* ============================================================
+   首页版面：公告条 / 区块标题 / 排序控件
+   ============================================================ */
+.jd-store {
+  gap: 26px !important;
+}
+
+/* 公告条：深色细条，与头部呼应 */
+.jd-notice {
+  background: var(--c-stage-2) !important;
+  border: 1px solid var(--c-line-stage) !important;
+  height: 42px !important;
+}
+.jd-notice__label {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px !important;
+  padding: 4px 12px !important;
+}
+.jd-notice__content {
+  color: var(--c-on-stage-muted) !important;
+  letter-spacing: 0.02em;
+}
+.jd-notice__cta {
+  color: var(--c-accent) !important;
+  font-weight: 600 !important;
+}
+
+/* 区块标题：巨型显示字 + 珊瑚短条 */
+.jd-feed {
+  margin-top: 46px !important;
+}
+.jd-feed__head {
+  margin-bottom: 24px !important;
+  align-items: flex-end !important;
+}
+.jd-feed__title {
+  align-items: flex-start !important;
+  gap: 16px !important;
+}
+.jd-feed__bar {
+  width: 6px !important;
+  height: 42px !important;
+  background: var(--c-accent) !important;
+  margin-top: 4px;
+}
+.jd-feed__title h2 {
+  font-family: var(--c-display) !important;
+  font-size: clamp(28px, 3.6vw, 44px) !important;
+  font-weight: 900 !important;
+  line-height: 0.98 !important;
+  letter-spacing: 0.01em !important;
+  color: var(--c-ink) !important;
+}
+.jd-feed__title p {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+  letter-spacing: 0.06em;
+  color: var(--c-muted) !important;
+}
+
+/* 排序 / 筛选：纸面胶囊 */
+.jd-feed__sorts {
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  padding: 4px !important;
+}
+.jd-feed__sort {
+  height: 34px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.04em;
+  color: var(--c-muted) !important;
+}
+.jd-feed__sort:hover {
+  color: var(--c-accent) !important;
+}
+.jd-feed__sort.is-active {
+  background: var(--c-stage) !important;
+  color: #fff !important;
+}
+.jd-feed__sort.is-active .jd-feed__arrows.is-desc .down {
+  border-top-color: var(--c-accent) !important;
+}
+.jd-feed__sort.is-active .jd-feed__arrows:not(.is-desc) .up {
+  border-bottom-color: var(--c-accent) !important;
+}
+.jd-feed__filter {
+  height: 42px !important;
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.04em;
+}
+.jd-feed__filter:hover {
+  border-color: var(--c-accent) !important;
+  color: var(--c-accent) !important;
+}
+.jd-feed__filter-count {
+  background: var(--c-accent) !important;
+}
+
+/* ============================================================
+   商品卡片：奶油纸面 + 大图 + Bebas 价格
+   ============================================================ */
+.jd-card {
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  border-radius: var(--c-r) !important;
+  box-shadow: var(--c-shadow);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.45s ease,
+    border-color 0.3s ease !important;
+}
+.jd-card:hover {
+  transform: translateY(-8px) !important;
+  border-color: rgba(232, 93, 93, 0.4) !important;
+  box-shadow: var(--c-shadow-lift) !important;
+}
+.jd-card__media {
+  background: var(--c-cream) !important;
+}
+.jd-card__img {
+  aspect-ratio: 4 / 5 !important;
+}
+.jd-card:hover .jd-card__img {
+  transform: scale(1.06) !important;
+}
+.jd-card__tag {
+  border-radius: 999px !important;
+  background: rgba(26, 26, 26, 0.72) !important;
+  color: #fff !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px !important;
+}
+.jd-card__tag--own {
+  background: var(--c-accent) !important;
+}
+.jd-card__quick-btn {
+  width: 36px !important;
+  height: 36px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid var(--c-line);
+  color: var(--c-ink) !important;
+}
+.jd-card__quick-btn:hover {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+  border-color: var(--c-accent);
+}
+.jd-card__quick-btn.is-on {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+  border-color: var(--c-accent);
+}
+.jd-card__body {
+  padding: 16px 16px 18px !important;
+  gap: 8px !important;
+}
+.jd-card__title {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+  letter-spacing: 0.01em;
+  color: var(--c-ink) !important;
+  min-height: 45px !important;
+}
+.jd-card__subtitle {
+  font-size: 12px !important;
+  color: var(--c-muted) !important;
+}
+.jd-card__price-row {
+  margin-top: 6px !important;
+  padding-top: 10px;
+  border-top: 1px solid var(--c-line);
+}
+.jd-card .jd-price {
+  font-size: 22px;
+}
+.jd-card__stock,
+.jd-card__meta-text {
+  font-size: 11px !important;
+  letter-spacing: 0.06em;
+  color: var(--c-muted-2) !important;
+}
+.jd-card__status {
+  background: rgba(26, 26, 26, 0.78) !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px !important;
+}
+
+/* 网格间距加大，给卡片呼吸感 */
+.jd-feed__grid {
+  gap: 22px !important;
+}
+
+/* ============================================================
+   精选好物 / 服务承诺 / 分类入口
+   ============================================================ */
+.jd-section-head__bar {
+  background: var(--c-accent) !important;
+  width: 6px !important;
+}
+.jd-section-head__main h2 {
+  font-family: var(--c-display) !important;
+  font-size: clamp(26px, 3.2vw, 40px) !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: 0.01em !important;
+}
+.jd-section-head__main p {
+  letter-spacing: 0.06em;
+  color: var(--c-muted) !important;
+}
+.jd-section-head__more {
+  color: var(--c-accent) !important;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.jd-curated__grid {
+  gap: 22px !important;
+}
+.jd-curated__card {
+  border-radius: var(--c-r) !important;
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  box-shadow: var(--c-shadow);
+}
+.jd-curated__card:hover {
+  border-color: rgba(232, 93, 93, 0.4) !important;
+  box-shadow: var(--c-shadow-lift) !important;
+}
+.jd-curated__media {
+  background: var(--c-cream) !important;
+}
+.jd-curated__overlay {
+  background: linear-gradient(180deg, transparent 52%, rgba(26, 26, 26, 0.62)) !important;
+}
+.jd-curated__overlay-btn {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em;
+}
+
+/* 服务承诺：纸面细卡 */
+.jd-promises {
+  gap: 14px !important;
+  margin-top: 22px !important;
+}
+.jd-promises__item {
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  border-radius: var(--c-r) !important;
+  padding: 16px 18px !important;
+}
+.jd-promises__item:hover {
+  border-color: rgba(232, 93, 93, 0.35) !important;
+  box-shadow: var(--c-shadow) !important;
+}
+.jd-promises__icon {
+  background: var(--c-stage) !important;
+  color: var(--c-accent) !important;
+  border-radius: 12px !important;
+}
+.jd-promises__text strong {
+  color: var(--c-ink) !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em;
+}
+.jd-promises__text small {
+  color: var(--c-muted-2) !important;
+  letter-spacing: 0.04em;
+}
+
+/* 分类入口：图标底座换成深色舞台 */
+.jd-cats {
+  background: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  border-radius: var(--c-r) !important;
+  box-shadow: var(--c-shadow) !important;
+  padding: 20px !important;
+  gap: 12px !important;
+}
+.jd-cats__icon {
+  background: var(--c-cream) !important;
+  color: var(--c-ink) !important;
+  border: 1px solid var(--c-line);
+  border-radius: 14px !important;
+}
+.jd-cats__item:hover .jd-cats__icon {
+  background: var(--c-accent-soft) !important;
+  color: var(--c-accent-deep) !important;
+  border-color: rgba(232, 93, 93, 0.4);
+}
+.jd-cats__item.is-active .jd-cats__icon {
+  background: var(--c-stage) !important;
+  color: var(--c-accent) !important;
+  border-color: var(--c-stage);
+}
+.jd-cats__item.is-active .jd-cats__label {
+  color: var(--c-accent-deep) !important;
+}
+.jd-cats__label {
+  letter-spacing: 0.04em;
+  font-weight: 500 !important;
+}
+
+/* ============================================================
+   页脚：深色舞台收尾，与头部呼应
+   ============================================================ */
+.jd-footer {
+  background: var(--c-stage) !important;
+  border-top: 1px solid var(--c-line-stage) !important;
+  color: var(--c-on-stage-muted) !important;
+  margin-top: 64px;
+}
+.jd-footer__mark {
+  background: var(--c-accent) !important;
+  box-shadow: var(--c-shadow-accent);
+}
+.jd-footer__logo strong {
+  color: #fff !important;
+  letter-spacing: 0.04em;
+}
+.jd-footer__logo small {
+  color: var(--c-on-stage-muted) !important;
+  letter-spacing: 0.24em !important;
+}
+.jd-footer__brand p {
+  color: var(--c-on-stage-muted) !important;
+}
+.jd-footer__badges span {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 1px solid var(--c-line-stage);
+  color: var(--c-on-stage) !important;
+  letter-spacing: 0.06em;
+}
+.jd-footer__col h3,
+.jd-footer__contact h3 {
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.jd-footer__link {
+  color: var(--c-on-stage-muted) !important;
+}
+.jd-footer__link:hover {
+  color: var(--c-accent) !important;
+}
+.jd-footer__contact strong {
+  font-family: var(--c-display);
+  color: var(--c-accent) !important;
+  font-size: 30px !important;
+  letter-spacing: 0.04em;
+}
+.jd-footer__bottom,
+.jd-footer__bottom span,
+.jd-footer__bottom a {
+  color: rgba(247, 243, 236, 0.42) !important;
+  border-top-color: var(--c-line-stage) !important;
+}
+
+/* 「我要卖」入口：原样式用 background 渐变（背景图），
+   仅覆盖 background-color 无法生效，必须显式清掉 background-image。 */
+.jd-nav__link--sell {
+  background-image: none !important;
+  background-color: rgba(232, 93, 93, 0.14) !important;
+  border: 1px dashed rgba(232, 93, 93, 0.55) !important;
+  color: var(--c-accent) !important;
+  font-weight: 600 !important;
+}
+.jd-nav__link--sell:hover {
+  background-image: none !important;
+  background-color: var(--c-accent) !important;
+  border-color: var(--c-accent) !important;
+  color: #fff !important;
+}
+
+/* ============================================================
+   三色系统收口：清除琥珀 / 靛蓝等第四色残留
+   ------------------------------------------------------------
+   评分星星、秒杀计数、详情页评分、PageHero 主题原本各自带暖金或
+   靛蓝色，会在近黑 / 奶油 / 珊瑚之外引入第四色。这里统一归并。
+   ============================================================ */
+:root {
+  --jd-amber: #e85d5d;
+  --jd-amber-soft: #fdeceb;
+}
+
+.jd-curated__stars,
+.jd-detail__score strong {
+  color: var(--c-accent) !important;
+}
+.jd-flash-live__count {
+  color: var(--c-accent-deep) !important;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* PageHero 四套主题统一为珊瑚调，只保留明度差异 */
+.page-hero {
+  border-radius: var(--c-r-lg) !important;
+  border: 1px solid var(--c-line) !important;
+  box-shadow: var(--c-shadow) !important;
+  padding: 26px 30px !important;
+}
+.page-hero--red,
+.page-hero--amber,
+.page-hero--indigo,
+.page-hero--slate {
+  background: linear-gradient(110deg, #fdeceb, #fffdf9 46%, #fdf3ee) !important;
+  color: var(--c-accent) !important;
+}
+.page-hero--red .page-hero__glow,
+.page-hero--amber .page-hero__glow,
+.page-hero--indigo .page-hero__glow,
+.page-hero--slate .page-hero__glow {
+  background: radial-gradient(circle, rgba(232, 93, 93, 0.34), transparent 70%) !important;
+}
+.page-hero__title {
+  font-family: var(--c-display) !important;
+  font-weight: 900 !important;
+  font-size: clamp(24px, 3vw, 36px) !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--c-ink) !important;
+}
+.page-hero__subtitle {
+  color: var(--c-muted) !important;
+  letter-spacing: 0.04em;
+}
+
+/* 精选卡片文字层次 */
+.jd-curated__title {
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+  color: var(--c-ink) !important;
+}
+.jd-curated__meta em {
+  font-family: var(--c-display);
+  font-style: normal;
+  color: var(--c-accent) !important;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   空态 / 结果页 / 回到顶部
+   ------------------------------------------------------------
+   el-result 与 el-empty 的默认插画是灰蓝色，属三色系统外的第四色。
+   这里把插画与图标统一成奶油底 + 珊瑚描边，保持整体一致。
+   ============================================================ */
+.el-result__icon svg,
+.el-result .el-icon,
+.el-result__icon .icon-info,
+.el-result__icon .icon-error,
+.el-result__icon .icon-warning,
+.el-result__icon .icon-success {
+  color: var(--c-accent) !important;
+  fill: currentColor !important;
+}
+.el-result__icon-wrapper {
+  background: var(--c-accent-soft);
+  border-radius: 50%;
+}
+.el-result__title {
+  font-family: var(--c-display) !important;
+  font-weight: 900 !important;
+  font-size: 26px !important;
+  color: var(--c-ink) !important;
+  letter-spacing: 0.01em;
+}
+.el-result__subtitle {
+  color: var(--c-muted) !important;
+}
+.el-empty__description p {
+  color: var(--c-muted) !important;
+  letter-spacing: 0.04em;
+}
+/* 空态插画里的灰蓝色块统一为奶油/珊瑚 */
+.el-empty__image svg path[fill='#f2f4f7'],
+.el-empty__image svg path[fill='#F2F4F7'] {
+  fill: var(--c-cream) !important;
+}
+.el-empty__image svg path[fill='#dde3eb'],
+.el-empty__image svg path[fill='#DDE3EB'],
+.el-empty__image svg path[fill='#c9d3e0'] {
+  fill: rgba(232, 93, 93, 0.28) !important;
+}
+
+/* 商品流空态卡片：纸面 + 细线，避免突兀白块 */
+.jd-feed__empty {
+  background: var(--c-paper);
+  border: 1px solid var(--c-line);
+  border-radius: var(--c-r-lg);
+  padding: 40px 20px;
+}
+
+/* 回到顶部：深色舞台圆钮 + 珊瑚进度环 */
+.jd-backtop {
+  background: var(--c-stage) !important;
+  color: var(--c-on-stage) !important;
+  border: 1px solid var(--c-line-stage);
+  width: 50px !important;
+  height: 50px !important;
+  box-shadow: 0 16px 34px -18px rgba(0, 0, 0, 0.8) !important;
+}
+.jd-backtop:hover {
+  background: var(--c-accent) !important;
+  color: #fff !important;
+  border-color: var(--c-accent);
+}
+.jd-backtop__ring {
+  stroke: var(--c-accent);
+}
+
+/* ============================================================
+   Tailwind 色标归并
+   ------------------------------------------------------------
+   内页大量使用 text-gray-900 / border-gray-200 等冷灰（oklch 色相
+   约 264，偏蓝），以及 text-red-600 等旧红，直接混在奶油暖底上会
+   显得脏。这里改写 Tailwind 的色标变量本身，让所有既有工具类
+   一次性落到三色系统内，无需逐个改模板。
+   ============================================================ */
+:root {
+  /* 冷灰 → 暖中性灰（与奶油底同色温） */
+  --color-gray-50: #faf7f2;
+  --color-gray-100: #f2ede4;
+  --color-gray-200: #e6dfd3;
+  --color-gray-300: #d3cabb;
+  --color-gray-400: #9a938a;
+  --color-gray-500: #6b6b6b;
+  --color-gray-600: #57534e;
+  --color-gray-700: #3d3d3d;
+  --color-gray-800: #2a2a2a;
+  --color-gray-900: #1a1a1a;
+  --color-gray-950: #121212;
+
+  /* 旧红 → 珊瑚红 */
+  --color-red-50: #fdeceb;
+  --color-red-100: #fbd6d6;
+  --color-red-200: #f9c7c7;
+  --color-red-300: #f4a9a9;
+  --color-red-400: #ef8b8b;
+  --color-red-500: #e85d5d;
+  --color-red-600: #e85d5d;
+  --color-red-700: #c94343;
+  --color-red-800: #a83636;
+  --color-red-900: #7d2020;
+
+  /* 焦点环等残留蓝 */
+  --color-blue-500: #e85d5d;
+  --color-blue-600: #c94343;
+  --color-indigo-500: #e85d5d;
+}
+
+/* ============================================================
+   登录 / 注册：品牌区换成近黑舞台 + 珊瑚光晕
+   ------------------------------------------------------------
+   原 overlay 是旧红 #e1251b 到暗紫的多色渐变，与三色系统不符。
+   ============================================================ */
+.auth-shell {
+  border-radius: var(--c-r-lg) !important;
+  border: 1px solid var(--c-line) !important;
+  box-shadow: var(--c-shadow-lift) !important;
+}
+.auth-shell__overlay {
+  background:
+    linear-gradient(160deg, rgba(26, 26, 26, 0.82), rgba(26, 26, 26, 0.94) 58%, rgba(18, 18, 18, 0.97)),
+    radial-gradient(80% 60% at 82% 8%, rgba(232, 93, 93, 0.62), transparent 72%) !important;
+  mix-blend-mode: normal !important;
+}
+.auth-shell__mark {
+  background: var(--c-accent) !important;
+  border-color: transparent !important;
+  box-shadow: var(--c-shadow-accent);
+}
+.auth-shell__slogan {
+  font-family: var(--c-display) !important;
+  font-weight: 900 !important;
+  font-size: clamp(28px, 3vw, 40px) !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.01em !important;
+  text-shadow: none !important;
+}
+.auth-shell__bullets li {
+  color: rgba(247, 243, 236, 0.78) !important;
+  letter-spacing: 0.02em;
+}
+.auth-shell__title {
+  font-family: var(--c-display) !important;
+  font-weight: 900 !important;
+  font-size: clamp(26px, 2.6vw, 34px) !important;
+  letter-spacing: -0.01em !important;
+  color: var(--c-ink) !important;
+}
+.auth-shell__subtitle {
+  color: var(--c-muted) !important;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   工作区（卖家 / 管理端）：统一到奶油纸 + 珊瑚重音
+   ============================================================ */
+.workspace-crumb__badge {
+  background: var(--c-stage) !important;
+  color: var(--c-accent) !important;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+.workspace-crumb strong {
+  color: var(--c-ink) !important;
+}
+.workspace .el-form--inline {
+  border-radius: var(--c-r) !important;
+  border: 1px solid var(--c-line) !important;
+  background: var(--c-paper) !important;
+  box-shadow: var(--c-shadow) !important;
+}
+.admin-area .admin-main,
+.workspace {
+  --el-bg-color: var(--c-paper);
+}
+
+/* ============================================================
+   硬编码渐变收口
+   ------------------------------------------------------------
+   下列元素把橙红渐变写死在 scoped 样式里（#ff6a3d / #ff5b4a 等），
+   不经过设计令牌，会在三色系统外引入橙色。统一改为纯珊瑚或
+   「近黑 → 珊瑚」两色，保持整套视觉只有一个色相。
+   ============================================================ */
+.admin-bar__mark,
+.jd-user__avatar,
+.jd-card__tag--red,
+.jd-countdown__cell--sec,
+.jd-flash__badge,
+.help-dialog__badge {
+  background-image: none !important;
+  background-color: var(--c-accent) !important;
+  color: #fff !important;
+}
+
+/* 秒杀进度条：珊瑚实心，去掉橙色渐变 */
+.jd-flash__bar i {
+  background-image: none !important;
+  background-color: var(--c-accent) !important;
+}
+
+/* 秒杀区块与客服高亮块：奶油纸面，不再泛橙 */
+.jd-flash {
+  background-image: none !important;
+  background-color: var(--c-paper) !important;
+  border: 1px solid var(--c-line) !important;
+  border-radius: var(--c-r-lg) !important;
+  box-shadow: var(--c-shadow) !important;
+}
+.help-dialog__section.is-highlight {
+  background-image: none !important;
+  background-color: var(--c-accent-soft) !important;
+  border-radius: var(--c-r) !important;
+}
+
+/* 倒计时数字用显示字，秒位珊瑚底 */
+.jd-countdown__cell {
+  font-family: var(--c-display);
+  border-radius: 8px !important;
+  letter-spacing: 0.04em;
+}
+
+/* 客服弹窗徽标与标题 */
+.help-dialog__title {
+  font-family: var(--c-display) !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================
+   VIVID 鲜艳层（应用户要求：不要这么黑，用点鲜艳的配色）
+   ------------------------------------------------------------
+   撤掉大面积近黑舞台，改为「暖白纸底 + 高饱和多色重音」。
+   保留已验证的巨型排版、语义断行、控制条留白等布局修复。
+   本层写在文件末尾，同优先级后写覆盖前面的深色规则。
+   ============================================================ */
+:root {
+  /* 舞台 token 重指向为鲜亮渐变端色，供所有引用处一次性换色 */
+  --c-stage: #ff4d6d;
+  --c-stage-2: #ff7a45;
+  --c-stage-3: #8b5cf6;
+  --c-cream: #fff6ec;
+  --c-cream-2: #fffdf8;
+
+  /* 鲜艳多色重音 */
+  --v-coral: #ff4d6d;
+  --v-orange: #ff7a45;
+  --v-amber: #ffb703;
+  --v-violet: #8b5cf6;
+  --v-sky: #38bdf8;
+  --v-teal: #2dd4bf;
+  --v-grad-hero: linear-gradient(115deg, #ff4d6d 0%, #ff7a45 52%, #ffb703 100%);
+  --v-grad-cool: linear-gradient(115deg, #8b5cf6 0%, #38bdf8 100%);
+  --v-grad-warm: linear-gradient(115deg, #ff7a45 0%, #ffb703 100%);
+
+  /* 品牌主色提亮 */
+  --c-accent: #ff4d6d;
+  --c-accent-deep: #e63e5c;
+  --c-accent-soft: #ffe8ec;
+  --jd-red: #ff4d6d;
+  --jd-red-dark: #e63e5c;
+  --jd-red-soft: #ffe8ec;
+  --jd-bg: #fff6ec;
+
+  --el-color-primary: #ff4d6d;
+  --el-color-primary-light-3: #ff8298;
+  --el-color-primary-light-5: #ffa6b6;
+  --el-color-primary-light-7: #ffcad3;
+  --el-color-primary-light-8: #ffdbe1;
+  --el-color-primary-light-9: #ffe8ec;
+  --el-color-primary-dark-2: #e63e5c;
+}
+
+/* 全站底：暖白 + 鲜艳光斑 */
+body {
+  background-color: var(--c-cream);
+}
+.app-backdrop {
+  background-color: var(--c-cream);
+  background-image:
+    radial-gradient(46rem 26rem at 4% -8%, rgba(255, 77, 109, 0.16), transparent 62%),
+    radial-gradient(40rem 24rem at 98% 0%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(36rem 22rem at 50% 110%, rgba(255, 183, 3, 0.14), transparent 62%),
+    linear-gradient(rgba(26, 26, 26, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 26, 26, 0.025) 1px, transparent 1px);
+}
+
+/* ---------- 头部：白纸 + 鲜艳 logo/搜索/主按钮 ---------- */
+.jd-theme-header {
+  background: rgba(255, 253, 248, 0.92) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--c-line);
+}
+.jd-topbar {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+  border-bottom: 0;
+}
+.jd-topbar__link,
+.jd-topbar__btn {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+.jd-topbar__link:hover,
+.jd-topbar__btn:hover {
+  color: #fff !important;
+}
+.jd-head {
+  border-bottom: 1px solid var(--c-line) !important;
+}
+.jd-logo__mark {
+  background: var(--v-grad-hero) !important;
+}
+.jd-logo__text strong {
+  color: var(--c-ink) !important;
+}
+.jd-logo__text small {
+  color: var(--c-muted) !important;
+}
+.jd-category__btn {
+  background: var(--c-accent-soft) !important;
+  border: 1px solid rgba(255, 77, 109, 0.35) !important;
+  color: var(--c-accent-deep) !important;
+}
+.jd-category__btn:hover {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+}
+.jd-search__box {
+  background: #fff !important;
+  border: 2px solid var(--c-accent) !important;
+}
+.jd-search__input {
+  color: var(--c-ink) !important;
+}
+.jd-search__input::placeholder {
+  color: var(--c-muted-2) !important;
+}
+.jd-search__btn {
+  background: var(--v-grad-hero) !important;
+}
+.jd-search__hot-label {
+  color: var(--c-muted) !important;
+}
+.jd-search__hot-item {
+  color: var(--c-muted) !important;
+}
+.jd-search__hot-item:hover {
+  color: var(--c-accent) !important;
+}
+.jd-cart,
+.jd-user,
+.jd-ghost-btn {
+  background: #fff !important;
+  border: 1px solid var(--c-line) !important;
+  color: var(--c-ink-2) !important;
+}
+.jd-cart:hover,
+.jd-user:hover,
+.jd-ghost-btn:hover {
+  border-color: var(--c-accent) !important;
+  color: var(--c-accent) !important;
+}
+.jd-primary-btn {
+  background: var(--v-grad-hero) !important;
+}
+.jd-nav {
+  background: transparent !important;
+  border-bottom: 1px solid var(--c-line) !important;
+}
+.jd-nav__link {
+  color: var(--c-muted) !important;
+}
+.jd-nav__link:hover {
+  background: var(--c-accent-soft) !important;
+  color: var(--c-accent-deep) !important;
+}
+.jd-nav__link.is-active {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+}
+.jd-nav__hint {
+  color: var(--c-muted-2) !important;
+}
+.jd-nav__link--sell {
+  background-color: rgba(139, 92, 246, 0.12) !important;
+  border: 1px dashed rgba(139, 92, 246, 0.55) !important;
+  color: var(--v-violet) !important;
+}
+.jd-nav__link--sell:hover {
+  background: var(--v-grad-cool) !important;
+  color: #fff !important;
+}
+
+/* ---------- 公告条：琥珀暖条 ---------- */
+.jd-notice {
+  background: var(--v-grad-warm) !important;
+  border: 0 !important;
+}
+.jd-notice__label {
+  background: rgba(26, 26, 26, 0.82) !important;
+  color: #ffb703 !important;
+}
+.jd-notice__content {
+  color: rgba(26, 26, 26, 0.78) !important;
+  font-weight: 500;
+}
+.jd-notice__cta {
+  color: #1a1a1a !important;
+  font-weight: 700 !important;
+}
+
+/* ---------- 分类图标：多色糖果底 ---------- */
+.jd-cats__item:nth-child(4n + 1) .jd-cats__icon {
+  background: var(--c-accent-soft) !important;
+  color: var(--v-coral) !important;
+  border-color: rgba(255, 77, 109, 0.3);
+}
+.jd-cats__item:nth-child(4n + 2) .jd-cats__icon {
+  background: #fff3d6 !important;
+  color: #d99a00 !important;
+  border-color: rgba(255, 183, 3, 0.4);
+}
+.jd-cats__item:nth-child(4n + 3) .jd-cats__icon {
+  background: #efe9ff !important;
+  color: var(--v-violet) !important;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.jd-cats__item:nth-child(4n + 4) .jd-cats__icon {
+  background: #e0f5fe !important;
+  color: #0284c7 !important;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.jd-cats__item.is-active .jd-cats__icon {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+  border-color: transparent;
+}
+
+/* ---------- 服务承诺图标多色 ---------- */
+.jd-promises__item:nth-child(1) .jd-promises__icon { background: var(--c-accent-soft) !important; color: var(--v-coral) !important; }
+.jd-promises__item:nth-child(2) .jd-promises__icon { background: #fff3d6 !important; color: #d99a00 !important; }
+.jd-promises__item:nth-child(3) .jd-promises__icon { background: #efe9ff !important; color: var(--v-violet) !important; }
+.jd-promises__item:nth-child(4) .jd-promises__icon { background: #dcfce7 !important; color: #16a34a !important; }
+
+/* ---------- 页脚：紫→天蓝鲜亮渐变 ---------- */
+.jd-footer {
+  background: var(--v-grad-cool) !important;
+  border-top: 0 !important;
+}
+.jd-footer__mark {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+.jd-footer__badges span {
+  background: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+.jd-footer__contact strong {
+  color: #ffb703 !important;
+}
+.jd-footer__link:hover {
+  color: #ffb703 !important;
+}
+
+/* ---------- 登录品牌区：鲜亮渐变 ---------- */
+.auth-shell__overlay {
+  background:
+    linear-gradient(160deg, rgba(255, 77, 109, 0.86), rgba(255, 122, 69, 0.9) 55%, rgba(139, 92, 246, 0.92)),
+    radial-gradient(80% 60% at 82% 8%, rgba(255, 183, 3, 0.5), transparent 72%) !important;
+}
+
+/* ---------- 管理端顶栏：紫→珊瑚 ---------- */
+.admin-bar {
+  background: linear-gradient(100deg, #8b5cf6, #ff4d6d 70%, #ff7a45) !important;
+}
+
+/* ---------- 回到顶部：鲜亮渐变 ---------- */
+.jd-backtop {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+  border: 0 !important;
+}
+
+/* VIVID 补充：标题第二行改用深色墨字，避免珊瑚字落在珊瑚底上看不清 */
+.jd-hero__title-line.is-accent {
+  color: #1a1a1a !important;
+}
+/* 副标题在鲜亮底上提高对比 */
+.jd-hero__subtitle {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+.jd-hero__badge {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+/* 折线层在鲜亮底上用白描边更跳 */
+.jd-hero__zigzag polyline {
+  stroke: #fff !important;
+}
+
+/* 窄屏导航可横滑：右端加渐隐遮罩，提示还有更多入口，避免生硬裁切 */
+@media (max-width: 640px) {
+  .jd-nav__inner {
+    mask-image: linear-gradient(90deg, #000 82%, transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent 100%);
+  }
+}
+
+/* 琥珀/橙主题 Hero 底色偏亮，白色副标题与眉标对比略弱，
+   改用半透明深墨字提升可读性；红/紫主题仍用白字。 */
+.jd-hero--amber .jd-hero__subtitle,
+.jd-hero--amber .jd-hero__badge,
+.jd-hero--amber .jd-hero__stat span {
+  color: rgba(26, 26, 26, 0.72) !important;
+}
+.jd-hero--amber .jd-hero__line {
+  background: #1a1a1a !important;
+}
+
+/* ============================================================
+   琥珀主题 Hero：亮黄海报 + 深墨字
+   ------------------------------------------------------------
+   白字压在 #ffb703 亮黄上对比不足（约 1.9:1），巨型标题也会发洗。
+   琥珀主题整组改用深墨排版（黑字亮黄底是经典海报组合，对比 >10:1），
+   红 / 紫主题仍用白字。
+   ============================================================ */
+.jd-hero--amber .jd-hero__title,
+.jd-hero--amber .jd-hero__stat strong {
+  color: #1a1a1a !important;
+  text-shadow: none !important;
+}
+.jd-hero--amber .jd-hero__cta {
+  background: #1a1a1a !important;
+  color: #ffb703 !important;
+}
+.jd-hero--amber .jd-hero__cta:hover {
+  background: #fff !important;
+  color: #1a1a1a !important;
+}
+.jd-hero--amber .jd-hero__arrow {
+  background: rgba(26, 26, 26, 0.1) !important;
+  border-color: rgba(26, 26, 26, 0.32) !important;
+  color: #1a1a1a !important;
+}
+.jd-hero--amber .jd-hero__arrow:hover {
+  background: #1a1a1a !important;
+  border-color: #1a1a1a !important;
+  color: #ffb703 !important;
+}
+.jd-hero--amber .jd-hero__dot {
+  background: rgba(26, 26, 26, 0.22) !important;
+  border-color: rgba(26, 26, 26, 0.32) !important;
+}
+.jd-hero--amber .jd-hero__dot-progress {
+  background: #1a1a1a !important;
+}
+.jd-hero--amber .jd-hero__numeral {
+  color: rgba(26, 26, 26, 0.14) !important;
+}
+.jd-hero--amber .jd-hero__zigzag polyline {
+  stroke: #1a1a1a !important;
+}
+.jd-hero--amber .jd-hero__ring {
+  border-color: rgba(26, 26, 26, 0.25) !important;
+}
+
+/* 红 / 紫主题白字加极淡同色投影，边缘更锐利（不改变明亮观感） */
+.jd-hero--red .jd-hero__title,
+.jd-hero--dark .jd-hero__title {
+  text-shadow: 0 2px 26px rgba(120, 20, 60, 0.3);
+}
+
+/* ============================================================
+   内页标题区（PageHero）：撤掉暗照片蒙版，换鲜亮渐变
+   ------------------------------------------------------------
+   个人中心 / 我的订单等页面用 has-image：实拍图 + rgba(24,20,32,.82)
+   深色蒙版，整块发灰发闷，与鲜艳首页割裂。
+   这里改为「高饱和渐变 + 极淡照片纹理」，并按 tone 分配色相，
+   让买家端、卖家端、管理端各页既有区分度又同属一套鲜艳语言。
+   ============================================================ */
+
+/* 带图标题：渐变压过照片，照片只留极淡纹理 */
+.page-hero.has-image {
+  background-color: var(--v-coral) !important;
+  background-blend-mode: soft-light;
+  border-color: transparent !important;
+  min-height: 148px;
+  box-shadow: 0 22px 50px -34px rgba(255, 77, 109, 0.7) !important;
+}
+/* 蒙版改成鲜亮渐变，不再是深墨 */
+.page-hero.has-image .page-hero__overlay {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 77, 109, 0.94) 0%,
+    rgba(255, 122, 69, 0.9) 52%,
+    rgba(139, 92, 246, 0.88) 100%
+  ) !important;
+}
+.page-hero.has-image .page-hero__title {
+  color: #fff !important;
+  text-shadow: 0 2px 20px rgba(120, 20, 60, 0.35) !important;
+}
+.page-hero.has-image .page-hero__subtitle {
+  color: rgba(255, 255, 255, 0.94) !important;
+}
+.page-hero.has-image .page-hero__watermark {
+  color: #fff !important;
+  opacity: 0.24 !important;
+}
+.page-hero.has-image .page-hero__glow {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.5), transparent 70%) !important;
+}
+
+/* ---------- 四种 tone：高饱和渐变，白字 ---------- */
+.page-hero--red {
+  background: linear-gradient(112deg, #ff4d6d 0%, #ff7a45 100%) !important;
+  color: #fff !important;
+}
+.page-hero--indigo {
+  background: linear-gradient(112deg, #8b5cf6 0%, #38bdf8 100%) !important;
+  color: #fff !important;
+}
+.page-hero--amber {
+  background: linear-gradient(112deg, #ff9500 0%, #ffb703 55%, #ffd60a 100%) !important;
+  color: #1a1a1a !important;
+}
+.page-hero--teal {
+  background: linear-gradient(112deg, #14b8a6 0%, #38bdf8 100%) !important;
+  color: #fff !important;
+}
+.page-hero--rose {
+  background: linear-gradient(112deg, #ff4d6d 0%, #8b5cf6 100%) !important;
+  color: #fff !important;
+}
+.page-hero--red .page-hero__glow,
+.page-hero--indigo .page-hero__glow,
+.page-hero--teal .page-hero__glow,
+.page-hero--rose .page-hero__glow {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.45), transparent 70%) !important;
+}
+.page-hero--amber .page-hero__glow {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent 70%) !important;
+}
+
+/* 标题与副标题在渐变上的对比 */
+.page-hero__title {
+  color: inherit !important;
+}
+.page-hero--red .page-hero__title,
+.page-hero--indigo .page-hero__title,
+.page-hero--teal .page-hero__title,
+.page-hero--rose .page-hero__title,
+.page-hero.has-image .page-hero__title {
+  color: #fff !important;
+  text-shadow: 0 2px 20px rgba(60, 20, 80, 0.28);
+}
+.page-hero--amber .page-hero__title {
+  color: #1a1a1a !important;
+  text-shadow: none;
+}
+.page-hero--red .page-hero__subtitle,
+.page-hero--indigo .page-hero__subtitle,
+.page-hero--teal .page-hero__subtitle,
+.page-hero--rose .page-hero__subtitle {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+.page-hero--amber .page-hero__subtitle {
+  color: rgba(26, 26, 26, 0.74) !important;
+}
+.page-hero__watermark {
+  opacity: 0.22 !important;
+}
+/* 标题区里的次要文字（共 N 件 / 共 N 单）在渐变上转白 */
+.page-hero .page-hero__actions {
+  color: inherit;
+}
+.page-hero--red .page-hero__actions,
+.page-hero--indigo .page-hero__actions,
+.page-hero--teal .page-hero__actions,
+.page-hero--rose .page-hero__actions,
+.page-hero.has-image .page-hero__actions {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ============================================================
+   灰调清扫：把残留冷灰底换成暖纸 / 鲜艳浅底
+   ============================================================ */
+:root {
+  /* 组件里写死的冷灰，统一改暖中性 */
+  --jd-bg: #fff6ec;
+}
+/* 卡片头、表头、分组条等浅灰面 */
+.el-card.el-card .el-card__header {
+  background: linear-gradient(180deg, #fffdf8, #fff6ec) !important;
+}
+.el-table .el-table__header th.el-table__cell {
+  background: #fff3e4 !important;
+}
+/* 购物车分店小计等 fafafa 灰块 */
+.jd-cart-shops {
+  background: var(--c-accent-soft) !important;
+  border-color: rgba(255, 77, 109, 0.22) !important;
+}
+/* 商品图占位灰底 → 暖奶油 */
+.jd-card__media,
+.jd-curated__media,
+.product-cover {
+  background-color: #fff3e4 !important;
+}
+/* 空态 / 骨架屏灰 → 暖色微光 */
+.jd-skeleton {
+  background-image: linear-gradient(100deg, #fff3e4 20%, #fffdf8 40%, #fff3e4 60%) !important;
+}
+/* 下拉与面板悬停灰 → 珊瑚浅底 */
+.jd-user__item:hover,
+.jd-nav__panel-item:hover,
+.jd-category__child:hover {
+  background: var(--c-accent-soft) !important;
+}
+/* 页面小标题竖条统一鲜亮 */
+main h1:not(.jd-detail__title)::before {
+  background: var(--v-grad-hero) !important;
+}
+/* 轻量链接按钮：珊瑚描边 → 鲜艳实心悬停 */
+.jd-link-btn {
+  border-color: rgba(255, 77, 109, 0.35) !important;
+  color: var(--c-accent-deep) !important;
+  background: #fff !important;
+}
+.jd-link-btn:hover {
+  background: var(--v-grad-hero) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
+/* ============================================================
+   路由过渡兜底：内容绝不允许停在透明态
+   ------------------------------------------------------------
+   实测缺陷：App.vue 的 <transition name="page-fade" mode="out-in">
+   在部分时序下会把根容器留在 opacity:0 —— 过渡类已被移除，却没有
+   任何规则把 opacity 拉回 1，于是整页内容（标题、卡片、文字）只剩
+   一层残影，看起来像「全都发灰」。
+
+   这里给 main 的直接子元素显式声明终态，并只在真正带过渡类时
+   才允许起始态生效，从根上消除卡死。
+   ============================================================ */
+main > div {
+  opacity: 1;
+  transform: none;
+}
+/* 起始态仅在 enter-from / leave-to 存在时生效 */
+main > div.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+main > div.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+/* 过渡进行中与结束态都必须是可见的 */
+main > div.page-fade-enter-active,
+main > div.page-fade-enter-to,
+main > div.page-fade-leave-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+main > div.page-fade-enter-to {
+  opacity: 1;
+  transform: none;
+}
+
+/* v-reveal 保留滚动渐显，但加一道保险：进入视口后若因时序问题
+   迟迟没有拿到 .is-visible，2 秒后也强制显形，不会长期隐形。 */
+@keyframes coral-reveal-failsafe {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.jd-reveal {
+  animation: coral-reveal-failsafe 0.01s linear 2s forwards;
+}
+.jd-reveal.is-visible {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jd-reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ============================================================
+   标题区内的次要文字与控件对比
+   ------------------------------------------------------------
+   实测：meta 用 text-[var(--jd-ink-4)] 灰字、单选按钮选中态是珊瑚底，
+   压在鲜亮渐变上分别「看不清」和「几乎隐形」。这里就地修正。
+   ============================================================ */
+/* 共 N 单 / 共 N 件：渐变上转白 */
+.page-hero--red .page-hero__main span,
+.page-hero--indigo .page-hero__main span,
+.page-hero--teal .page-hero__main span,
+.page-hero--rose .page-hero__main span,
+.page-hero.has-image .page-hero__main span {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.page-hero--amber .page-hero__main span {
+  color: rgba(26, 26, 26, 0.72) !important;
+}
+
+/* 单选按钮组：未选中为白色磨砂，选中为深墨底白字，与渐变拉开层次 */
+.page-hero .el-radio-button__inner {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+  color: var(--c-ink) !important;
+  box-shadow: none !important;
+  font-weight: 600;
+}
+.page-hero .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background: #1a1a1a !important;
+  border-color: #1a1a1a !important;
+  color: #fff !important;
+  box-shadow: -1px 0 0 0 #1a1a1a !important;
+}
+/* 标题区里的下拉：白底深字，避免半透明糊在渐变上 */
+.page-hero .el-select__wrapper {
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: none !important;
+}
+
+/* ============================================================
+   空态插画：Element Plus 的纸箱 SVG 全部通过
+   --el-empty-fill-color-0…9 取色（含渐变 stop），
+   所以必须覆盖这组变量；按 path[fill='#xxx'] 匹配打不中。
+   这里整组换成珊瑚暖调，消除灰白盒子。
+   ============================================================ */
+/* EP 把变量定义在 .el-empty 自身的未分层规则里，外层覆盖压不住，
+   因此提高选择器 specificity 并加 !important 重定义。 */
+.el-empty.el-empty {
+  --el-empty-fill-color-0: #fffdf8 !important;
+  --el-empty-fill-color-1: #ffe8ec !important;
+  --el-empty-fill-color-2: #fff1f4 !important;
+  --el-empty-fill-color-3: #fff6f8 !important;
+  --el-empty-fill-color-4: #ffd7de !important;
+  --el-empty-fill-color-5: #ffc9d3 !important;
+  --el-empty-fill-color-6: #ffb3c1 !important;
+  --el-empty-fill-color-7: #ffc2cd !important;
+  --el-empty-fill-color-8: #ff9fb0 !important;
+  --el-empty-fill-color-9: #ff8fa3 !important;
+}
+/* 兜底：直接给形状上色，不依赖变量是否被覆盖成功。
+   带 url(#gradient) 的渐变面除外，它们已由 stop 变量着色。 */
+.el-empty__image svg rect:not([fill^='url']),
+.el-empty__image svg path:not([fill^='url']),
+.el-empty__image svg polygon:not([fill^='url']),
+.el-empty__image svg ellipse:not([fill^='url']) {
+  fill: #ffc9d3 !important;
+}
+/* 顶盖与侧面用稍深一档，保留纸箱的立体层次 */
+.el-empty__image svg polygon[fill*='fill-color-7'],
+.el-empty__image svg polygon[fill*='fill-color-9'] {
+  fill: #ff9fb0 !important;
+}
+.el-empty__image svg polygon[fill*='fill-color-5'] {
+  fill: #ffb3c1 !important;
+}
+.el-empty__image svg polygon[fill*='fill-color-2'],
+.el-empty__image svg path[fill*='fill-color-3'] {
+  fill: #fff1f4 !important;
+}
+/* 渐变 stop 直接指定，避免变量层级问题 */
+.el-empty__image svg linearGradient stop {
+  stop-color: #ffe8ec !important;
+}
+.el-empty__image svg linearGradient stop:last-child {
+  stop-color: #ffb3c1 !important;
+}
+
+/* ============================================================
+   页脚在紫蓝渐变上的文字对比
+   ============================================================ */
+.jd-footer p,
+.jd-footer__brand p,
+.jd-footer__contact p {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+.jd-footer__link {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+.jd-footer__bottom,
+.jd-footer__bottom span,
+.jd-footer__bottom a {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* 空态/说明文字：冷灰 → 暖灰，贴合奶油纸底 */
+.el-empty__description p,
+.el-result__subtitle {
+  color: #8a7f72 !important;
+}

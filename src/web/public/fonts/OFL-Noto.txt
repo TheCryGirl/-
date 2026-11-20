@@ -1,0 +1,11 @@
+noto-sans-sc-display-900.woff2 由 Noto Sans SC 可变字体实例化（wght=900）
+并按本项目实际用字子集化生成，未修改字形设计。
+
+Noto Sans SC
+Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+Copyright 2021 Google LLC.
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+Full license text: https://openfontlicense.org/open-font-license-official-text/
+
+Bebas Neue 与 Inter 同样以 SIL OFL 1.1 授权，来自 @fontsource 分发的原始 woff2 文件。

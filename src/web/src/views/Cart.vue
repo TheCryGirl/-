@@ -259,6 +259,7 @@ onMounted(load)
           </div>
         </template>
 
+        <div class="cart-desktop" data-testid="cart-table">
         <UiTable
           :columns="columns"
           :data="cart.items"
@@ -267,7 +268,6 @@ onMounted(load)
           show-actions
           actions-label="操作"
           actions-width="90"
-          data-testid="cart-table"
         >
           <template #select="{ row }">
             <el-checkbox
@@ -337,6 +337,64 @@ onMounted(load)
             </el-button>
           </template>
         </UiTable>
+        </div>
+
+        <!-- 窄屏：表格改为卡片列表，复用同一批勾选/数量/删除逻辑 -->
+        <ul class="cart-mobile">
+          <li
+            v-for="row in cart.items"
+            :key="row.cartItemId"
+            class="cart-mobile__item"
+            :class="{ 'is-invalid': row.invalid }"
+          >
+            <div class="cart-mobile__head">
+              <el-checkbox
+                :model-value="row.selected"
+                :disabled="row.invalid || updatingSelection.has(row.cartItemId)"
+                :data-testid="`cart-select-${row.cartItemId}`"
+                @change="(value) => updateSelected(row, value)"
+              />
+              <el-image
+                v-if="row.mainImage"
+                :src="row.mainImage"
+                fit="cover"
+                class="cart-mobile__img"
+              />
+              <div v-else class="cart-mobile__img cart-mobile__img--empty">无图</div>
+              <div class="cart-mobile__info">
+                <p class="cart-mobile__title" :title="row.title">{{ row.title }}</p>
+                <p class="cart-mobile__spec">{{ row.specName || '默认规格' }}</p>
+                <el-tag v-if="row.invalid" type="danger" size="small">
+                  {{ row.invalidReason || '商品已失效' }}
+                </el-tag>
+              </div>
+            </div>
+            <div class="cart-mobile__foot">
+              <span class="jd-price cart-mobile__price">¥{{ formatPrice(row.price) }}</span>
+              <el-input-number
+                :model-value="row.quantity"
+                :min="1"
+                :max="maxQuantity(row)"
+                :step="1"
+                :precision="0"
+                size="small"
+                :disabled="updatingQuantity.has(row.cartItemId)"
+                :data-testid="`cart-quantity-${row.cartItemId}`"
+                @change="(value) => updateQuantity(row, value)"
+              />
+              <el-button
+                link
+                type="danger"
+                size="small"
+                :loading="deletingId === row.cartItemId"
+                :data-testid="`cart-remove-${row.cartItemId}`"
+                @click="removeItem(row)"
+              >
+                删除
+              </el-button>
+            </div>
+          </li>
+        </ul>
       </el-card>
 
       <div v-if="shopGroups.length > 1" class="jd-cart-shops" data-testid="cart-shop-groups">
@@ -442,6 +500,96 @@ onMounted(load)
   min-width: 132px;
   height: 42px;
   border-radius: 999px;
+}
+
+/* ---------- 移动端：表格换卡片 ---------- */
+.cart-mobile {
+  display: none;
+}
+@media (max-width: 640px) {
+  .cart-desktop {
+    display: none;
+  }
+  .cart-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .cart-mobile__item {
+    padding: 12px;
+    border: 1px solid var(--jd-line, #ebeef5);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .cart-mobile__item.is-invalid {
+    opacity: 0.65;
+  }
+  .cart-mobile__head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .cart-mobile__head :deep(.el-checkbox) {
+    margin-top: 22px;
+    height: auto;
+  }
+  .cart-mobile__img {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .cart-mobile__img--empty {
+    display: grid;
+    place-items: center;
+    background: #f3f4f6;
+    color: #9ca3af;
+    font-size: 12px;
+  }
+  .cart-mobile__info {
+    min-width: 0;
+    flex: 1;
+  }
+  .cart-mobile__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .cart-mobile__spec {
+    margin-top: 2px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+  .cart-mobile__foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #eef0f4;
+  }
+  .cart-mobile__price {
+    font-size: 16px;
+    margin-right: auto;
+  }
+  .cart-mobile__foot :deep(.el-input-number) {
+    width: 108px;
+  }
+  .jd-cart-summary {
+    bottom: 8px;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .jd-cart-summary :deep(.el-button) {
+    flex: 1;
+    min-width: 0;
+  }
 }
 </style>
 

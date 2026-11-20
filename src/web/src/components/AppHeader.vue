@@ -242,8 +242,8 @@ onBeforeUnmount(() => {
         <div class="jd-category" @mouseenter="openCategoryPanel" @mouseleave="catOpen = false">
           <button class="jd-category__btn" type="button" @click="openCategoryPanel">
             <StoreIcon name="menu" :size="16" />
-            全部商品分类
-            <StoreIcon name="chevron-down" :size="14" />
+            <span class="jd-category__label">全部商品分类</span>
+            <StoreIcon name="chevron-down" :size="14" class="jd-category__chevron" />
           </button>
           <transition name="jd-drop">
             <div v-if="catOpen" class="jd-category__panel">
@@ -839,6 +839,9 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   font-size: 14px;
   color: var(--jd-ink-2);
+  /* 窄屏导航整条横滑，链接文字不折行 */
+  white-space: nowrap;
+  flex: none;
   transition:
     background 0.2s ease,
     color 0.2s ease;
@@ -955,6 +958,9 @@ onBeforeUnmount(() => {
   .jd-logo__text small {
     display: none;
   }
+  .jd-logo__text strong {
+    font-size: 16px;
+  }
   .jd-logo__mark {
     width: 34px;
     height: 34px;
@@ -962,16 +968,51 @@ onBeforeUnmount(() => {
     font-size: 11px;
   }
   .jd-head__inner {
-    gap: 8px;
+    gap: 6px;
     padding-top: 8px;
     padding-bottom: 8px;
   }
-  /* 移动端首屏高度有限，热搜词让位给搜索框与导航 */
+  .jd-logo {
+    gap: 8px;
+  }
+  .jd-logo__text strong {
+    font-size: 15px;
+  }
+  /* 移动端首屏高度有限：分类按钮收成图标，热搜词让位给搜索框与导航 */
+  .jd-category__label,
+  .jd-category__chevron {
+    display: none;
+  }
+  .jd-category__btn {
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+  }
   .jd-search__hot {
     display: none;
   }
   .jd-search__box {
     height: 38px;
+  }
+  /* 消息/购物车只留图标与角标，登录/注册收紧内边距，保证与 logo 同行 */
+  .jd-actions {
+    gap: 6px;
+  }
+  .jd-cart__text {
+    display: none;
+  }
+  .jd-cart {
+    padding: 0 5px;
+    height: 34px;
+  }
+  .jd-ghost-btn,
+  .jd-primary-btn {
+    padding: 0 10px;
+    height: 32px;
+    font-size: 13px;
+  }
+  .jd-user__name {
+    display: none;
   }
   .jd-nav__inner {
     height: 38px;

@@ -187,7 +187,7 @@ onMounted(load)
             <!-- 跨店主订单聚合行（#135）：可展开看子订单 -->
             <div v-if="row.kind === 'main'" class="py-3 first:pt-0 last:pb-0">
               <div
-                class="-mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                class="-mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--jd-red)]"
                 tabindex="0"
                 role="button"
                 :aria-label="`查看合并订单 ${row.mainOrderNo}`"
@@ -258,7 +258,7 @@ onMounted(load)
             <!-- 单店订单行（含历史 main_order_id 为 null 的订单） -->
             <div
               v-else
-              class="py-3 first:pt-0 last:pb-0 -mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              class="py-3 first:pt-0 last:pb-0 -mx-2 px-2 rounded cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--jd-red)]"
               tabindex="0"
               role="button"
               :aria-label="`查看订单 ${row.order.orderNo}`"

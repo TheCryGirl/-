@@ -17,6 +17,23 @@ const isAdminArea = computed(() => String(route.name || '').startsWith('admin-')
 const isWorkspace = computed(() => /^(admin|seller)-/.test(String(route.name || '')))
 const workspaceLabel = computed(() => (route.meta.role === 'ADMIN' ? '管理中心' : '卖家中心'))
 
+/**
+ * 路由过渡收尾：显式把页面根元素拉回可见终态。
+ *
+ * 实测缺陷：page-fade 的 out-in 过渡在某些时序下会留下一个不结束的
+ * opacity 过渡，过渡类已移除但计算值仍停在 0，整页内容只剩残影。
+ * 该残留由动画本身持有，CSS 兜底压不住，只能在钩子里取消动画并复位。
+ */
+function clearPageFade(el) {
+  if (!el || typeof el.getAnimations !== 'function') return
+  for (const anim of el.getAnimations()) {
+    const prop = anim.transitionProperty || anim.animationName || ''
+    if (prop === 'opacity' || prop === 'transform') anim.cancel()
+  }
+  el.style.removeProperty('opacity')
+  el.style.removeProperty('transform')
+}
+
 /** 令牌过期（401）时清空内存登录态并回到登录页 */
 function handleAuthExpired() {
   logout()
@@ -51,7 +68,13 @@ onBeforeUnmount(() => window.removeEventListener('auth:expired', handleAuthExpir
         </div>
 
         <RouterView v-slot="{ Component, route: current }">
-          <transition name="page-fade" mode="out-in">
+          <transition
+            name="page-fade"
+            mode="out-in"
+            @after-enter="clearPageFade"
+            @enter-cancelled="clearPageFade"
+            @after-leave="clearPageFade"
+          >
             <component :is="Component" :key="current.path" />
           </transition>
         </RouterView>

@@ -23,6 +23,19 @@ export default defineConfig({
       dts: 'src/components.d.ts',
     }),
   ],
+  // 生产构建：把长期不变的依赖拆成独立 chunk，业务代码更新时用户不必重下框架。
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-vue', test: /node_modules[\\/](vue|@vue|vue-router)[\\/]/ },
+            { name: 'vendor-ep', test: /node_modules[\\/]element-plus[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
